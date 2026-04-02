@@ -1,37 +1,382 @@
 <!DOCTYPE html>
-<html>
-<head><title>Pipeline</title></head>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1.0">
+<title>Pipeline — VecinosMérida</title>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:wght@700;900&family=DM+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+:root{--rojo:#e63946;--crema:#fdf6ec;--carbon:#1a1a2e;--gris:#6b7280;--borde:#e8e0d5;}
+*{margin:0;padding:0;box-sizing:border-box;}
+body{font-family:'DM Sans',sans-serif;background:var(--crema);color:var(--carbon);min-height:100vh;}
+
+/* ── HERO ── */
+.hero{background:var(--carbon);padding:56px 24px 48px;text-align:center;position:relative;overflow:hidden;}
+.hero::before{content:'';position:absolute;inset:0;background:radial-gradient(ellipse 80% 60% at 50% 0%,rgba(230,57,70,.18),transparent 70%);}
+.hero-badge{display:inline-block;background:rgba(230,57,70,.15);border:1px solid rgba(230,57,70,.35);color:#ff8a94;font-size:11px;font-weight:600;letter-spacing:.12em;text-transform:uppercase;padding:5px 14px;border-radius:20px;margin-bottom:20px;}
+.hero h1{font-family:'Fraunces',serif;font-size:clamp(2rem,6vw,3.2rem);font-weight:900;color:#fff;line-height:1.1;margin-bottom:10px;}
+.hero h1 span{color:var(--rojo);}
+.hero p{color:rgba(255,255,255,.5);font-size:.95rem;max-width:480px;margin:0 auto;}
+
+/* ── MAIN ── */
+.main{max-width:680px;margin:0 auto;padding:40px 20px 80px;}
+
+/* ── UPLOAD CARD ── */
+.upload-card{background:#fff;border-radius:20px;box-shadow:0 4px 32px rgba(26,26,46,.08);overflow:hidden;}
+.upload-header{padding:24px 28px 0;border-bottom:1px solid var(--borde);padding-bottom:20px;}
+.upload-header h2{font-family:'Fraunces',serif;font-size:1.4rem;font-weight:700;color:var(--carbon);}
+.upload-header p{font-size:.85rem;color:var(--gris);margin-top:4px;}
+.upload-body{padding:28px;}
+
+.drop-zone{border:2px dashed var(--borde);border-radius:14px;padding:40px 20px;text-align:center;cursor:pointer;transition:border-color .2s,background .2s;position:relative;}
+.drop-zone:hover,.drop-zone.over{border-color:var(--rojo);background:rgba(230,57,70,.04);}
+.drop-zone input{position:absolute;inset:0;opacity:0;cursor:pointer;width:100%;height:100%;}
+.drop-icon{font-size:2.8rem;margin-bottom:12px;}
+.drop-title{font-family:'Fraunces',serif;font-size:1.1rem;font-weight:700;color:var(--carbon);margin-bottom:6px;}
+.drop-sub{font-size:.82rem;color:var(--gris);}
+.file-name{display:none;margin-top:12px;font-size:.82rem;color:var(--rojo);font-weight:600;}
+
+.btn-analizar{width:100%;margin-top:20px;padding:14px;background:var(--rojo);color:#fff;border:none;border-radius:12px;font-family:'DM Sans',sans-serif;font-size:.95rem;font-weight:600;cursor:pointer;transition:background .2s;}
+.btn-analizar:hover{background:#c0212d;}
+.btn-analizar:disabled{background:#ccc;cursor:not-allowed;}
+
+/* ── MODAL ── */
+.modal-overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:1000;align-items:center;justify-content:center;padding:16px;}
+.modal-overlay.open{display:flex;}
+.modal{background:#fff;border-radius:20px;width:100%;max-width:520px;max-height:90vh;overflow-y:auto;box-shadow:0 20px 80px rgba(0,0,0,.25);}
+.modal-header{padding:24px 24px 16px;border-bottom:1px solid var(--borde);}
+.modal-header h3{font-family:'Fraunces',serif;font-size:1.2rem;font-weight:700;color:var(--carbon);}
+.modal-header p{font-size:.82rem;color:var(--gris);margin-top:4px;}
+.modal-body{padding:20px 24px;}
+.modal-footer{padding:16px 24px;border-top:1px solid var(--borde);display:flex;gap:10px;justify-content:flex-end;}
+
+.grupo-info{background:var(--crema);border-radius:10px;padding:14px 16px;margin-bottom:20px;display:flex;align-items:center;gap:12px;}
+.grupo-icon{font-size:1.8rem;}
+.grupo-nombre{font-weight:600;font-size:.95rem;color:var(--carbon);}
+.grupo-id{font-size:.75rem;color:var(--gris);}
+
+.field-label{font-size:.78rem;font-weight:600;color:var(--carbon);text-transform:uppercase;letter-spacing:.06em;margin-bottom:8px;}
+.field-wrap{margin-bottom:18px;}
+
+select,textarea{width:100%;padding:10px 12px;border:1.5px solid var(--borde);border-radius:10px;font-family:'DM Sans',sans-serif;font-size:.88rem;outline:none;background:#fff;transition:border-color .2s;color:var(--carbon);}
+select:focus,textarea:focus{border-color:var(--rojo);}
+textarea{resize:vertical;min-height:70px;}
+
+.colonias-list{display:flex;flex-direction:column;gap:6px;max-height:200px;overflow-y:auto;border:1.5px solid var(--borde);border-radius:10px;padding:8px;}
+.colonia-item{display:flex;align-items:center;gap:8px;padding:6px 8px;border-radius:6px;cursor:pointer;transition:background .15s;}
+.colonia-item:hover{background:var(--crema);}
+.colonia-item input{accent-color:var(--rojo);width:15px;height:15px;cursor:pointer;}
+.colonia-item label{font-size:.85rem;cursor:pointer;flex:1;}
+
+.alert-box{background:#fef3cd;border:1px solid #ffd700;border-radius:10px;padding:12px 14px;font-size:.82rem;color:#856404;margin-bottom:16px;display:flex;gap:8px;align-items:flex-start;}
+.success-box{background:#d1e7dd;border:1px solid #badbcc;border-radius:10px;padding:12px 14px;font-size:.82rem;color:#0a3622;margin-bottom:16px;display:flex;gap:8px;}
+
+.btn-cancel{padding:10px 20px;background:transparent;border:1.5px solid var(--borde);border-radius:10px;font-family:'DM Sans',sans-serif;font-size:.88rem;font-weight:500;cursor:pointer;color:var(--gris);transition:border-color .2s;}
+.btn-cancel:hover{border-color:var(--carbon);color:var(--carbon);}
+.btn-confirm{padding:10px 24px;background:var(--rojo);color:#fff;border:none;border-radius:10px;font-family:'DM Sans',sans-serif;font-size:.88rem;font-weight:600;cursor:pointer;transition:background .2s;}
+.btn-confirm:hover{background:#c0212d;}
+
+/* ── PROGRESO ── */
+.progress-card{display:none;background:#fff;border-radius:20px;box-shadow:0 4px 32px rgba(26,26,46,.08);padding:32px 28px;margin-top:20px;}
+.progress-card.visible{display:block;}
+.progress-title{font-family:'Fraunces',serif;font-size:1.1rem;font-weight:700;color:var(--carbon);margin-bottom:4px;}
+.progress-step{font-size:.83rem;color:var(--gris);margin-bottom:16px;}
+.progress-bar-bg{background:var(--crema);border-radius:999px;height:10px;overflow:hidden;margin-bottom:8px;}
+.progress-bar-fill{height:100%;background:linear-gradient(90deg,var(--rojo),#ff6b6b);border-radius:999px;transition:width .4s ease;}
+.progress-pct{font-size:.78rem;color:var(--gris);text-align:right;}
+
+/* ── RESULTADO ── */
+.result-card{display:none;background:#fff;border-radius:20px;box-shadow:0 4px 32px rgba(26,26,46,.08);padding:28px;margin-top:20px;}
+.result-card.visible{display:block;}
+.result-title{font-family:'Fraunces',serif;font-size:1.2rem;font-weight:700;color:var(--carbon);margin-bottom:16px;}
+.result-stats{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:20px;}
+.stat-box{background:var(--crema);border-radius:10px;padding:12px;text-align:center;}
+.stat-num{font-family:'Fraunces',serif;font-size:1.6rem;font-weight:700;color:var(--carbon);}
+.stat-lbl{font-size:.7rem;color:var(--gris);text-transform:uppercase;letter-spacing:.06em;margin-top:2px;}
+.btn-ver{display:inline-block;padding:12px 24px;background:var(--rojo);color:#fff;text-decoration:none;border-radius:12px;font-weight:600;font-size:.9rem;margin-right:10px;}
+.btn-dl{display:inline-block;padding:12px 24px;background:transparent;color:var(--carbon);text-decoration:none;border-radius:12px;font-weight:600;font-size:.9rem;border:1.5px solid var(--borde);}
+.btn-nuevo{margin-top:16px;width:100%;padding:11px;background:transparent;border:1.5px solid var(--borde);border-radius:10px;font-family:'DM Sans',sans-serif;font-size:.88rem;cursor:pointer;color:var(--gris);transition:border-color .2s;}
+.btn-nuevo:hover{border-color:var(--carbon);color:var(--carbon);}
+</style>
+</head>
 <body>
 
-<h2>Subir JSON</h2>
-<input type="file" id="file">
-<button onclick="enviar()">Procesar</button>
+<section class="hero">
+  <div class="hero-badge">VecinosMérida.com</div>
+  <h1>Pipeline de<br><span>Procesamiento</span></h1>
+  <p>Sube un JSON de Facebook para clasificar, procesar con IA y generar el reporte visual</p>
+</section>
 
-<h3 id="estado">Esperando...</h3>
+<main class="main">
+
+  <!-- UPLOAD CARD -->
+  <div class="upload-card" id="uploadCard">
+    <div class="upload-header">
+      <h2>Subir archivo JSON</h2>
+      <p>Exportación de posts de un grupo de Facebook</p>
+    </div>
+    <div class="upload-body">
+      <div class="drop-zone" id="dropZone">
+        <input type="file" id="fileInput" accept=".json" onchange="archivoSeleccionado(this)">
+        <div class="drop-icon">📂</div>
+        <div class="drop-title">Arrastra tu JSON aquí</div>
+        <div class="drop-sub">o haz clic para seleccionar</div>
+        <div class="file-name" id="fileName"></div>
+      </div>
+      <button class="btn-analizar" id="btnAnalizar" disabled onclick="analizarGrupo()">
+        Analizar grupo →
+      </button>
+    </div>
+  </div>
+
+  <!-- PROGRESO -->
+  <div class="progress-card" id="progressCard">
+    <div class="progress-title">Procesando...</div>
+    <div class="progress-step" id="progressStep">Iniciando</div>
+    <div class="progress-bar-bg">
+      <div class="progress-bar-fill" id="progressFill" style="width:0%"></div>
+    </div>
+    <div class="progress-pct" id="progressPct">0%</div>
+  </div>
+
+  <!-- RESULTADO -->
+  <div class="result-card" id="resultCard">
+    <div class="result-title">✅ Procesamiento completado</div>
+    <div class="result-stats" id="resultStats"></div>
+    <div id="resultBtns"></div>
+    <button class="btn-nuevo" onclick="reiniciar()">Procesar otro archivo</button>
+  </div>
+
+</main>
+
+<!-- MODAL CONFIGURACIÓN DE GRUPO -->
+<div class="modal-overlay" id="modalOverlay">
+  <div class="modal">
+    <div class="modal-header">
+      <h3 id="modalTitulo">Configurar grupo</h3>
+      <p id="modalSubtitulo"></p>
+    </div>
+    <div class="modal-body" id="modalBody"></div>
+    <div class="modal-footer">
+      <button class="btn-cancel" onclick="cerrarModal()">Cancelar</button>
+      <button class="btn-confirm" id="btnConfirmar" onclick="confirmarYProcesar()">Procesar →</button>
+    </div>
+  </div>
+</div>
 
 <script>
-function enviar() {
-    const file = document.getElementById("file").files[0];
-    const formData = new FormData();
-    formData.append("file", file);
+var archivoFile = null;
+var datosMeta = {};
+var configGrupo = {};
+var intervaloStatus = null;
 
-    fetch("/procesar", {
-        method: "POST",
-        body: formData
-    });
+// ── DROP ZONE ──────────────────────────────────────────────
+var dz = document.getElementById('dropZone');
+dz.addEventListener('dragover', function(e){ e.preventDefault(); dz.classList.add('over'); });
+dz.addEventListener('dragleave', function(){ dz.classList.remove('over'); });
+dz.addEventListener('drop', function(e){
+  e.preventDefault(); dz.classList.remove('over');
+  var f = e.dataTransfer.files[0];
+  if(f && f.name.endsWith('.json')) setArchivo(f);
+});
 
-    monitorear();
+function archivoSeleccionado(input){
+  if(input.files[0]) setArchivo(input.files[0]);
+}
+function setArchivo(f){
+  archivoFile = f;
+  document.getElementById('fileName').textContent = '📄 ' + f.name;
+  document.getElementById('fileName').style.display = 'block';
+  document.getElementById('btnAnalizar').disabled = false;
 }
 
-function monitorear() {
-    setInterval(async () => {
-        const res = await fetch("/status");
-        const data = await res.json();
-        document.getElementById("estado").innerText =
-            data.paso + " (" + data.progreso + "%)";
-    }, 2000);
+// ── ANALIZAR GRUPO ─────────────────────────────────────────
+async function analizarGrupo(){
+  if(!archivoFile) return;
+  var btn = document.getElementById('btnAnalizar');
+  btn.disabled = true;
+  btn.textContent = 'Analizando...';
+
+  var fd = new FormData();
+  fd.append('file', archivoFile);
+
+  try {
+    var res = await fetch('/analizar-grupo', { method:'POST', body:fd });
+    var data = await res.json();
+    if(data.error){ alert(data.error); btn.disabled=false; btn.textContent='Analizar grupo →'; return; }
+    mostrarModal(data);
+  } catch(e) {
+    alert('Error al analizar el archivo.');
+    btn.disabled = false;
+    btn.textContent = 'Analizar grupo →';
+  }
+}
+
+// ── MODAL ──────────────────────────────────────────────────
+function mostrarModal(data){
+  datosMeta = data;
+  document.getElementById('modalTitulo').textContent = data.conocido ? '✅ Grupo reconocido' : '🆕 Grupo nuevo detectado';
+  document.getElementById('modalSubtitulo').textContent = data.total_posts + ' posts · ' + data.group_name;
+
+  var body = '';
+
+  // Info del grupo
+  body += '<div class="grupo-info"><div class="grupo-icon">👥</div><div><div class="grupo-nombre">' + data.group_name + '</div><div class="grupo-id">ID: ' + data.group_id + '</div></div></div>';
+
+  if(data.conocido){
+    body += '<div class="success-box"><span>✅</span><span>Este grupo ya está registrado como <strong>' + data.tipo + '</strong>. Se usará la configuración guardada.</span></div>';
+    configGrupo = { guardar_grupo: false };
+  } else {
+    // Tipo de contenido
+    var tipoOpts = ['noticias','vecinos','mascotas','mixto'].map(function(t){
+      var sel = t === data.tipo_sugerido ? 'selected' : '';
+      var etiq = {noticias:'📰 Noticias',vecinos:'🏘️ Vecinos / Negocios',mascotas:'🐾 Mascotas',mixto:'🔀 Mixto'}[t];
+      return '<option value="'+t+'" '+sel+'>'+etiq+'</option>';
+    }).join('');
+    body += '<div class="field-wrap"><div class="field-label">Tipo de contenido</div><select id="selTipo">'+tipoOpts+'</select></div>';
+
+    // Colonias
+    if(data.match_colonias === 'exacto'){
+      var col = data.candidatas[0].colonia;
+      body += '<div class="success-box"><span>📍</span><span>Colonia detectada automáticamente: <strong>' + col.nombre + '</strong></span></div>';
+      body += '<input type="hidden" id="coloniaExacta" value="'+col.id+':'+col.nombre+'">';
+    } else {
+      var aviso = data.match_colonias === 'multiple'
+        ? '⚠️ Se detectaron varias colonias posibles. Selecciona las que apliquen:'
+        : '❓ No se detectó colonia automáticamente. Selecciona de la lista:';
+      body += '<div class="alert-box"><span>📍</span><span>'+aviso+'</span></div>';
+      body += '<div class="field-wrap"><div class="field-label">Colonias que cubre este grupo</div><div class="colonias-list" id="coloniasList">';
+      data.todas_colonias.forEach(function(c){
+        var checked = data.candidatas && data.candidatas.some(function(x){ return x.colonia.id === c.id; }) ? 'checked' : '';
+        body += '<div class="colonia-item"><input type="checkbox" id="col_'+c.id+'" value="'+c.id+':'+c.nombre+'" '+checked+'><label for="col_'+c.id+'">'+c.nombre+'</label></div>';
+      });
+      body += '</div></div>';
+    }
+
+    // Notas opcionales
+    body += '<div class="field-wrap"><div class="field-label">Notas (opcional)</div><textarea id="notasGrupo" placeholder="Observaciones sobre este grupo..."></textarea></div>';
+  }
+
+  document.getElementById('modalBody').innerHTML = body;
+  document.getElementById('modalOverlay').classList.add('open');
+}
+
+function cerrarModal(){
+  document.getElementById('modalOverlay').classList.remove('open');
+  document.getElementById('btnAnalizar').disabled = false;
+  document.getElementById('btnAnalizar').textContent = 'Analizar grupo →';
+}
+
+// ── CONFIRMAR Y PROCESAR ───────────────────────────────────
+async function confirmarYProcesar(){
+  var colIds = [], colNombres = [];
+
+  if(datosMeta.conocido){
+    // Usar config guardada en DB
+  } else {
+    var exactaInput = document.getElementById('coloniaExacta');
+    if(exactaInput){
+      var parts = exactaInput.value.split(':');
+      colIds = [parseInt(parts[0])];
+      colNombres = [parts[1]];
+    } else {
+      document.querySelectorAll('#coloniasList input:checked').forEach(function(cb){
+        var p = cb.value.split(':');
+        colIds.push(parseInt(p[0]));
+        colNombres.push(p[1]);
+      });
+    }
+    if(colIds.length === 0) colIds = [8], colNombres = ['General / Toda Mérida'];
+  }
+
+  var tipo = datosMeta.conocido ? datosMeta.tipo : (document.getElementById('selTipo') ? document.getElementById('selTipo').value : 'vecinos');
+  var notas = document.getElementById('notasGrupo') ? document.getElementById('notasGrupo').value : '';
+
+  configGrupo = {
+    tipo: tipo,
+    colonia_ids: colIds,
+    colonia_nombres: colNombres,
+    guardar_grupo: !datosMeta.conocido,
+    notas: notas
+  };
+
+  cerrarModal();
+  iniciarProcesamiento();
+}
+
+// ── PROCESAMIENTO ──────────────────────────────────────────
+async function iniciarProcesamiento(){
+  document.getElementById('uploadCard').style.display = 'none';
+  document.getElementById('progressCard').classList.add('visible');
+
+  try {
+    await fetch('/procesar', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify(configGrupo)
+    });
+    monitorearStatus();
+  } catch(e) {
+    document.getElementById('progressStep').textContent = 'Error al iniciar el proceso.';
+  }
+}
+
+function monitorearStatus(){
+  intervaloStatus = setInterval(async function(){
+    try {
+      var res = await fetch('/status');
+      var data = await res.json();
+
+      document.getElementById('progressStep').textContent = data.paso + (data.detalles ? ' — ' + data.detalles : '');
+      document.getElementById('progressFill').style.width = data.progreso + '%';
+      document.getElementById('progressPct').textContent = data.progreso + '%';
+
+      if(data.progreso >= 100 || data.paso === 'Completado'){
+        clearInterval(intervaloStatus);
+        mostrarResultado(data);
+      }
+      if(data.paso === 'Error'){
+        clearInterval(intervaloStatus);
+        document.getElementById('progressStep').textContent = '❌ ' + (data.error || 'Error desconocido');
+      }
+    } catch(e){}
+  }, 1500);
+}
+
+function mostrarResultado(data){
+  document.getElementById('progressCard').classList.remove('visible');
+  document.getElementById('resultCard').classList.add('visible');
+
+  var r = data.resumen || {};
+  var stats = [
+    {n: r.procesados||0, l:'Procesados'},
+    {n: r.negocios||0, l:'Negocios'},
+    {n: r.noticias||0, l:'Noticias'},
+    {n: r.alertas||0, l:'Alertas'},
+    {n: r.mascotas||0, l:'Mascotas'},
+    {n: r.ignorados||0, l:'Ignorados'}
+  ];
+  document.getElementById('resultStats').innerHTML = stats.map(function(s){
+    return '<div class="stat-box"><div class="stat-num">'+s.n+'</div><div class="stat-lbl">'+s.l+'</div></div>';
+  }).join('');
+
+  if(data.archivo_html){
+    document.getElementById('resultBtns').innerHTML =
+      '<a class="btn-ver" href="/static/resultados/'+data.archivo_html+'" target="_blank">Ver reporte →</a>' +
+      '<a class="btn-dl" href="/descargar/'+data.archivo_html+'" download>Descargar</a>';
+  }
+}
+
+function reiniciar(){
+  archivoFile = null;
+  document.getElementById('fileInput').value = '';
+  document.getElementById('fileName').style.display = 'none';
+  document.getElementById('btnAnalizar').disabled = true;
+  document.getElementById('btnAnalizar').textContent = 'Analizar grupo →';
+  document.getElementById('uploadCard').style.display = 'block';
+  document.getElementById('progressCard').classList.remove('visible');
+  document.getElementById('resultCard').classList.remove('visible');
 }
 </script>
-
 </body>
 </html>
