@@ -1,1 +1,37 @@
-index
+<!DOCTYPE html>
+<html>
+<head><title>Pipeline</title></head>
+<body>
+
+<h2>Subir JSON</h2>
+<input type="file" id="file">
+<button onclick="enviar()">Procesar</button>
+
+<h3 id="estado">Esperando...</h3>
+
+<script>
+function enviar() {
+    const file = document.getElementById("file").files[0];
+    const formData = new FormData();
+    formData.append("file", file);
+
+    fetch("/procesar", {
+        method: "POST",
+        body: formData
+    });
+
+    monitorear();
+}
+
+function monitorear() {
+    setInterval(async () => {
+        const res = await fetch("/status");
+        const data = await res.json();
+        document.getElementById("estado").innerText =
+            data.paso + " (" + data.progreso + "%)";
+    }, 2000);
+}
+</script>
+
+</body>
+</html>
