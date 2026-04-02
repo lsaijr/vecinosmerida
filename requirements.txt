@@ -4,3 +4,5 @@ python-multipart
 mysql-connector-python
 cloudinary
 rapidfuzz
+groq
+google-generativeai

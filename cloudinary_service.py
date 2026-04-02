@@ -8,12 +8,20 @@ cloudinary.config(
     api_secret=os.getenv("CLOUDINARY_API_SECRET")
 )
 
-def subir_imagenes(imagenes):
+def subir_imagenes(urls_temp):
+    """
+    Sube una lista de URLs temporales a Cloudinary.
+    Retorna: (lista_urls_cloudinary, count_ok, count_fail)
+    """
     urls = []
-    for img in imagenes:
+    ok = 0
+    fail = 0
+    for url in urls_temp:
         try:
-            res = cloudinary.uploader.upload(img)
+            res = cloudinary.uploader.upload(url, folder="vecinosmerida")
             urls.append(res["secure_url"])
-        except:
+            ok += 1
+        except Exception:
+            fail += 1
             continue
-    return urls
+    return urls, ok, fail
