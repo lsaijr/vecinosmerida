@@ -379,12 +379,12 @@ function aplicarFiltros(){{
 
 // Inicializar contador
 aplicarFiltros();
-function toggleDesc(uid){
+function toggleDesc(uid){{
   var s=document.getElementById('ds_'+uid);
   var f=document.getElementById('df_'+uid);
-  if(s.style.display==='none'){s.style.display='';f.style.display='none';}
-  else{s.style.display='none';f.style.display='';}
-}
+  if(s.style.display==='none'){{s.style.display='';f.style.display='none';}}
+  else{{s.style.display='none';f.style.display='';}}
+}}
 </script>
 </body>
 </html>"""
