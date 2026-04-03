@@ -1,7 +1,8 @@
 from utils import paso_1_limpieza, paso_2_clusters, extraer_telefono
 from ia import clasificar_tipo, procesar_negocio, procesar_noticia, procesar_alerta, debe_usar_gemini
 from db import (obtener_categorias_negocios, obtener_categorias_noticias,
-                obtener_categorias_alertas, actualizar_grupo_stats)
+                obtener_categorias_alertas, actualizar_grupo_stats,
+                insertar_negocio, insertar_noticia, insertar_alerta)
 from cloudinary_service import subir_imagenes
 from generar_html import generar_html_resultados
 
@@ -64,14 +65,18 @@ def ejecutar_pipeline(posts, meta, config_grupo, estado):
     imgs_ok = 0
     imgs_fail = 0
     for p in clasificados:
-        urls_temp = [img["url_temp"] for img in p.get("imagenes", []) if img.get("url_temp")]
-        if urls_temp:
-            urls_cloud, ok, fail = subir_imagenes(urls_temp)
-            p["imagenes_cloudinary"] = urls_cloud
-            imgs_ok += ok
+        imagenes = p.get("imagenes", [])
+        if imagenes:
+            # Pasar objetos completos {fbid, url_temp} para usar public_id determinista
+            resultados_img, ok, fail = subir_imagenes(imagenes)
+            # Guardar URLs (cloudinary o fallback de FB) para mostrar en HTML
+            p["imagenes_cloudinary"] = [r["url"] for r in resultados_img if r["url"]]
+            p["imagenes_origen"]     = [r["origen"] for r in resultados_img if r["url"]]
+            imgs_ok  += ok
             imgs_fail += fail
         else:
             p["imagenes_cloudinary"] = []
+            p["imagenes_origen"]     = []
 
     estado["detalles"] = f"Imágenes: {imgs_ok} ok, {imgs_fail} fallidas"
 
@@ -132,6 +137,45 @@ def ejecutar_pipeline(posts, meta, config_grupo, estado):
         cats_alertas=cats_alertas
     )
 
+    # ── PASO 7: Guardar en DB ────────────────────────────────
+    estado["paso"] = "Guardando en base de datos"
+    estado["progreso"] = 95
+
+    colonia_id = config_grupo.get("colonia_ids", [None])[0]
+    db_nuevos = db_duplicados = 0
+
+    for p in resultados["negocios"] + resultados["mascotas"]:
+        try:
+            _, estado_db = insertar_negocio(p, colonia_id)
+            if estado_db == "nuevo":
+                db_nuevos += 1
+            else:
+                db_duplicados += 1
+        except Exception as e:
+            resultados["errores"].append({"tipo": "db_negocio", "error": str(e), "autor": p.get("autor")})
+
+    for p in resultados["noticias"]:
+        try:
+            _, estado_db = insertar_noticia(p, colonia_id)
+            if estado_db == "nuevo":
+                db_nuevos += 1
+            else:
+                db_duplicados += 1
+        except Exception as e:
+            resultados["errores"].append({"tipo": "db_noticia", "error": str(e), "autor": p.get("autor")})
+
+    for p in resultados["alertas"]:
+        try:
+            _, estado_db = insertar_alerta(p, colonia_id)
+            if estado_db == "nuevo":
+                db_nuevos += 1
+            else:
+                db_duplicados += 1
+        except Exception as e:
+            resultados["errores"].append({"tipo": "db_alerta", "error": str(e), "autor": p.get("autor")})
+
+    estado["detalles"] = f"DB: {db_nuevos} nuevos, {db_duplicados} ya existían"
+
     # Actualizar estadísticas del grupo
     actualizar_grupo_stats(meta["group_id"], len(posts))
 
@@ -148,7 +192,9 @@ def ejecutar_pipeline(posts, meta, config_grupo, estado):
         "mascotas": len(resultados["mascotas"]),
         "ignorados": len(resultados["ignorados"]),
         "imagenes_ok": imgs_ok,
-        "imagenes_fail": imgs_fail
+        "imagenes_fail": imgs_fail,
+        "db_nuevos": db_nuevos,
+        "db_duplicados": db_duplicados
     }
 
     return nombre_archivo

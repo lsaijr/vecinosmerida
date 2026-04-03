@@ -140,24 +140,66 @@ INSTRUCCIONES:
 Responde ÚNICAMENTE con JSON válido:
 {{"texto_alerta": "...", "categoria_id": 6, "direccion_aprox": null}}"""
 
+# ─── RATE LIMIT TRACKER ──────────────────────────────────────
+# Groq free: 30 req/min por key. Con 3 keys = 90 req/min.
+# Gemini free: 15 req/min por key. Con 2 keys = 30 req/min.
+_groq_last_call   = {}  # key -> timestamp
+_gemini_last_call = {}  # key -> timestamp
+GROQ_MIN_INTERVAL   = 2.5   # seg entre llamadas a la misma key Groq
+GEMINI_MIN_INTERVAL = 4.5   # seg entre llamadas a la misma key Gemini
+MAX_RETRIES = 3
+
+def _esperar_key(last_calls, key, intervalo):
+    import time as _time
+    ultimo = last_calls.get(key, 0)
+    transcurrido = _time.time() - ultimo
+    if transcurrido < intervalo:
+        _time.sleep(intervalo - transcurrido)
+    last_calls[key] = _time.time()
+
 # ─── GROQ ────────────────────────────────────────────────────
 def _llamar_groq(prompt, temperatura=0.3):
-    time.sleep(0.6)  # delay para respetar rate limits con múltiples keys
-    client = _get_groq_client()
-    resp = client.chat.completions.create(
-        model="llama-3.3-70b-versatile",
-        messages=[{"role": "user", "content": prompt}],
-        temperature=temperatura,
-        max_tokens=500
-    )
-    return resp.choices[0].message.content.strip()
+    ultimo_error = None
+    for intento in range(MAX_RETRIES):
+        key = _next_groq_key()
+        _esperar_key(_groq_last_call, key, GROQ_MIN_INTERVAL)
+        try:
+            from groq import Groq
+            resp = Groq(api_key=key).chat.completions.create(
+                model="llama-3.3-70b-versatile",
+                messages=[{"role": "user", "content": prompt}],
+                temperature=temperatura,
+                max_tokens=500
+            )
+            return resp.choices[0].message.content.strip()
+        except Exception as e:
+            ultimo_error = e
+            msg = str(e).lower()
+            if any(x in msg for x in ["429", "quota", "rate", "limit", "exhausted"]):
+                time.sleep(5 * (2 ** intento))  # backoff: 5s, 10s, 20s
+                continue
+            raise e
+    raise ultimo_error
 
 # ─── GEMINI ──────────────────────────────────────────────────
 def _llamar_gemini(prompt):
-    time.sleep(0.6)  # delay para respetar rate limits con múltiples keys
-    model = _get_gemini_model()
-    resp = model.generate_content(prompt)
-    return resp.text.strip()
+    ultimo_error = None
+    for intento in range(MAX_RETRIES):
+        key = _next_gemini_key()
+        _esperar_key(_gemini_last_call, key, GEMINI_MIN_INTERVAL)
+        try:
+            import google.generativeai as genai
+            genai.configure(api_key=key)
+            resp = genai.GenerativeModel("gemini-2.0-flash").generate_content(prompt)
+            return resp.text.strip()
+        except Exception as e:
+            ultimo_error = e
+            msg = str(e).lower()
+            if any(x in msg for x in ["429", "quota", "resource_exhausted", "rate"]):
+                time.sleep(8 * (2 ** intento))  # backoff: 8s, 16s, 32s
+                continue
+            raise e
+    raise ultimo_error
 
 # ─── PARSEAR JSON SEGURO ────────────────────────────────────
 def _parsear_json(texto):
