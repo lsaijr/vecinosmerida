@@ -31,7 +31,7 @@ def generar_html_resultados(resultados, meta, config_grupo, cats_negocios, cats_
         if tipo == "ignorados":
             continue
         for p in lista:
-            p["_tipo_final"] = tipo[:-1] if tipo.endswith("s") else tipo  # "negocios" → "negocio"
+            p["_tipo_final"] = tipo[:-1] if tipo.endswith("s") else tipo
             todos.append(p)
 
     resumen = {
@@ -43,7 +43,6 @@ def generar_html_resultados(resultados, meta, config_grupo, cats_negocios, cats_
         "ignorados": len(resultados.get("ignorados", [])),
     }
 
-    # Mapas de categorías
     cats_neg_map = _cat_map(cats_negocios)
     cats_not_map = _cat_map(cats_noticias)
     cats_ale_map = _cat_map(cats_alertas)
@@ -72,19 +71,22 @@ def generar_html_resultados(resultados, meta, config_grupo, cats_negocios, cats_
         autor = p.get("autor", "")
         error = p.get("_error_visible", "")
 
-        # Título/nombre según tipo
+        # ── Título y texto COMPLETO según tipo ──────────────
+        # IMPORTANTE: guardamos el texto completo sin truncar
+        # El truncado solo ocurre en la vista corta del toggle
         if tipo == "noticia":
             titulo = p.get("titulo", p.get("texto_limpio", "")[:80])
-            descripcion = p.get("texto", p.get("texto_limpio", ""))[:300] + "..."
+            # texto completo sin cortar — el toggle maneja la vista
+            texto_completo = p.get("texto", p.get("texto_limpio", ""))
         elif tipo == "alerta":
             titulo = cat_nombre
-            descripcion = p.get("texto_alerta", p.get("texto_limpio", ""))[:200]
+            texto_completo = p.get("texto_alerta", p.get("texto_limpio", ""))
         elif tipo == "mascota":
             titulo = cat_nombre
-            descripcion = p.get("texto_limpio", "")[:200]
-        else:
+            texto_completo = p.get("descripcion", p.get("texto_limpio", ""))
+        else:  # negocio
             titulo = p.get("nombre", p.get("texto_limpio", "")[:60])
-            descripcion = p.get("descripcion", p.get("texto_limpio", ""))[:150]
+            texto_completo = p.get("descripcion", p.get("texto_limpio", ""))
 
         direccion = p.get("direccion_aprox", "")
 
@@ -108,7 +110,7 @@ def generar_html_resultados(resultados, meta, config_grupo, cats_negocios, cats_
   <span class="gal-badge" style="position:absolute;top:10px;left:10px;background:rgba(0,0,0,.72)!important;color:#fff!important">{emoji_tipo} {tipo.upper()}</span>
 </div>"""
 
-        # Footer con teléfono y WhatsApp
+        # Footer con teléfono
         footer_html = ""
         if tel:
             wa_url = f"https://wa.me/52{tel}?text=Hola!%20Vi%20tu%20publicación%20en%20VecinosMerida.com"
@@ -130,18 +132,25 @@ def generar_html_resultados(resultados, meta, config_grupo, cats_negocios, cats_
         if direccion:
             dir_html = f'<div class="dir-badge">📍 {direccion}</div>'
 
-        # ID único para el toggle
-        uid = abs(hash(titulo + descripcion)) % 999999
-        desc_corta = descripcion[:180] + "..." if len(descripcion) > 180 else descripcion
-        tiene_mas = len(descripcion) > 180
+        # ── Toggle "Ver más / Ver menos" ─────────────────────
+        # FIX: texto_completo nunca se trunca antes de llegar aquí.
+        # desc-short muestra los primeros 180 chars + botón "Ver más"
+        # desc-full muestra el texto COMPLETO + botón "Ver menos"
+        LIMITE = 180
+        uid = abs(hash(titulo + texto_completo)) % 999999
+        tiene_mas = len(texto_completo) > LIMITE
 
         if tiene_mas:
+            desc_corta = texto_completo[:LIMITE].rstrip() + "…"
+            # Escapar comillas para no romper el HTML inline
+            texto_safe = texto_completo.replace('"', '&quot;').replace('<', '&lt;').replace('>', '&gt;')
+            desc_corta_safe = desc_corta.replace('"', '&quot;').replace('<', '&lt;').replace('>', '&gt;')
             desc_html = f'''<div class="cdesc">
-  <span class="desc-short" id="ds_{uid}">{desc_corta} <button class="btn-mas" onclick="toggleDesc({uid})">Ver más ↓</button></span>
-  <span class="desc-full" id="df_{uid}" style="display:none">{descripcion} <button class="btn-mas" onclick="toggleDesc({uid})">Ver menos ↑</button></span>
+  <span class="desc-short" id="ds_{uid}">{desc_corta_safe} <button class="btn-mas" onclick="toggleDesc({uid})">Ver más ↓</button></span>
+  <span class="desc-full" id="df_{uid}" style="display:none">{texto_safe} <button class="btn-mas" onclick="toggleDesc({uid})">Ver menos ↑</button></span>
 </div>'''
         else:
-            desc_html = f'<div class="cdesc">{descripcion}</div>'
+            desc_html = f'<div class="cdesc">{texto_completo}</div>'
 
         return f"""
 <div class="card" data-tipo="{tipo}" data-cat="{cat_nombre}">
@@ -377,13 +386,19 @@ function aplicarFiltros(){{
   document.getElementById('empty').style.display=visible===0?'block':'none';
 }}
 
-// Inicializar contador
 aplicarFiltros();
+
 function toggleDesc(uid){{
   var s=document.getElementById('ds_'+uid);
   var f=document.getElementById('df_'+uid);
-  if(s.style.display==='none'){{s.style.display='';f.style.display='none';}}
-  else{{s.style.display='none';f.style.display='';}}
+  if(!s||!f)return;
+  if(s.style.display==='none'){{
+    s.style.display='';
+    f.style.display='none';
+  }}else{{
+    s.style.display='none';
+    f.style.display='';
+  }}
 }}
 </script>
 </body>

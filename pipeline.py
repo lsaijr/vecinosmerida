@@ -1,5 +1,5 @@
 from utils import paso_1_limpieza, paso_2_clusters, extraer_telefono
-from ia import clasificar_tipo, procesar_negocio, procesar_noticia, procesar_alerta, debe_usar_gemini
+from ia import clasificar_tipo, procesar_negocio, procesar_noticia, procesar_alerta, debe_usar_gemini, limpiar_texto_ia
 from db import (obtener_categorias_negocios, obtener_categorias_noticias,
                 obtener_categorias_alertas, actualizar_grupo_stats,
                 insertar_negocio, insertar_noticia, insertar_alerta)
@@ -67,9 +67,7 @@ def ejecutar_pipeline(posts, meta, config_grupo, estado):
     for p in clasificados:
         imagenes = p.get("imagenes", [])
         if imagenes:
-            # Pasar objetos completos {fbid, url_temp} para usar public_id determinista
             resultados_img, ok, fail = subir_imagenes(imagenes)
-            # Guardar URLs (cloudinary o fallback de FB) para mostrar en HTML
             p["imagenes_cloudinary"] = [r["url"] for r in resultados_img if r["url"]]
             p["imagenes_origen"]     = [r["origen"] for r in resultados_img if r["url"]]
             imgs_ok  += ok
@@ -94,19 +92,28 @@ def ejecutar_pipeline(posts, meta, config_grupo, estado):
             continue
 
         if tipo == "mascota":
-            # Las mascotas van como negocio con categoría mascotas
+            # Limpieza IA del texto (no reescritura)
+            p["texto_limpio"] = limpiar_texto_ia(p["texto_limpio"])
             p["categoria_id"] = _detectar_cat_mascota(p["texto_limpio"])
+            # nombre = autor directo
+            p["nombre"] = p.get("autor", "")
+            # descripcion = texto limpio completo
+            p["descripcion"] = p["texto_limpio"]
             resultados["mascotas"].append(p)
             continue
 
         if tipo == "alerta":
+            # La IA de alerta ya limpia el texto_alerta internamente
             proc = procesar_alerta(p, cats_alertas)
             if proc.get("error_ia"):
                 proc["_error_visible"] = proc["error_ia"]
+            # También limpiar el texto_limpio original por si se muestra
+            proc["texto_limpio"] = limpiar_texto_ia(proc.get("texto_limpio", ""))
             resultados["alertas"].append(proc)
             continue
 
         if tipo == "noticia" or grupo_tipo == "noticias":
+            # Noticias: reescritura completa con IA (Gemini para largas, Groq 70B para cortas)
             usar_gemini = debe_usar_gemini(p["texto_limpio"])
             proc = procesar_noticia(p, cats_noticias, usar_gemini=usar_gemini)
             if proc.get("error_ia"):
@@ -115,9 +122,14 @@ def ejecutar_pipeline(posts, meta, config_grupo, estado):
             continue
 
         if tipo == "negocio":
+            # IA extrae categoria_id y telefono
             proc = procesar_negocio(p, cats_negocios)
             if proc.get("error_ia"):
                 proc["_error_visible"] = proc["error_ia"]
+            # nombre = autor directo del JSON (sin IA)
+            proc["nombre"] = p.get("autor", "")
+            # descripcion = texto limpiado con IA (sin reescribir)
+            proc["descripcion"] = limpiar_texto_ia(p["texto_limpio"])
             resultados["negocios"].append(proc)
             continue
 

@@ -101,4 +101,4 @@ def match_colonias(group_name):
     elif len(unicas) == 1 and unicas[0]["score"] >= 85:
         return "exacto", unicas
     else:
-        return "multiple", unicas[:5]  # máximo 5 candidatas
+        return "multiple", unicas[:5]
