@@ -130,6 +130,19 @@ def generar_html_resultados(resultados, meta, config_grupo, cats_negocios, cats_
         if direccion:
             dir_html = f'<div class="dir-badge">📍 {direccion}</div>'
 
+        # ID único para el toggle
+        uid = abs(hash(titulo + descripcion)) % 999999
+        desc_corta = descripcion[:180] + "..." if len(descripcion) > 180 else descripcion
+        tiene_mas = len(descripcion) > 180
+
+        if tiene_mas:
+            desc_html = f'''<div class="cdesc">
+  <span class="desc-short" id="ds_{uid}">{desc_corta} <button class="btn-mas" onclick="toggleDesc({uid})">Ver más ↓</button></span>
+  <span class="desc-full" id="df_{uid}" style="display:none">{descripcion} <button class="btn-mas" onclick="toggleDesc({uid})">Ver menos ↑</button></span>
+</div>'''
+        else:
+            desc_html = f'<div class="cdesc">{descripcion}</div>'
+
         return f"""
 <div class="card" data-tipo="{tipo}" data-cat="{cat_nombre}">
   {gal_html}
@@ -139,7 +152,7 @@ def generar_html_resultados(resultados, meta, config_grupo, cats_negocios, cats_
       {f'<span style="font-size:.7rem;color:#9ca3af">{autor}</span>' if autor else ''}
     </div>
     <div class="cname">{titulo}</div>
-    <div class="cdesc">{descripcion}</div>
+    {desc_html}
     {dir_html}
     {error_html}
     {footer_html}
@@ -220,6 +233,8 @@ body{{font-family:'DM Sans',sans-serif;background:var(--crema);color:var(--carbo
 .bwa{{display:inline-flex;align-items:center;gap:4px;background:#25D366;color:#fff;text-decoration:none;padding:6px 10px;border-radius:8px;font-size:.75rem;font-weight:600;transition:background .2s;white-space:nowrap;}}
 .bwa:hover{{background:#1da851;}}
 .error-badge{{margin-top:8px;font-size:.72rem;color:#dc2626;background:#fef2f2;border:1px solid #fecaca;border-radius:6px;padding:5px 8px;line-height:1.4;}}
+.btn-mas{{background:none;border:none;color:var(--rojo);font-size:.75rem;font-weight:600;cursor:pointer;padding:0;margin-left:4px;font-family:'DM Sans',sans-serif;}}
+.btn-mas:hover{{text-decoration:underline;}}
 .dir-badge{{font-size:.75rem;color:#6b7280;margin-bottom:6px;}}
 .empty{{display:none;text-align:center;padding:60px 20px;color:var(--gris);}}
 .empty-ico{{font-size:3rem;margin-bottom:10px;}}
@@ -364,6 +379,12 @@ function aplicarFiltros(){{
 
 // Inicializar contador
 aplicarFiltros();
+function toggleDesc(uid){
+  var s=document.getElementById('ds_'+uid);
+  var f=document.getElementById('df_'+uid);
+  if(s.style.display==='none'){s.style.display='';f.style.display='none';}
+  else{s.style.display='none';f.style.display='';}
+}
 </script>
 </body>
 </html>"""

@@ -1,16 +1,51 @@
 import os
 import json
 import re
+import time
+import itertools
+
+# ─── ROTACIÓN DE KEYS ────────────────────────────────────────
+def _get_groq_keys():
+    keys = []
+    for var in ["GROQ_API_KEY", "GROQ_API_KEY_2", "GROQ_API_KEY_3"]:
+        k = os.getenv(var)
+        if k:
+            keys.append(k)
+    return keys if keys else [None]
+
+def _get_gemini_keys():
+    keys = []
+    for var in ["GEMINI_API_KEY", "GEMINI_API_KEY_2"]:
+        k = os.getenv(var)
+        if k:
+            keys.append(k)
+    return keys if keys else [None]
+
+# Ciclos de rotación (se inicializan al primer uso)
+_groq_cycle = None
+_gemini_cycle = None
+
+def _next_groq_key():
+    global _groq_cycle
+    if _groq_cycle is None:
+        _groq_cycle = itertools.cycle(_get_groq_keys())
+    return next(_groq_cycle)
+
+def _next_gemini_key():
+    global _gemini_cycle
+    if _gemini_cycle is None:
+        _gemini_cycle = itertools.cycle(_get_gemini_keys())
+    return next(_gemini_cycle)
 
 # ─── CLIENTES ────────────────────────────────────────────────
 def _get_groq_client():
     from groq import Groq
-    return Groq(api_key=os.getenv("GROQ_API_KEY"))
+    return Groq(api_key=_next_groq_key())
 
 def _get_gemini_model():
     import google.generativeai as genai
-    genai.configure(api_key=os.getenv("GEMINI_API_KEY"))
-    return genai.GenerativeModel("gemini-1.5-flash")
+    genai.configure(api_key=_next_gemini_key())
+    return genai.GenerativeModel("gemini-2.5-flash")
 
 # ─── INTERPRETADOR DE ERRORES ────────────────────────────────
 def interpretar_error(proveedor, error):
@@ -85,7 +120,6 @@ CATEGORÍAS POSIBLES:
 Responde ÚNICAMENTE con una de estas palabras exactas: negocio, noticia, alerta, mascota, ignorar"""
 
 def _prompt_alerta(texto, cat_alertas):
-    # Construir árbol de categorías
     padres = [c for c in cat_alertas if c["parent_id"] is None]
     cats_str = ""
     for p in padres:
@@ -108,6 +142,7 @@ Responde ÚNICAMENTE con JSON válido:
 
 # ─── GROQ ────────────────────────────────────────────────────
 def _llamar_groq(prompt, temperatura=0.3):
+    time.sleep(0.6)  # delay para respetar rate limits con múltiples keys
     client = _get_groq_client()
     resp = client.chat.completions.create(
         model="llama-3.3-70b-versatile",
@@ -119,6 +154,7 @@ def _llamar_groq(prompt, temperatura=0.3):
 
 # ─── GEMINI ──────────────────────────────────────────────────
 def _llamar_gemini(prompt):
+    time.sleep(0.6)  # delay para respetar rate limits con múltiples keys
     model = _get_gemini_model()
     resp = model.generate_content(prompt)
     return resp.text.strip()

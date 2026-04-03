@@ -144,7 +144,14 @@ def descargar(nombre: str):
     ruta = os.path.join("static", "resultados", nombre)
     if not os.path.exists(ruta):
         return JSONResponse({"error": "Archivo no encontrado"}, status_code=404)
-    return FileResponse(ruta, media_type="text/html", filename=nombre)
+    from fastapi.responses import Response
+    with open(ruta, "rb") as f:
+        data = f.read()
+    return Response(
+        content=data,
+        media_type="application/octet-stream",
+        headers={"Content-Disposition": f'attachment; filename="{nombre}"'}
+    )
 
 
 # ─── STATIC AL FINAL ─────────────────────────────────────────
