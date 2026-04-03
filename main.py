@@ -20,10 +20,6 @@ estado = {
     "detalles": ""
 }
 
-app.mount("/static", StaticFiles(directory="static"), name="static")
-app.mount("/", StaticFiles(directory="static", html=True), name="root")
-
-
 # ─── ANALIZAR GRUPO ANTES DE PROCESAR ───────────────────────
 @app.post("/analizar-grupo")
 async def analizar_grupo(file: UploadFile = File(...)):
@@ -149,3 +145,8 @@ def descargar(nombre: str):
     if not os.path.exists(ruta):
         return JSONResponse({"error": "Archivo no encontrado"}, status_code=404)
     return FileResponse(ruta, media_type="text/html", filename=nombre)
+
+
+# ─── STATIC AL FINAL ─────────────────────────────────────────
+app.mount("/static", StaticFiles(directory="static"), name="static")
+app.mount("/", StaticFiles(directory="static", html=True), name="root")
