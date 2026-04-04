@@ -9,6 +9,140 @@ from rapidfuzz import fuzz
 NEWS_MIN_WORDS = 70
 
 # ═══════════════════════════════════════════════════════════════
+# CONFIGURACIÓN POR TIPO DE GRUPO
+# Calibrada con datos reales de 5 grupos de Mérida (abril 2026)
+# ═══════════════════════════════════════════════════════════════
+
+CONFIG_GRUPO = {
+    "vecinos": {
+        "tipos_permitidos":    ["noticia", "negocio", "mascota", "alerta"],
+        "tipos_prioritarios":  ["negocio", "alerta"],
+        "min_palabras_noticia": 70,
+        "min_palabras_mascota": 15,
+        "requiere_imagen":     ["negocio", "alerta"],
+        "no_requiere_imagen":  ["noticia", "mascota"],
+        "largo_es_negocio":    True,   # post >150w en vecinos → sospechar negocio
+        "validar_noticia_ia":  True,
+        "filtrar_geo_externa": False,
+    },
+    "noticias": {
+        "tipos_permitidos":    ["noticia", "alerta", "mascota"],
+        "tipos_prioritarios":  ["noticia"],
+        "min_palabras_noticia": 70,
+        "min_palabras_mascota": 15,
+        "requiere_imagen":     ["mascota"],
+        "no_requiere_imagen":  ["noticia", "alerta"],
+        "largo_es_negocio":    False,
+        "validar_noticia_ia":  True,   # obligatorio — grupos ruidosos
+        "filtrar_geo_externa": True,   # descartar noticias fuera de Yucatán
+    },
+    "mascotas": {
+        "tipos_permitidos":    ["mascota"],
+        "tipos_prioritarios":  ["mascota"],
+        "min_palabras_noticia": 9999,  # nunca noticias
+        "min_palabras_mascota": 15,    # umbral bajo — posts cortos son válidos
+        "requiere_imagen":     [],
+        "no_requiere_imagen":  ["mascota"],
+        "largo_es_negocio":    False,
+        "validar_noticia_ia":  False,
+        "filtrar_geo_externa": False,
+    },
+    "negocios": {
+        "tipos_permitidos":    ["negocio", "mascota"],
+        "tipos_prioritarios":  ["negocio"],
+        "min_palabras_noticia": 9999,
+        "min_palabras_mascota": 15,
+        "requiere_imagen":     ["negocio"],
+        "no_requiere_imagen":  ["mascota"],
+        "largo_es_negocio":    True,
+        "validar_noticia_ia":  False,
+        "filtrar_geo_externa": False,
+    },
+}
+
+
+def get_config_grupo(grupo_tipo):
+    """Retorna la config del grupo, con fallback a 'vecinos'."""
+    return CONFIG_GRUPO.get(grupo_tipo or "vecinos", CONFIG_GRUPO["vecinos"])
+
+
+def tipo_permitido_en_grupo(tipo, grupo_tipo):
+    """Verifica si un tipo de contenido está permitido en este grupo."""
+    cfg = get_config_grupo(grupo_tipo)
+    return tipo in cfg["tipos_permitidos"]
+
+
+def requiere_imagen_en_grupo(tipo, grupo_tipo):
+    """Verifica si este tipo requiere imagen en este grupo."""
+    cfg = get_config_grupo(grupo_tipo)
+    return tipo in cfg.get("requiere_imagen", [])
+
+
+# ═══════════════════════════════════════════════════════════════
+# FILTRO GEOGRÁFICO — URGENTE / DIFUNDAMOS
+# Distingue alertas locales de virales externos
+# ═══════════════════════════════════════════════════════════════
+
+_SIGNALS_URGENTE = [
+    'difundamos', 'difunde', 'urgente', 'comparte esto', '🆘', 'sos ',
+    'necesito su ayuda', 'ayúdanos a compartir', 'ayudanos a compartir',
+]
+
+_GEO_YUCATAN = [
+    'mérida', 'merida', 'yucatán', 'yucatan', 'colonia', 'fraccionamiento',
+    'comisaría', 'comisaria', 'ticul', 'progreso', 'valladolid', 'izamal',
+    'motul', 'umán', 'uman', 'kanasín', 'kanasin', 'celestún', 'celestun',
+    'telchac', 'hunucmá', 'hunucma', 'tizimín', 'tizimin', 'oxkutzcab',
+    'tekax', 'maxcanú', 'maxcanu', 'dzilam', 'sisal', 'chicxulub',
+    'municipio de', 'ayuntamiento de', 'sspe', 'seye', 'conkal',
+]
+
+_GEO_EXTERNA = [
+    'california', 'estados unidos', 'eeuu', 'cdmx', 'ciudad de mexico',
+    'guadalajara', 'monterrey', 'nuevo leon', 'jalisco', 'puebla',
+    'cancún', 'cancun', 'quintana roo', 'veracruz', 'chiapas', 'oaxaca',
+    'tabasco', 'campeche', 'totonacapan', 'huimilpan', 'coahuila',
+    'ahmsa', 'tamaulipas', 'sinaloa', 'sonora', 'tijuana', 'juarez',
+    'acapulco', 'mazatlan', 'torreon', 'torreón', 'saltillo',
+]
+
+
+def clasificar_urgente_geo(texto):
+    """
+    Para posts con señales de urgente/difundamos determina si son:
+    - 'alerta': tienen geo local Yucatán → pipeline de alertas
+    - 'ignorar': tienen geo externa → descartar sin IA
+    - 'ambiguo': sin geo clara → mandar a IA
+    - None: el post no tiene señales de urgente
+    """
+    t = (texto or '').lower()
+    if not any(s in t for s in _SIGNALS_URGENTE):
+        return None
+
+    tiene_local   = any(s in t for s in _GEO_YUCATAN)
+    tiene_externa = any(s in t for s in _GEO_EXTERNA)
+
+    if tiene_local and not tiene_externa:
+        return 'alerta'
+    if tiene_externa:
+        return 'ignorar'
+    return 'ambiguo'
+
+
+def es_noticia_geograficamente_valida(texto):
+    """
+    Para grupos de noticias: verifica que la noticia sea de Yucatán.
+    Retorna False si detecta geografía externa sin mención local.
+    """
+    t = (texto or '').lower()
+    tiene_local   = any(s in t for s in _GEO_YUCATAN)
+    tiene_externa = any(s in t for s in _GEO_EXTERNA)
+
+    if tiene_externa and not tiene_local:
+        return False
+    return True
+
+# ═══════════════════════════════════════════════════════════════
 # DESCARTE PREVIO
 # ═══════════════════════════════════════════════════════════════
 
@@ -216,10 +350,31 @@ def tiene_senales_noticia(txt):
     return any(kw in t for kw in KW_NOTICIA_FUERTE)
 
 
-def puede_ser_noticia_desde_json(txt):
-    if contar_palabras(txt) < NEWS_MIN_WORDS:
+_ANTI_NOTICIA_FUERTE = [
+    'alguien sabe', 'me recomienda', 'dónde puedo', 'donde puedo',
+    'me pueden recomendar', 'que me recomiendan', 'qué me recomiendan',
+    'mi mamá', 'mi papá', 'mi familia', 'mi esposo', 'mi esposa',
+    'cumpleaños', 'felicidades', 'gracias a todos', 'los quiero',
+    'precios:', 'lista de precios', 'nuestros precios',
+]
+
+
+def puede_ser_noticia_desde_json(txt, min_palabras=None, grupo_tipo="vecinos"):
+    """
+    Verifica si un post puede ser noticia publicable.
+    Aplica umbral configurable según tipo de grupo.
+    """
+    umbral = min_palabras or NEWS_MIN_WORDS
+    if contar_palabras(txt) < umbral:
         return False
     if tiene_bloqueo_noticia(txt):
+        return False
+    # Pre-filtro anti-noticia: 2+ señales fuertes → no es noticia
+    t = (txt or '').lower()
+    if sum(1 for s in _ANTI_NOTICIA_FUERTE if s in t) >= 2:
+        return False
+    # En grupos de noticias aplicar filtro geográfico
+    if grupo_tipo == "noticias" and not es_noticia_geograficamente_valida(txt):
         return False
     if not tiene_senales_noticia(txt):
         return False
@@ -311,6 +466,10 @@ NEGOCIO_MIN_PALABRAS_CONTENIDO = 10
 def paso_1_limpieza(posts, grupo_tipo="vecinos"):
     limpios = []
     descartados = []
+    cfg = get_config_grupo(grupo_tipo)
+    min_palabras_mascota = cfg.get("min_palabras_mascota", 15)
+    min_palabras_noticia  = cfg.get("min_palabras_noticia", NEWS_MIN_WORDS)
+    largo_es_negocio      = cfg.get("largo_es_negocio", False)
 
     for post in posts:
         debe_descartar, razon = es_descartable(post)
@@ -321,7 +480,7 @@ def paso_1_limpieza(posts, grupo_tipo="vecinos"):
 
         txt_original = (post.get("texto") or "").strip()
         txt_sin_urls = remover_urls(txt_original)
-        txt_limpio = limpiar_texto_regex(txt_sin_urls)
+        txt_limpio   = limpiar_texto_regex(txt_sin_urls)
 
         if len(txt_limpio) < 10:
             post['_descartado'] = 'vacio_tras_limpieza'
@@ -329,38 +488,81 @@ def paso_1_limpieza(posts, grupo_tipo="vecinos"):
             continue
 
         post['texto_limpio'] = txt_limpio
-        post['telefono'] = extraer_telefono(txt_original) or extraer_telefono(post.get("autor", ""))
-        post['noticia_permitida'] = puede_ser_noticia_desde_json(txt_original)
+        post['telefono']     = extraer_telefono(txt_original) or extraer_telefono(post.get("autor", ""))
+        post['noticia_permitida'] = puede_ser_noticia_desde_json(
+            txt_original,
+            min_palabras=min_palabras_noticia,
+            grupo_tipo=grupo_tipo,
+        )
 
+        # ── Filtro urgente/difundamos por geografía ───────────────
+        geo_urgente = clasificar_urgente_geo(txt_original)
+        if geo_urgente == 'ignorar':
+            post['_descartado'] = 'urgente_geo_externa'
+            descartados.append(post)
+            continue
+        if geo_urgente == 'alerta':
+            post['pre_tipo']  = 'alerta'
+            post['pre_score'] = 3
+            post['_urgente_local'] = True
+            limpios.append(post)
+            continue
+
+        # ── Filtro de consulta sin señal comercial ────────────────
         if es_post_consulta(txt_original) and not tiene_senal_comercial_fuerte(post, txt_original):
             post['_descartado'] = 'consulta_baja_prioridad'
             descartados.append(post)
             continue
 
-        # NUEVO: filtro de palabras con contenido mínimo
-        # Para grupos de noticias se aplica el filtro por palabras totales
-        # Para vecinos/negocios se aplica filtro de contenido real
-        palabras_contenido = contar_palabras_contenido(txt_limpio)
-        es_noticia_grupo = grupo_tipo == "noticias"
+        num_imgs = post.get("num_imgs") or len(post.get("imagenes") or [])
+        tiene_tel = bool(post.get('telefono'))
 
-        if not es_noticia_grupo and palabras_contenido < NEGOCIO_MIN_PALABRAS_CONTENIDO:
-            # Si tiene imagen, rebajar el umbral a 5 palabras contenido mínimo
-            num_imgs = post.get("num_imgs") or len(post.get("imagenes") or [])
+        # ── Filtro estructural: sin imagen + sin tel + muy corto ──
+        palabras_total = contar_palabras(txt_limpio)
+        palabras_contenido = contar_palabras_contenido(txt_limpio)
+
+        # Para mascotas el umbral mínimo es 15 palabras
+        # Para el resto aplicar filtro de contenido normal
+        es_mascota_probable = any(
+            kw in txt_limpio.lower()
+            for kw in ['adopci', 'perdid', 'extravi', 'encontr', 'rescate',
+                       'hogar', 'gatito', 'perrito', 'cachorro', 'mascota',
+                       'felino', 'canino', 'collar']
+        )
+
+        if es_mascota_probable and palabras_total >= min_palabras_mascota:
+            pass  # mascota válida aunque sea corta
+        elif not num_imgs and not tiene_tel and palabras_total < 70:
+            post['_descartado'] = 'sin_img_tel_y_corto'
+            descartados.append(post)
+            continue
+        elif not es_mascota_probable and palabras_contenido < NEGOCIO_MIN_PALABRAS_CONTENIDO:
             if num_imgs > 0 and palabras_contenido >= 5:
-                pass  # Acepta con imagen aunque sea corto
+                pass  # acepta con imagen aunque sea corto
             else:
                 post['_descartado'] = 'contenido_insuficiente'
                 post['_palabras_contenido'] = palabras_contenido
                 descartados.append(post)
                 continue
 
-        if contar_palabras(txt_limpio) < 5 and not tiene_senal_comercial_fuerte(post, txt_original):
+        if palabras_total < 5 and not tiene_senal_comercial_fuerte(post, txt_original):
             post['_descartado'] = 'post_demasiado_debil'
             descartados.append(post)
             continue
 
-        pre_tipo, pre_score = pre_clasificar_keywords(txt_limpio, post.get("autor", ""), grupo_tipo=grupo_tipo)
-        post['pre_tipo'] = pre_tipo
+        # ── Pre-clasificación por keywords ───────────────────────
+        pre_tipo, pre_score = pre_clasificar_keywords(
+            txt_limpio, post.get("autor", ""), grupo_tipo=grupo_tipo
+        )
+
+        # Heurística: post largo en grupo vecinos → sospechar negocio
+        if largo_es_negocio and palabras_total > 150 and pre_tipo == 'ambiguo':
+            t = txt_limpio.lower()
+            if sum(1 for kw in _KW['negocio'][2] if kw in t) >= 1:
+                pre_tipo  = 'negocio'
+                pre_score = 2
+
+        post['pre_tipo']  = pre_tipo
         post['pre_score'] = pre_score
         limpios.append(post)
 

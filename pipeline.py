@@ -20,6 +20,10 @@ from utils import (
     paso_1_limpieza,
     paso_2_clusters,
     puede_ser_noticia_desde_json,
+    get_config_grupo,
+    tipo_permitido_en_grupo,
+    requiere_imagen_en_grupo,
+    es_noticia_geograficamente_valida,
 )
 from cloudinary_service import subir_imagenes
 
@@ -76,7 +80,8 @@ def ejecutar_pipeline(posts, meta, config_grupo, estado):
     }
 
     grupo_tipo = config_grupo.get("tipo", "vecinos")
-    politicas = POLITICAS.get(grupo_tipo, POLITICAS["vecinos"])
+    politicas  = POLITICAS.get(grupo_tipo, POLITICAS["vecinos"])
+    cfg_grupo  = get_config_grupo(grupo_tipo)
 
     # Reiniciar contadores de tokens para esta corrida
     reset_contadores()
@@ -145,11 +150,24 @@ def ejecutar_pipeline(posts, meta, config_grupo, estado):
             resultados["ignorados"].append(p)
             continue
 
+        # ── Filtro por tipo permitido en este grupo ───────────────
+        if not tipo_permitido_en_grupo(tipo, grupo_tipo):
+            p["_descartado"] = f"tipo_{tipo}_no_permitido_en_{grupo_tipo}"
+            resultados["ignorados"].append(p)
+            continue
+
         if tipo == "noticia" and not p.get("noticia_permitida"):
             tipo = "negocio"
 
+        # ── Filtro geográfico para noticias en grupos de noticias ──
+        if tipo == "noticia" and cfg_grupo.get("filtrar_geo_externa"):
+            if not es_noticia_geograficamente_valida(p.get("texto_limpio", "")):
+                p["_descartado"] = "noticia_geo_externa"
+                resultados["ignorados"].append(p)
+                continue
+
         tiene_imagen_origen = bool(p.get("imagenes") or [])
-        if tipo != "noticia" and not tiene_imagen_origen:
+        if requiere_imagen_en_grupo(tipo, grupo_tipo) and not tiene_imagen_origen:
             p["_descartado"] = "sin_imagen"
             resultados["ignorados"].append(p)
             descartados_sin_imagen += 1
