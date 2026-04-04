@@ -202,7 +202,8 @@ def ejecutar_pipeline(posts, meta, config_grupo, estado):
     estado["paso"] = "Guardando en base de datos"
     estado["progreso"] = 96
 
-    colonia_id = config_grupo.get("colonia_ids", [None])[0]
+    colonia_ids = config_grupo.get("colonia_ids") or [None]
+    colonia_id = colonia_ids[0]
     db_nuevos = db_duplicados = 0
 
     for p in resultados["negocios"] + resultados["mascotas"]:
