@@ -83,7 +83,15 @@ textarea{resize:vertical;min-height:70px;}
 .progress-step{font-size:.83rem;color:var(--gris);margin-bottom:16px;}
 .progress-bar-bg{background:var(--crema);border-radius:999px;height:10px;overflow:hidden;margin-bottom:8px;}
 .progress-bar-fill{height:100%;background:linear-gradient(90deg,var(--rojo),#ff6b6b);border-radius:999px;transition:width .4s ease;}
+.progress-meta{display:flex;justify-content:space-between;align-items:center;gap:12px;margin-top:10px;}
 .progress-pct{font-size:.78rem;color:var(--gris);text-align:right;}
+.progress-timer{font-size:.8rem;color:var(--carbon);font-weight:600;}
+.progress-activity{font-size:.82rem;color:var(--gris);margin-top:12px;min-height:20px;}
+.progress-history{margin-top:14px;padding-top:12px;border-top:1px solid var(--borde);}
+.progress-history-title{font-size:.75rem;color:var(--gris);text-transform:uppercase;letter-spacing:.06em;margin-bottom:8px;}
+.progress-history-list{list-style:none;display:flex;flex-direction:column;gap:6px;}
+.progress-history-list li{font-size:.8rem;color:var(--gris);line-height:1.35;}
+.result-extra{font-size:.88rem;color:var(--gris);margin:0 0 16px;}
 
 /* ── RESULTADO ── */
 .result-card{display:none;background:#fff;border-radius:20px;box-shadow:0 4px 32px rgba(26,26,46,.08);padding:28px;margin-top:20px;}
@@ -136,7 +144,15 @@ textarea{resize:vertical;min-height:70px;}
     <div class="progress-bar-bg">
       <div class="progress-bar-fill" id="progressFill" style="width:0%"></div>
     </div>
-    <div class="progress-pct" id="progressPct">0%</div>
+    <div class="progress-meta">
+      <div class="progress-timer" id="progressTimer">Tiempo: 00:00</div>
+      <div class="progress-pct" id="progressPct">0%</div>
+    </div>
+    <div class="progress-activity" id="progressActivity">Preparando...</div>
+    <div class="progress-history">
+      <div class="progress-history-title">Actividad reciente</div>
+      <ul class="progress-history-list" id="progressHistory"></ul>
+    </div>
   </div>
 
   <!-- RESULTADO -->
@@ -169,6 +185,7 @@ var archivoFile = null;
 var datosMeta = {};
 var configGrupo = {};
 var intervaloStatus = null;
+var inicioClienteTs = null;
 
 // ── DROP ZONE ──────────────────────────────────────────────
 var dz = document.getElementById('dropZone');
@@ -309,6 +326,8 @@ async function iniciarProcesamiento(){
   document.getElementById('uploadCard').style.display = 'none';
   document.getElementById('progressCard').classList.add('visible');
 
+  inicioClienteTs = Date.now();
+  actualizarTimer(0);
   try {
     await fetch('/procesar', {
       method: 'POST',
@@ -321,6 +340,26 @@ async function iniciarProcesamiento(){
   }
 }
 
+function formatTime(sec){
+  sec = Math.max(0, parseInt(sec || 0, 10));
+  var m = String(Math.floor(sec/60)).padStart(2,'0');
+  var s = String(sec%60).padStart(2,'0');
+  return m + ':' + s;
+}
+
+function actualizarTimer(sec){
+  document.getElementById('progressTimer').textContent = 'Tiempo: ' + formatTime(sec);
+}
+
+function pintarHistorial(items){
+  var el = document.getElementById('progressHistory');
+  if(!items || !items.length){
+    el.innerHTML = '<li>Sin actividad reciente todavía.</li>';
+    return;
+  }
+  el.innerHTML = items.slice().reverse().map(function(x){ return '<li>• ' + x + '</li>'; }).join('');
+}
+
 function monitorearStatus(){
   intervaloStatus = setInterval(async function(){
     try {
@@ -330,6 +369,9 @@ function monitorearStatus(){
       document.getElementById('progressStep').textContent = data.paso + (data.detalles ? ' — ' + data.detalles : '');
       document.getElementById('progressFill').style.width = data.progreso + '%';
       document.getElementById('progressPct').textContent = data.progreso + '%';
+      actualizarTimer(data.elapsed_seconds || (inicioClienteTs ? Math.floor((Date.now()-inicioClienteTs)/1000) : 0));
+      document.getElementById('progressActivity').textContent = data.actividad || 'Trabajando...';
+      pintarHistorial(data.historial || []);
 
       if(data.progreso >= 100 || data.paso === 'Completado'){
         clearInterval(intervaloStatus);
@@ -338,6 +380,7 @@ function monitorearStatus(){
       if(data.paso === 'Error'){
         clearInterval(intervaloStatus);
         document.getElementById('progressStep').textContent = '❌ ' + (data.error || 'Error desconocido');
+        document.getElementById('progressActivity').textContent = 'Proceso detenido';
       }
     } catch(e){}
   }, 1500);
@@ -348,6 +391,7 @@ function mostrarResultado(data){
   document.getElementById('resultCard').classList.add('visible');
 
   var r = data.resumen || {};
+  var elapsed = data.elapsed_seconds || (inicioClienteTs ? Math.floor((Date.now()-inicioClienteTs)/1000) : 0);
   var stats = [
     {n: r.procesados||0, l:'Procesados'},
     {n: r.negocios||0, l:'Negocios'},
@@ -359,6 +403,8 @@ function mostrarResultado(data){
   document.getElementById('resultStats').innerHTML = stats.map(function(s){
     return '<div class="stat-box"><div class="stat-num">'+s.n+'</div><div class="stat-lbl">'+s.l+'</div></div>';
   }).join('');
+
+  document.getElementById('resultBtns').insertAdjacentHTML('beforebegin', '<div class="result-extra">Tiempo total: <strong>' + formatTime(elapsed) + '</strong></div>');
 
   if(data.archivo_html){
     document.getElementById('resultBtns').innerHTML =
@@ -376,6 +422,11 @@ function reiniciar(){
   document.getElementById('uploadCard').style.display = 'block';
   document.getElementById('progressCard').classList.remove('visible');
   document.getElementById('resultCard').classList.remove('visible');
+  document.getElementById('progressActivity').textContent = 'Preparando...';
+  document.getElementById('progressHistory').innerHTML = '';
+  document.getElementById('resultBtns').innerHTML = '';
+  inicioClienteTs = null;
+  actualizarTimer(0);
 }
 </script>
 </body>
