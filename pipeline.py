@@ -8,8 +8,9 @@ from db import (
     obtener_categorias_noticias,
 )
 from generar_html import generar_html_resultados
-from ia import clasificar_tipo, debe_usar_gemini, generar_titulo_negocio_ia, procesar_alerta, procesar_negocio, procesar_noticia
+from ia import clasificar_tipo, debe_usar_gemini, generar_titulo_negocio_ia, procesar_alerta, procesar_negocio, procesar_noticia, get_resumen_costo, reset_contadores, _titulo_pobre
 from utils import (
+    generar_alt_imagen,
     NEWS_MIN_WORDS,
     generar_titulo_alerta,
     generar_titulo_mascota,
@@ -76,6 +77,9 @@ def ejecutar_pipeline(posts, meta, config_grupo, estado):
 
     grupo_tipo = config_grupo.get("tipo", "vecinos")
     politicas = POLITICAS.get(grupo_tipo, POLITICAS["vecinos"])
+
+    # Reiniciar contadores de tokens para esta corrida
+    reset_contadores()
 
     cats_negocios = obtener_categorias_negocios()
     cats_noticias = obtener_categorias_noticias()
@@ -193,8 +197,13 @@ def ejecutar_pipeline(posts, meta, config_grupo, estado):
         if not proc.get("telefono"):
             proc["telefono"] = p.get("telefono")
         categoria_nombre = cats_neg_map.get(str(proc.get("categoria_id")), {}).get("nombre", "General")
-        titulo_ai = generar_titulo_negocio_ia(proc, categoria_nombre=categoria_nombre, prefer="gemini")
-        proc["titulo"] = titulo_ai or generar_titulo_negocio(proc, categoria_nombre=categoria_nombre)
+        # Regla primero — IA solo cuando el resultado es genérico/pobre
+        titulo_regla = generar_titulo_negocio(proc, categoria_nombre=categoria_nombre)
+        if _titulo_pobre(titulo_regla):
+            titulo_ai = generar_titulo_negocio_ia(proc, categoria_nombre=categoria_nombre, prefer="groq")
+            proc["titulo"] = titulo_ai or titulo_regla or "Negocio en Mérida"
+        else:
+            proc["titulo"] = titulo_regla
         resultados["negocios"].append(proc)
         aprobados.append(proc)
 
@@ -306,6 +315,7 @@ def ejecutar_pipeline(posts, meta, config_grupo, estado):
         "descartados_sin_imagen": descartados_sin_imagen,
         "db_nuevos": db_nuevos,
         "db_duplicados": db_duplicados,
+        **get_resumen_costo(),
     }
     return nombre_archivo
 

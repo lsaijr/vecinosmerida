@@ -208,6 +208,7 @@ def subir_imagenes(post, meta=None, config_grupo=None) -> Tuple[List[Dict], int,
     if _cloudinary_configured():
         _configure_cloudinary()
 
+    total_imgs = len(imagenes)  # para alt texts numerados
     for idx, img in enumerate(imagenes):
         origen = img.get("url_temp") if isinstance(img, dict) else img
         if not origen:
@@ -216,7 +217,7 @@ def subir_imagenes(post, meta=None, config_grupo=None) -> Tuple[List[Dict], int,
             continue
 
         public_id = construir_public_id(post, img if isinstance(img, dict) else {}, meta=meta, config_grupo=config_grupo, idx=idx)
-        alt = generar_alt_imagen(post, config_grupo=config_grupo)
+        alt = generar_alt_imagen(post, config_grupo=config_grupo, idx=idx, total=total_imgs)
         context = _safe_context(post, meta=meta, config_grupo=config_grupo, img=img if isinstance(img, dict) else None)
         context["alt"] = alt
         tags = _build_tags(post, meta=meta, config_grupo=config_grupo)

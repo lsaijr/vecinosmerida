@@ -12,6 +12,18 @@ NEWS_MIN_WORDS = 70
 # DESCARTE PREVIO
 # ═══════════════════════════════════════════════════════════════
 
+# Patrones de spam / contenido no publicable
+_RE_TIKTOK    = re.compile(r'tiktok\.com|vm\.tiktok|tiktok para descubrir|entra a tiktok', re.IGNORECASE)
+_RE_LIVE      = re.compile(r'transmisi[oó]n en directo|en vivo ahora|live\s+ahora|unirte a la transmisi[oó]n', re.IGNORECASE)
+_RE_SOLO_TEL  = re.compile(r'^[\d\s\-\.\(\)\+]{8,18}$')
+_RE_SCRAMBLE  = re.compile(r'\S{26,}')
+
+_UI_FB = {
+    "Más relevantes", "Ver más comentarios", "Por qué ves esto",
+    "Compartir", "Me gusta", "Comentar"
+}
+
+
 def es_descartable(post):
     """
     Descarta antes de cualquier proceso pesado.
@@ -22,23 +34,32 @@ def es_descartable(post):
     if num_imgs is None:
         num_imgs = len(post.get("imagenes") or [])
 
+    # Texto scrambled (tokens hash-like sin sentido)
     palabras = txt.split()
     if any(len(w) > 25 and re.search(r'\d', w) and re.search(r'[a-zA-Z]', w) for w in palabras):
-        limpio = re.sub(r'\S{26,}', '', txt).strip()
+        limpio = _RE_SCRAMBLE.sub('', txt).strip()
         if len(limpio) < 20:
             return True, "scrambled"
 
+    # Muy corto y sin imagen
     if len(txt) < 15 and num_imgs == 0:
         return True, "muy_corto"
 
-    if re.match(r'^[\d\s\-\.\(\)\+]{8,18}$', txt):
+    # Solo número de teléfono
+    if _RE_SOLO_TEL.match(txt):
         return True, "solo_telefono_o_numero"
 
-    if txt in {
-        "Más relevantes", "Ver más comentarios", "Por qué ves esto",
-        "Compartir", "Me gusta", "Comentar"
-    }:
+    # UI residual de Facebook
+    if txt in _UI_FB:
         return True, "ui_facebook"
+
+    # NUEVO: TikTok links / promoción de perfil externo
+    if _RE_TIKTOK.search(txt):
+        return True, "spam_tiktok"
+
+    # NUEVO: Transmisiones en vivo (no son negocios ni noticias)
+    if _RE_LIVE.search(txt):
+        return True, "live_stream"
 
     return False, None
 
@@ -57,11 +78,17 @@ _RE_EMOJI = re.compile(
     r'\u2614\u2615'
     r']+', flags=re.UNICODE
 )
-_RE_HASHTAG = re.compile(r'#\w+')
-_RE_URL = re.compile(r'https?://\S+|wa\.me(?:/c)?/\S+')
+_RE_HASHTAG    = re.compile(r'#\w+')
+_RE_URL        = re.compile(r'https?://\S+|wa\.me(?:/c)?/\S+')
 _RE_SIGNOS_REP = re.compile(r'([!?])\1{1,}|\.{3,}')
-_RE_ESPACIOS = re.compile(r'\s+')
-_RE_MENCIONES = re.compile(r'@\[\d+:\d+:[^\]]*\]')
+_RE_ESPACIOS   = re.compile(r'\s+')
+_RE_MENCIONES  = re.compile(r'@\[\d+:\d+:[^\]]*\]')
+# Caracteres Unicode decorativos (bold/italic Facebook)
+_RE_UNICODE_DECO = re.compile(
+    r'[\U0001D400-\U0001D7FF'   # Mathematical Alphanumeric Symbols
+    r'\U0001F100-\U0001F1FF'    # Enclosed Alphanumeric Supplement
+    r']+', flags=re.UNICODE
+)
 
 
 def limpiar_texto_regex(txt):
@@ -71,6 +98,8 @@ def limpiar_texto_regex(txt):
     txt = _RE_MENCIONES.sub('', txt)
     txt = _RE_HASHTAG.sub('', txt)
     txt = _RE_EMOJI.sub('', txt)
+    # NUEVO: quitar caracteres decorativos Unicode (negrita FB, etc.)
+    txt = _RE_UNICODE_DECO.sub('', txt)
 
     palabras = txt.split()
     txt = ' '.join(
@@ -100,6 +129,34 @@ def contar_palabras(txt):
     return len([w for w in re.split(r'\s+', txt.strip()) if w])
 
 
+def contar_palabras_contenido(txt):
+    """
+    Cuenta solo palabras con contenido real:
+    excluye números de teléfono, números solos, URLs, y palabras
+    de acción sin sustancia ('inbox', 'whatsapp', 'info').
+    """
+    if not txt:
+        return 0
+    RUIDO = {'inbox', 'whatsapp', 'info', 'tel', 'cel', 'num', 'numero',
+             'numero', 'al', 'llamar', 'llama', 'escribe', 'mensaje',
+             'escribeme', 'contacto'}
+    palabras = re.split(r'\s+', txt.strip())
+    reales = []
+    for w in palabras:
+        if not w:
+            continue
+        # Solo dígitos o solo símbolos → ruido
+        if re.match(r'^[\d\s\-\.\(\)\+]+$', w):
+            continue
+        # Palabra de 10 dígitos (teléfono) → ruido
+        if re.match(r'^\d{10}$', re.sub(r'\D', '', w)) and len(re.sub(r'\D', '', w)) == 10:
+            continue
+        if w.lower() in RUIDO:
+            continue
+        reales.append(w)
+    return len(reales)
+
+
 # ═══════════════════════════════════════════════════════════════
 # TELÉFONO
 # ═══════════════════════════════════════════════════════════════
@@ -109,7 +166,7 @@ _PATRONES_TEL = [
     r'\b(\d{3})[\s\-\.](\d{3})[\s\-\.](\d{4})\b',
     r'(?:\+52|52)[\s\-]?(\d{10})\b',
     r'(?:\+52|52)[\s\-]?(\d{3})[\s\-\.](\d{3})[\s\-\.](\d{4})\b',
-    r'(?:cel|tel|whatsapp|wha|llamar?\s*al?|marca\s*al?|al\s+num(?:ero)?)[:\s\-]*(\d[\d\s\-\.]{8,12}\d)',
+    r'(?:cel|tel|whatsapp|wha|llamar?\s*al?|marca\s*al?|al\s+num(?:ero)?)[\:\s\-]*(\d[\d\s\-\.]{8,12}\d)',
     r'wa\.me(?:/c)?/(?:52)?(\d{10})',
 ]
 
@@ -247,6 +304,10 @@ def pre_clasificar_keywords(txt, autor="", grupo_tipo="vecinos"):
 # PASO 1: LIMPIEZA
 # ═══════════════════════════════════════════════════════════════
 
+# Mínimo de palabras con contenido real para que un negocio sea publicable
+NEGOCIO_MIN_PALABRAS_CONTENIDO = 10
+
+
 def paso_1_limpieza(posts, grupo_tipo="vecinos"):
     limpios = []
     descartados = []
@@ -275,6 +336,23 @@ def paso_1_limpieza(posts, grupo_tipo="vecinos"):
             post['_descartado'] = 'consulta_baja_prioridad'
             descartados.append(post)
             continue
+
+        # NUEVO: filtro de palabras con contenido mínimo
+        # Para grupos de noticias se aplica el filtro por palabras totales
+        # Para vecinos/negocios se aplica filtro de contenido real
+        palabras_contenido = contar_palabras_contenido(txt_limpio)
+        es_noticia_grupo = grupo_tipo == "noticias"
+
+        if not es_noticia_grupo and palabras_contenido < NEGOCIO_MIN_PALABRAS_CONTENIDO:
+            # Si tiene imagen, rebajar el umbral a 5 palabras contenido mínimo
+            num_imgs = post.get("num_imgs") or len(post.get("imagenes") or [])
+            if num_imgs > 0 and palabras_contenido >= 5:
+                pass  # Acepta con imagen aunque sea corto
+            else:
+                post['_descartado'] = 'contenido_insuficiente'
+                post['_palabras_contenido'] = palabras_contenido
+                descartados.append(post)
+                continue
 
         if contar_palabras(txt_limpio) < 5 and not tiene_senal_comercial_fuerte(post, txt_original):
             post['_descartado'] = 'post_demasiado_debil'
@@ -440,7 +518,12 @@ def _smart_title_case(txt):
 
 
 def limpiar_titulo(txt, max_chars=72):
-    txt = (txt or '').replace('*', ' ')
+    txt = (txt or '')
+    # NUEVO: eliminar bloques markdown y la palabra "json" / "ignorar" que se filtren mal
+    txt = re.sub(r'```(?:json)?', '', txt, flags=re.IGNORECASE)
+    txt = re.sub(r'```', '', txt)
+    txt = re.sub(r'\bjson\b', '', txt, flags=re.IGNORECASE)
+    txt = txt.replace('*', ' ')
     txt = re.sub(r'[!?]{2,}', '?', txt)
     txt = re.sub(r'\.{2,}', '.', txt)
     txt = _strip_saludos(txt)
@@ -492,11 +575,9 @@ def tiene_senal_comercial_fuerte(post, txt):
         return True
     if extraer_telefono(txt):
         return True
-    if re.search(r'\$\s?\d+|\d+\s*(pesos|mxn)', txt or '', re.IGNORECASE):
+    if re.search(r'\$\s?\d+|\b\d+\s*(pesos|mxn)\b', txt or '', re.IGNORECASE):
         return True
     return any(kw in t for kw in COMERCIAL_FUERTE_HINTS)
-
-
 
 
 def _contains_kw(txt, kw):
@@ -547,6 +628,7 @@ def _frase_a_titulo_comercial(txt, max_words=5):
         if len(words) >= max_words:
             break
     return _smart_title_case(' '.join(words))
+
 
 def inferir_tema_negocio(txt, categoria_nombre=''):
     t = _norm(txt)
@@ -640,7 +722,11 @@ def generar_titulo_noticia_fallback(post):
     return limpiar_titulo(base, max_chars=88) or 'Noticia local en Mérida'
 
 
-def generar_alt_imagen(post, config_grupo=None):
+def generar_alt_imagen(post, config_grupo=None, idx=0, total=1):
+    """
+    Genera alt text para una imagen.
+    idx/total permiten diferenciar cuando hay múltiples fotos en el mismo post.
+    """
     tipo = post.get('tipo') or post.get('_tipo_final') or post.get('tipo_detectado') or 'general'
     txt = post.get('texto_limpio') or post.get('texto') or post.get('descripcion') or post.get('texto_alerta') or ''
     ubic = extraer_ubicacion_simple(txt)
@@ -658,6 +744,11 @@ def generar_alt_imagen(post, config_grupo=None):
     else:
         titulo = post.get('titulo') or generar_titulo_negocio(post, categoria_nombre='')
         alt = f"Imagen de {titulo.lower()}"
+
+    # NUEVO: numerar cuando hay más de una foto
+    if total > 1:
+        alt = f"Foto {idx + 1} de {total} — {alt}"
+
     return limpiar_titulo(alt, max_chars=125)
 
 
