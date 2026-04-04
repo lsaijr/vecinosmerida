@@ -1,5 +1,6 @@
 import os
 from functools import lru_cache
+
 import mysql.connector
 
 
@@ -13,16 +14,22 @@ def get_conn():
     )
 
 
-@lru_cache(maxsize=32)
-def _column_exists(table, column):
+@lru_cache(maxsize=128)
+def _column_exists(table_name, column_name):
     conn = get_conn()
     cursor = conn.cursor()
-    try:
-        cursor.execute(f"SHOW COLUMNS FROM {table} LIKE %s", (column,))
-        return cursor.fetchone() is not None
-    finally:
-        cursor.close()
-        conn.close()
+    cursor.execute(
+        """
+        SELECT COUNT(*)
+        FROM INFORMATION_SCHEMA.COLUMNS
+        WHERE TABLE_SCHEMA = %s AND TABLE_NAME = %s AND COLUMN_NAME = %s
+        """,
+        (os.getenv("DB_NAME"), table_name, column_name),
+    )
+    exists = cursor.fetchone()[0] > 0
+    cursor.close()
+    conn.close()
+    return exists
 
 
 # ─── COLONIAS ────────────────────────────────────────────────
@@ -100,19 +107,13 @@ def obtener_colonias_de_grupo(group_id):
 def obtener_categorias_negocios():
     conn = get_conn()
     cursor = conn.cursor(dictionary=True)
-    try:
-        if _column_exists("cat_categorias", "keywords"):
-            cursor.execute(
-                "SELECT id, nombre, emoji, color_hex, keywords FROM cat_categorias ORDER BY nombre"
-            )
-        else:
-            cursor.execute(
-                "SELECT id, nombre, emoji, color_hex FROM cat_categorias ORDER BY nombre"
-            )
-        rows = cursor.fetchall()
-    finally:
-        cursor.close()
-        conn.close()
+    if _column_exists("cat_categorias", "keywords"):
+        cursor.execute("SELECT id, nombre, emoji, color_hex, keywords FROM cat_categorias ORDER BY nombre")
+    else:
+        cursor.execute("SELECT id, nombre, emoji, color_hex FROM cat_categorias ORDER BY nombre")
+    rows = cursor.fetchall()
+    cursor.close()
+    conn.close()
     return rows
 
 
@@ -129,9 +130,7 @@ def obtener_categorias_noticias():
 def obtener_categorias_alertas():
     conn = get_conn()
     cursor = conn.cursor(dictionary=True)
-    cursor.execute(
-        "SELECT id, nombre, slug, parent_id, color, icono FROM categorias_alertas ORDER BY parent_id, nombre"
-    )
+    cursor.execute("SELECT id, nombre, slug, parent_id, color, icono FROM categorias_alertas ORDER BY parent_id, nombre")
     rows = cursor.fetchall()
     cursor.close()
     conn.close()
@@ -139,17 +138,8 @@ def obtener_categorias_alertas():
 
 
 # ─── PIPELINE LOG ────────────────────────────────────────────
-def registrar_pipeline_log(
-    archivo_json,
-    colonia,
-    total_posts,
-    negocios_nuevos,
-    negocios_dup,
-    imagenes_ok,
-    imagenes_fail,
-    estado,
-    error_msg="",
-):
+def registrar_pipeline_log(archivo_json, colonia, total_posts, negocios_nuevos,
+                           negocios_dup, imagenes_ok, imagenes_fail, estado, error_msg=""):
     conn = get_conn()
     cursor = conn.cursor()
     cursor.execute(
@@ -159,14 +149,15 @@ def registrar_pipeline_log(
          imagenes_ok, imagenes_fail, estado, error_msg)
         VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
         """,
-        (archivo_json, colonia, total_posts, negocios_nuevos, negocios_dup, imagenes_ok, imagenes_fail, estado, error_msg),
+        (archivo_json, colonia, total_posts, negocios_nuevos, negocios_dup,
+         imagenes_ok, imagenes_fail, estado, error_msg),
     )
     conn.commit()
     cursor.close()
     conn.close()
 
 
-# ─── DEDUPLICACIÓN POR FBID ──────────────────────────────────
+# ─── DEDUPLICACIÓN POR FBID ───────────────────────────────────
 def fbid_ya_existe(fbid):
     if not fbid:
         return False
@@ -191,6 +182,30 @@ def negocio_ya_existe(fbid_post):
     return row[0] if row else None
 
 
+def _img_url(asset):
+    if isinstance(asset, dict):
+        return asset.get("url")
+    return asset
+
+
+def _img_fbid(asset, fallback=None):
+    if isinstance(asset, dict):
+        return asset.get("fbid") or fallback
+    return fallback
+
+
+def _img_alt(asset):
+    if isinstance(asset, dict):
+        return asset.get("alt")
+    return None
+
+
+def _img_public_id(asset):
+    if isinstance(asset, dict):
+        return asset.get("public_id")
+    return None
+
+
 # ─── INSERCIÓN EN DB ─────────────────────────────────────────
 def insertar_negocio(p, colonia_id):
     fbid_post = p.get("fbid_post")
@@ -209,9 +224,9 @@ def insertar_negocio(p, colonia_id):
         VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,1,%s)
         """,
         (
-            p.get("nombre", "")[:100],
+            p.get("titulo") or p.get("nombre", "")[:100],
             p.get("categoria_id"),
-            p.get("descripcion", "")[:500],
+            p.get("descripcion", "")[:1200],
             p.get("telefono"),
             p.get("telefono"),
             p.get("url_post") or None,
@@ -223,20 +238,37 @@ def insertar_negocio(p, colonia_id):
     )
     negocio_id = cursor.lastrowid
 
-    for i, (url, fbid) in enumerate(
-        zip(
-            p.get("imagenes_cloudinary", []),
-            [img.get("fbid") if isinstance(img, dict) else None for img in p.get("imagenes", [])],
-        )
-    ):
+    for i, asset in enumerate(p.get("imagenes_cloudinary", [])):
+        url = _img_url(asset)
         if not url:
             continue
+        fbid = _img_fbid(asset, fallback=(p.get("imagenes", [{}] * 0)[i].get("fbid") if i < len(p.get("imagenes", [])) and isinstance(p.get("imagenes", [])[i], dict) else None))
+        alt = _img_alt(asset)
+        public_id = _img_public_id(asset)
+
+        cols = ["negocio_id", "imagen_url", "fbid", "orden", "creado_en"]
+        vals = [negocio_id, url, str(fbid) if fbid else None, i, "NOW()"]
+        params = [negocio_id, url, str(fbid) if fbid else None, i]
+        if _column_exists("negocios_imagenes", "alt_text"):
+            cols.insert(3, "alt_text")
+            vals.insert(3, "%s")
+            params.insert(3, alt)
+        if _column_exists("negocios_imagenes", "public_id"):
+            insert_at = 4 if _column_exists("negocios_imagenes", "alt_text") else 3
+            cols.insert(insert_at, "public_id")
+            vals.insert(insert_at, "%s")
+            params.insert(insert_at, public_id)
+
+        sql_vals = []
+        param_iter = iter(params)
+        for v in vals:
+            if v == "NOW()":
+                sql_vals.append("NOW()")
+            else:
+                sql_vals.append("%s")
         cursor.execute(
-            """
-            INSERT INTO negocios_imagenes (negocio_id, imagen_url, fbid, orden, creado_en)
-            VALUES (%s, %s, %s, %s, NOW())
-            """,
-            (negocio_id, url, str(fbid) if fbid else None, i),
+            f"INSERT INTO negocios_imagenes ({', '.join(cols)}) VALUES ({', '.join(sql_vals)})",
+            tuple(params),
         )
 
         if i == 0:
@@ -251,6 +283,7 @@ def insertar_negocio(p, colonia_id):
     return negocio_id, "nuevo"
 
 
+
 def insertar_noticia(p, colonia_id):
     fbid_post = p.get("fbid_post")
     conn = get_conn()
@@ -259,10 +292,10 @@ def insertar_noticia(p, colonia_id):
         cursor.execute("SELECT id FROM noticias WHERE fbid_post = %s LIMIT 1", (str(fbid_post),))
         row = cursor.fetchone()
         if row:
-            cursor.close()
-            conn.close()
+            cursor.close(); conn.close()
             return row[0], "duplicado"
 
+    imagen_principal = _img_url(p.get("imagenes_cloudinary", [None])[0]) if p.get("imagenes_cloudinary") else None
     cursor.execute(
         """
         INSERT INTO noticias
@@ -271,12 +304,12 @@ def insertar_noticia(p, colonia_id):
         VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s)
         """,
         (
-            p.get("titulo", "")[:200],
+            (p.get("titulo") or "")[:200],
             p.get("texto", ""),
             p.get("categoria_id"),
             colonia_id,
             p.get("autor", "")[:200],
-            p.get("imagenes_cloudinary", [None])[0],
+            imagen_principal,
             p.get("url_post") or None,
             fbid_post,
             p.get("fecha_captura"),
@@ -289,6 +322,7 @@ def insertar_noticia(p, colonia_id):
     return nid, "nuevo"
 
 
+
 def insertar_alerta(p, colonia_id):
     fbid_post = p.get("fbid_post")
     conn = get_conn()
@@ -297,10 +331,10 @@ def insertar_alerta(p, colonia_id):
         cursor.execute("SELECT id FROM alertas WHERE fbid_post = %s LIMIT 1", (str(fbid_post),))
         row = cursor.fetchone()
         if row:
-            cursor.close()
-            conn.close()
+            cursor.close(); conn.close()
             return row[0], "duplicado"
 
+    imagen_principal = _img_url(p.get("imagenes_cloudinary", [None])[0]) if p.get("imagenes_cloudinary") else None
     cursor.execute(
         """
         INSERT INTO alertas
@@ -314,7 +348,7 @@ def insertar_alerta(p, colonia_id):
             colonia_id,
             p.get("direccion_aprox"),
             p.get("autor", "")[:200],
-            p.get("imagenes_cloudinary", [None])[0],
+            imagen_principal,
             p.get("url_post") or None,
             fbid_post,
             p.get("fecha_captura"),

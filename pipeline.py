@@ -1,91 +1,49 @@
-from utils import paso_1_limpieza, paso_2_clusters
-from ia import (
-    clasificar_tipo,
-    procesar_negocio,
-    procesar_noticia,
-    procesar_noticia_ligera,
-    procesar_alerta,
-    debe_usar_gemini,
-    debe_usar_noticia_ligera,
-)
 from db import (
-    obtener_categorias_negocios,
-    obtener_categorias_noticias,
-    obtener_categorias_alertas,
     actualizar_grupo_stats,
+    insertar_alerta,
     insertar_negocio,
     insertar_noticia,
-    insertar_alerta,
+    obtener_categorias_alertas,
+    obtener_categorias_negocios,
+    obtener_categorias_noticias,
+)
+from generar_html import generar_html_resultados
+from ia import clasificar_tipo, debe_usar_gemini, procesar_alerta, procesar_negocio, procesar_noticia
+from utils import (
+    NEWS_MIN_WORDS,
+    generar_titulo_alerta,
+    generar_titulo_mascota,
+    generar_titulo_negocio,
+    generar_titulo_noticia_fallback,
+    paso_1_limpieza,
+    paso_2_clusters,
+    puede_ser_noticia_desde_json,
 )
 from cloudinary_service import subir_imagenes
-from generar_html import generar_html_resultados
+
 
 POLITICAS = {
     "negocios": {
-        "usar_ia_clasificacion": "solo_ambiguos",
-        "usar_ia_categoria_negocio": "fallback",
-        "usar_noticia_ligera": True,
-        "forzar_noticias": False,
+        "ia_clasificacion": "solo_ambiguos",
+        "ia_categoria_negocio": "fallback",
+        "noticia_ligera": False,
     },
     "mascotas": {
-        "usar_ia_clasificacion": "solo_ambiguos",
-        "usar_ia_categoria_negocio": False,
-        "usar_noticia_ligera": True,
-        "forzar_noticias": False,
+        "ia_clasificacion": "solo_ambiguos",
+        "ia_categoria_negocio": False,
+        "noticia_ligera": False,
     },
     "noticias": {
-        "usar_ia_clasificacion": "solo_ambiguos",
-        "usar_ia_categoria_negocio": "fallback",
-        "usar_noticia_ligera": True,
-        "forzar_noticias": False,
+        "ia_clasificacion": "solo_ambiguos",
+        "ia_categoria_negocio": False,
+        "noticia_ligera": True,
     },
     "vecinos": {
-        "usar_ia_clasificacion": "solo_ambiguos",
-        "usar_ia_categoria_negocio": "fallback",
-        "usar_noticia_ligera": True,
-        "forzar_noticias": False,
-    },
-    "alertas": {
-        "usar_ia_clasificacion": "solo_ambiguos",
-        "usar_ia_categoria_negocio": "fallback",
-        "usar_noticia_ligera": True,
-        "forzar_noticias": False,
+        "ia_clasificacion": "solo_ambiguos",
+        "ia_categoria_negocio": "fallback",
+        "noticia_ligera": True,
     },
 }
-
-
-def _politica_para_grupo(grupo_tipo):
-    return POLITICAS.get(grupo_tipo, POLITICAS["vecinos"])
-
-
-def _detectar_cat_mascota(texto):
-    txt = texto.lower()
-    if any(w in txt for w in ["perdid", "extravi", "se fue", "busco", "ayuda encontrar"]):
-        return 14
-    if any(w in txt for w in ["encontr", "hallé", "hallad", "aparecio", "apareció"]):
-        return 15
-    if any(w in txt for w in ["adopci", "adopta", "regalo", "regala", "busca hogar", "hogar"]):
-        return 16
-    return 11
-
-
-def _subir_imagenes_posts(posts):
-    imgs_ok = 0
-    imgs_fail = 0
-
-    for p in posts:
-        imagenes = p.get("imagenes", [])
-        if imagenes:
-            res_imgs, ok, fail = subir_imagenes(imagenes)
-            p["imagenes_cloudinary"] = [r["url"] for r in res_imgs if r.get("url")]
-            p["imagenes_origen"] = [r.get("origen") for r in res_imgs if r.get("url")]
-            imgs_ok += ok
-            imgs_fail += fail
-        else:
-            p["imagenes_cloudinary"] = []
-            p["imagenes_origen"] = []
-
-    return imgs_ok, imgs_fail
 
 
 def ejecutar_pipeline(posts, meta, config_grupo, estado):
@@ -99,140 +57,138 @@ def ejecutar_pipeline(posts, meta, config_grupo, estado):
     }
 
     grupo_tipo = config_grupo.get("tipo", "vecinos")
-    politica = _politica_para_grupo(grupo_tipo)
+    politicas = POLITICAS.get(grupo_tipo, POLITICAS["vecinos"])
 
     cats_negocios = obtener_categorias_negocios()
     cats_noticias = obtener_categorias_noticias()
     cats_alertas = obtener_categorias_alertas()
 
-    # ── PASO 1: Limpieza + descarte + pre-clasificación ─────────────
+    cats_neg_map = {str(c["id"]): c for c in cats_negocios}
+    cats_alert_map = {str(c["id"]): c for c in cats_alertas}
+
+    # ── PASO 1: Limpieza y preclasificación ───────────────────────
     estado["paso"] = "Limpieza y pre-clasificación"
     estado["progreso"] = 10
-    estado["error"] = None
-
-    posts_limpios, descartados = paso_1_limpieza(posts)
+    posts_limpios, descartados = paso_1_limpieza(posts, grupo_tipo=grupo_tipo)
     estado["detalles"] = f"{len(posts_limpios)} útiles, {len(descartados)} descartados sin IA"
 
-    # ── PASO 2: Deduplicación ────────────────────────────────────────
+    # ── PASO 2: Deduplicación ─────────────────────────────────────
     estado["paso"] = "Eliminando duplicados"
     estado["progreso"] = 20
-
     clusters = paso_2_clusters(posts_limpios)
     unicos = [c[0] for c in clusters]
     duplicados = sum(len(c) - 1 for c in clusters if len(c) > 1)
     estado["detalles"] = f"{len(unicos)} únicos, {duplicados} duplicados eliminados"
 
-    # ── PASO 3: Clasificación híbrida ────────────────────────────────
+    # ── PASO 3: Clasificación ─────────────────────────────────────
     estado["paso"] = "Clasificando posts"
     estado["progreso"] = 35
-
     clasificados = []
     calls_ia_evitadas = 0
-    calls_ia_clasificacion = 0
 
     for p in unicos:
         pre_tipo = p.get("pre_tipo", "ambiguo")
-        tipo = None
-        err = None
+        p["noticia_permitida"] = puede_ser_noticia_desde_json(p.get("texto", ""))
 
-        # Para grupos de noticias, ya no se fuerza todo a noticia.
-        if grupo_tipo == "noticias":
-            if pre_tipo in {"negocio", "mascota", "alerta", "noticia"}:
-                tipo = pre_tipo
-                calls_ia_evitadas += 1
-            else:
-                tipo, err = clasificar_tipo(p["texto_limpio"])
-                calls_ia_clasificacion += 1
-        else:
-            if pre_tipo != "ambiguo":
-                tipo = pre_tipo
-                calls_ia_evitadas += 1
-            elif politica.get("usar_ia_clasificacion") == "solo_ambiguos":
-                tipo, err = clasificar_tipo(p["texto_limpio"])
-                calls_ia_clasificacion += 1
-            else:
-                tipo = "ignorar"
+        if pre_tipo != "ambiguo":
+            p["tipo_detectado"] = pre_tipo
+            calls_ia_evitadas += 1
+            clasificados.append(p)
+            continue
 
-        p["tipo_detectado"] = tipo or "ignorar"
+        tipo, err = clasificar_tipo(p.get("texto_limpio", ""))
+        if tipo == "noticia" and not p["noticia_permitida"]:
+            tipo = "negocio" if pre_tipo == "ambiguo" else pre_tipo
+        p["tipo_detectado"] = tipo
         if err:
             p["error_clasificacion"] = err
         clasificados.append(p)
 
-    estado["detalles"] = (
-        f"Clasificados: {calls_ia_evitadas} por keywords, "
-        f"{calls_ia_clasificacion} por IA"
-    )
+    estado["detalles"] = f"Clasificados: {calls_ia_evitadas} por reglas, {len(unicos)-calls_ia_evitadas} por IA"
 
-    # ── PASO 4: Procesar texto / IA solo donde aporta ────────────────
-    estado["paso"] = "Procesando contenidos"
-    estado["progreso"] = 55
+    # ── PASO 4: Procesamiento ─────────────────────────────────────
+    estado["paso"] = "Procesando posts"
+    estado["progreso"] = 58
 
-    noticias_ligeras = 0
-    total = max(1, len(clasificados))
-    aprobados_para_imagenes = []
-
+    total = max(len(clasificados), 1)
+    aprobados = []
     for i, p in enumerate(clasificados):
-        estado["progreso"] = 55 + int((i / total) * 20)
-        tipo = p["tipo_detectado"]
+        estado["progreso"] = 58 + int((i / total) * 22)
+        tipo = p.get("tipo_detectado") or "ignorar"
 
         if tipo == "ignorar":
             resultados["ignorados"].append(p)
             continue
 
+        if tipo == "noticia" and not p.get("noticia_permitida"):
+            tipo = "negocio"
+
         if tipo == "mascota":
-            p["categoria_id"] = _detectar_cat_mascota(p["texto_limpio"])
+            p["tipo"] = "mascota"
+            p["categoria_id"] = _detectar_cat_mascota(p.get("texto_limpio", ""))
             p["nombre"] = p.get("autor", "")
-            p["descripcion"] = p["texto_limpio"]
+            p["descripcion"] = p.get("texto_limpio", "")
+            p["titulo"] = generar_titulo_mascota(p, p.get("categoria_id", 11))
             resultados["mascotas"].append(p)
-            aprobados_para_imagenes.append(p)
+            aprobados.append(p)
             continue
 
         if tipo == "alerta":
             proc = procesar_alerta(p, cats_alertas)
             if proc.get("error_ia"):
                 proc["_error_visible"] = proc["error_ia"]
+            cat_nombre = cats_alert_map.get(str(proc.get("categoria_id")), {}).get("nombre", "Alerta")
+            proc["titulo"] = generar_titulo_alerta(proc, cat_nombre=cat_nombre)
             resultados["alertas"].append(proc)
-            aprobados_para_imagenes.append(proc)
+            aprobados.append(proc)
             continue
 
         if tipo == "noticia":
-            if politica.get("usar_noticia_ligera") and debe_usar_noticia_ligera(p["texto_limpio"]):
-                proc = procesar_noticia_ligera(p, cats_noticias)
-                noticias_ligeras += 1
-            else:
-                usar_gemini = debe_usar_gemini(p["texto_limpio"])
-                proc = procesar_noticia(p, cats_noticias, usar_gemini=usar_gemini)
+            palabras = len((p.get("texto_limpio") or "").split())
+            modo = "ligera" if politicas.get("noticia_ligera") and palabras < 130 else "completa"
+            usar_gemini = debe_usar_gemini(p.get("texto_limpio", ""))
+            proc = procesar_noticia(p, cats_noticias, usar_gemini=usar_gemini, modo=modo)
             if proc.get("error_ia"):
                 proc["_error_visible"] = proc["error_ia"]
+            proc["titulo"] = proc.get("titulo") or generar_titulo_noticia_fallback(proc)
             resultados["noticias"].append(proc)
-            aprobados_para_imagenes.append(proc)
+            aprobados.append(proc)
             continue
 
-        if tipo == "negocio":
-            proc = procesar_negocio(p, cats_negocios)
-            if proc.get("error_ia"):
-                proc["_error_visible"] = proc["error_ia"]
-            proc["nombre"] = p.get("autor", "")
-            proc["descripcion"] = p["texto_limpio"]
-            if not proc.get("telefono"):
-                proc["telefono"] = p.get("telefono")
-            resultados["negocios"].append(proc)
-            aprobados_para_imagenes.append(proc)
-            continue
+        # negocio (incluye downgrades desde noticia no permitida)
+        proc = procesar_negocio(p, cats_negocios)
+        if proc.get("error_ia"):
+            proc["_error_visible"] = proc["error_ia"]
+        proc["tipo"] = "negocio"
+        proc["nombre"] = p.get("autor", "")
+        proc["descripcion"] = p.get("texto_limpio", "")
+        if not proc.get("telefono"):
+            proc["telefono"] = p.get("telefono")
+        categoria_nombre = cats_neg_map.get(str(proc.get("categoria_id")), {}).get("nombre", "General")
+        proc["titulo"] = generar_titulo_negocio(proc, categoria_nombre=categoria_nombre)
+        resultados["negocios"].append(proc)
+        aprobados.append(proc)
 
-        resultados["ignorados"].append(p)
-
-    # ── PASO 5: Subir imágenes solo de posts aprobados ───────────────
+    # ── PASO 5: Subir imágenes aprobadas a Cloudinary ──────────────
     estado["paso"] = "Subiendo imágenes"
-    estado["progreso"] = 78
+    estado["progreso"] = 82
+    imgs_ok = imgs_fail = 0
 
-    imgs_ok, imgs_fail = _subir_imagenes_posts(aprobados_para_imagenes)
+    for p in aprobados:
+        imagenes = p.get("imagenes", []) or []
+        if imagenes:
+            res_imgs, ok, fail = subir_imagenes(p, meta=meta, config_grupo=config_grupo)
+            p["imagenes_cloudinary"] = res_imgs
+            imgs_ok += ok
+            imgs_fail += fail
+        else:
+            p["imagenes_cloudinary"] = []
+
     estado["detalles"] = f"Imágenes: {imgs_ok} ok, {imgs_fail} fallidas"
 
-    # ── PASO 6: Generar HTML ─────────────────────────────────────────
+    # ── PASO 6: Generar HTML ───────────────────────────────────────
     estado["paso"] = "Generando reporte HTML"
     estado["progreso"] = 92
-
     nombre_archivo = generar_html_resultados(
         resultados=resultados,
         meta=meta,
@@ -242,13 +198,12 @@ def ejecutar_pipeline(posts, meta, config_grupo, estado):
         cats_alertas=cats_alertas,
     )
 
-    # ── PASO 7: Guardar en DB ────────────────────────────────────────
+    # ── PASO 7: Guardar en DB ──────────────────────────────────────
     estado["paso"] = "Guardando en base de datos"
-    estado["progreso"] = 95
+    estado["progreso"] = 96
 
-    colonia_id = config_grupo.get("colonia_ids", [None])[0] if config_grupo.get("colonia_ids") else None
-    db_nuevos = 0
-    db_duplicados = 0
+    colonia_id = config_grupo.get("colonia_ids", [None])[0]
+    db_nuevos = db_duplicados = 0
 
     for p in resultados["negocios"] + resultados["mascotas"]:
         try:
@@ -285,8 +240,6 @@ def ejecutar_pipeline(posts, meta, config_grupo, estado):
         "procesados": len(unicos),
         "duplicados": duplicados,
         "keywords_sin_ia": calls_ia_evitadas,
-        "clasificaciones_ia": calls_ia_clasificacion,
-        "noticias_ligeras": noticias_ligeras,
         "negocios": len(resultados["negocios"]),
         "noticias": len(resultados["noticias"]),
         "alertas": len(resultados["alertas"]),
@@ -296,7 +249,33 @@ def ejecutar_pipeline(posts, meta, config_grupo, estado):
         "imagenes_fail": imgs_fail,
         "db_nuevos": db_nuevos,
         "db_duplicados": db_duplicados,
-        "errores": len(resultados["errores"]),
     }
-
     return nombre_archivo
+
+
+
+def _detectar_cat_mascota(texto):
+    txt = (texto or '').lower()
+
+    if any(w in txt for w in [
+        "se escapó", "se escapo", "se me escapó", "se me escapo", "perdid", "extravi",
+        "si la ves", "si lo ves", "responde al nombre", "avísame", "avisame", "se salió", "se salio",
+        "no la persigas", "no lo persigas", "ayuda encontrar"
+    ]):
+        return 14
+
+    if any(w in txt for w in [
+        "encontr", "hallé", "halle", "hallad", "aparecio", "apareció", "anda por", "anda en",
+        "alguien lo reconoce", "alguien la reconoce", "trae collar", "lo encontré", "lo encontre",
+        "la encontré", "la encontre"
+    ]):
+        return 15
+
+    if any(w in txt for w in [
+        "adopci", "adopta", "regalo", "regala", "busca hogar", "busca familia", "hogar",
+        "la entregamos", "dar en adopción", "dar en adopcion", "necesita hogar",
+        "esperando a alguien", "denle la oportunidad"
+    ]):
+        return 16
+
+    return 11

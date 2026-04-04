@@ -66,38 +66,49 @@ def generar_html_resultados(resultados, meta, config_grupo, cats_negocios, cats_
         color, bg, emoji_tipo = _color_por_tipo(tipo)
         cat_nombre, cat_emoji, cat_color = cat_info(p)
 
-        imgs = p.get("imagenes_cloudinary", [])
+        raw_imgs = p.get("imagenes_cloudinary", [])
+        img_assets = []
+        for item in raw_imgs:
+            if isinstance(item, dict):
+                url = item.get("url")
+                alt = item.get("alt") or p.get("titulo") or cat_nombre
+            else:
+                url = item
+                alt = p.get("titulo") or cat_nombre
+            if url:
+                img_assets.append({"url": url, "alt": alt})
+
+        imgs = [x["url"] for x in img_assets]
         tel = p.get("telefono") or p.get("whatsapp", "")
         autor = p.get("autor", "")
         error = p.get("_error_visible", "")
 
-        # ── Título y texto COMPLETO según tipo ──────────────
-        # IMPORTANTE: guardamos el texto completo sin truncar
-        # El truncado solo ocurre en la vista corta del toggle
         if tipo == "noticia":
             titulo = p.get("titulo", p.get("texto_limpio", "")[:80])
-            # texto completo sin cortar — el toggle maneja la vista
             texto_completo = p.get("texto", p.get("texto_limpio", ""))
         elif tipo == "alerta":
-            titulo = cat_nombre
+            titulo = p.get("titulo", cat_nombre)
             texto_completo = p.get("texto_alerta", p.get("texto_limpio", ""))
         elif tipo == "mascota":
-            titulo = cat_nombre
+            titulo = p.get("titulo", cat_nombre)
             texto_completo = p.get("descripcion", p.get("texto_limpio", ""))
-        else:  # negocio
-            titulo = p.get("nombre", p.get("texto_limpio", "")[:60])
+        else:
+            titulo = p.get("titulo", p.get("nombre", p.get("texto_limpio", "")[:60]))
             texto_completo = p.get("descripcion", p.get("texto_limpio", ""))
 
         direccion = p.get("direccion_aprox", "")
 
-        # Galería
         gal_html = ""
         if imgs:
             imgs_js = json.dumps(imgs)
+            imgs_tags = ''.join(
+                f'<img src="{a["url"]}" alt="{((a["alt"] or titulo).replace(chr(34), "&quot;"))}" loading="lazy">'
+                for a in img_assets
+            )
             gal_html = f"""
 <div class="gal" onclick="openLB({imgs_js}, 0, {json.dumps(titulo)})">
   <div class="gal-track" id="gt_{hash(titulo) % 99999}">
-    {''.join(f'<img src="{u}" alt="" loading="lazy">' for u in imgs)}
+    {imgs_tags}
   </div>
   {'<button class="gal-btn prev" onclick="event.stopPropagation();slideGal(this,-1)">&#8249;</button><button class="gal-btn nxt" onclick="event.stopPropagation();slideGal(this,1)">&#8250;</button>' if len(imgs) > 1 else ''}
   <span class="gal-badge" style="background:rgba(0,0,0,.72)!important;color:#fff!important">{emoji_tipo} {tipo.upper()}</span>

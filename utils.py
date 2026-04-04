@@ -1,64 +1,50 @@
+import ast
 import re
+import unicodedata
 from rapidfuzz import fuzz
 
-# db se importa solo cuando se necesita para evitar error en tests
+# db se importa solo cuando se necesita para evitar errores en tests
 # from db import obtener_colonias
 
+NEWS_MIN_WORDS = 70
+
 # ═══════════════════════════════════════════════════════════════
-# PASO 0 — DESCARTE PREVIO (sin IA, sin regex complejo)
+# DESCARTE PREVIO
 # ═══════════════════════════════════════════════════════════════
-
-_UI_FACEBOOK_TEXTOS = {
-    "Más relevantes", "Ver más comentarios", "Por qué ves esto",
-    "Compartir", "Me gusta", "Comentar", "Enviar", "Seguir",
-}
-
-
-def contar_imagenes(post):
-    """Cuenta imágenes usando varios campos posibles del scraper."""
-    if isinstance(post.get("num_imgs"), int):
-        return post.get("num_imgs", 0)
-
-    for key in ("imagenes", "images", "fotos"):
-        valor = post.get(key)
-        if isinstance(valor, list):
-            return len(valor)
-
-    return 0
-
 
 def es_descartable(post):
     """
-    Descarta antes de cualquier proceso.
-    Retorna (True, razon) si se debe descartar, (False, None) si pasa.
+    Descarta antes de cualquier proceso pesado.
+    Retorna (True, razon) si se debe descartar.
     """
-    txt = post.get("texto", "").strip()
-    num_imgs = contar_imagenes(post)
+    txt = (post.get("texto") or "").strip()
+    num_imgs = post.get("num_imgs")
+    if num_imgs is None:
+        num_imgs = len(post.get("imagenes") or [])
 
-    # 1. Scrambled — metadatos de FB mezclados con texto
     palabras = txt.split()
     if any(len(w) > 25 and re.search(r'\d', w) and re.search(r'[a-zA-Z]', w) for w in palabras):
         limpio = re.sub(r'\S{26,}', '', txt).strip()
         if len(limpio) < 20:
             return True, "scrambled"
 
-    # 2. Muy corto (sin imagen tampoco)
     if len(txt) < 15 and num_imgs == 0:
         return True, "muy_corto"
 
-    # 3. Solo un número de teléfono o basura
     if re.match(r'^[\d\s\-\.\(\)\+]{8,18}$', txt):
         return True, "solo_telefono_o_numero"
 
-    # 4. Texto de UI de Facebook
-    if txt in _UI_FACEBOOK_TEXTOS:
+    if txt in {
+        "Más relevantes", "Ver más comentarios", "Por qué ves esto",
+        "Compartir", "Me gusta", "Comentar"
+    }:
         return True, "ui_facebook"
 
     return False, None
 
 
 # ═══════════════════════════════════════════════════════════════
-# LIMPIEZA DE TEXTO — SIN IA
+# LIMPIEZA DE TEXTO
 # ═══════════════════════════════════════════════════════════════
 
 _RE_EMOJI = re.compile(
@@ -73,21 +59,16 @@ _RE_EMOJI = re.compile(
 )
 _RE_HASHTAG = re.compile(r'#\w+')
 _RE_URL = re.compile(r'https?://\S+|wa\.me(?:/c)?/\S+')
-_RE_SIGNOS_REP = re.compile(r'([!?])\1{1,}|\.{4,}')
+_RE_SIGNOS_REP = re.compile(r'([!?])\1{1,}|\.{3,}')
 _RE_ESPACIOS = re.compile(r'\s+')
 _RE_MENCIONES = re.compile(r'@\[\d+:\d+:[^\]]*\]')
 
 
 def limpiar_texto_regex(txt):
-    """
-    Limpieza completa sin IA. Maneja la mayoría de los casos del corpus.
-    Orden importa: primero quitar estructuras, luego normalizar espacios.
-    """
     if not txt:
         return ""
 
     txt = _RE_MENCIONES.sub('', txt)
-    txt = _RE_URL.sub('', txt)
     txt = _RE_HASHTAG.sub('', txt)
     txt = _RE_EMOJI.sub('', txt)
 
@@ -97,29 +78,30 @@ def limpiar_texto_regex(txt):
         if not (len(w) > 25 and re.search(r'\d', w) and re.search(r'[a-zA-Z]', w))
     )
 
-    def _norm_signos(match):
-        grp = match.group(0)
-        if grp.startswith('!'):
-            return '!'
-        if grp.startswith('?'):
-            return '?'
-        return '...'
-
-    txt = _RE_SIGNOS_REP.sub(_norm_signos, txt)
+    txt = _RE_SIGNOS_REP.sub(lambda m: m.group(1) if m.group(1) else '.', txt)
     txt = _RE_ESPACIOS.sub(' ', txt).strip()
 
-    letras = re.findall(r'[a-zA-ZÁÉÍÓÚáéíóúÑñÜü]', txt)
+    letras = re.findall(r'[a-zA-ZÁÉÍÓÚÑáéíóúñ]', txt)
     mayus = sum(1 for l in letras if l.isupper())
-    if letras and mayus / len(letras) > 0.70 and len(txt) > 15:
-        partes = re.split(r'(?<=[\.!?])\s+', txt)
-        partes = [p.strip().capitalize() for p in partes if p.strip()]
+    if letras and len(txt) > 15 and mayus / max(len(letras), 1) > 0.70:
+        partes = [s.strip().capitalize() for s in re.split(r'(?<=[.!?])\s+|\n+', txt) if s.strip()]
         txt = ' '.join(partes)
 
     return txt
 
 
+def remover_urls(txt):
+    return _RE_URL.sub('', txt or '').strip()
+
+
+def contar_palabras(txt):
+    if not txt:
+        return 0
+    return len([w for w in re.split(r'\s+', txt.strip()) if w])
+
+
 # ═══════════════════════════════════════════════════════════════
-# EXTRACCIÓN DE TELÉFONO — MEJORADO
+# TELÉFONO
 # ═══════════════════════════════════════════════════════════════
 
 _PATRONES_TEL = [
@@ -127,93 +109,118 @@ _PATRONES_TEL = [
     r'\b(\d{3})[\s\-\.](\d{3})[\s\-\.](\d{4})\b',
     r'(?:\+52|52)[\s\-]?(\d{10})\b',
     r'(?:\+52|52)[\s\-]?(\d{3})[\s\-\.](\d{3})[\s\-\.](\d{4})\b',
-    r'(?:cel|tel|whatsapp|wha|wa|llamar?\s*al?|marca\s*al?|al\s+num(?:ero)?)[:\s\-]*(\d[\d\s\-\.]{8,12}\d)',
+    r'(?:cel|tel|whatsapp|wha|llamar?\s*al?|marca\s*al?|al\s+num(?:ero)?)[:\s\-]*(\d[\d\s\-\.]{8,12}\d)',
     r'wa\.me(?:/c)?/(?:52)?(\d{10})',
 ]
 
 
 def extraer_telefono(txt):
-    """
-    Extracción de teléfono mejorada. Retorna string de 10 dígitos o None.
-    """
     if not txt:
         return None
-
     for pat in _PATRONES_TEL:
         m = re.search(pat, txt, re.IGNORECASE)
-        if not m:
-            continue
-
-        numero = ''.join(g for g in m.groups() if g)
-        numero = re.sub(r'\D', '', numero)
-        if len(numero) >= 10:
-            return numero[-10:]
-
+        if m:
+            numero = ''.join(g for g in m.groups() if g)
+            numero = re.sub(r'\D', '', numero)
+            if len(numero) >= 10:
+                return numero[-10:]
     return None
 
 
 # ═══════════════════════════════════════════════════════════════
-# PRE-CLASIFICACIÓN POR KEYWORDS (antes de llamar a la IA)
+# REGLAS DE NOTICIAS
+# ═══════════════════════════════════════════════════════════════
+
+KW_BLOQUEAR_NOTICIA = [
+    "ubicados en", "servicio a domicilio", "pedido", "pedidos", "menu", "menú",
+    "whatsapp", "horario", "contamos con", "promo", "promoción", "precio",
+    "pesos", "$", "frapp", "smoothie", "crepa", "fresas con", "mini hotcakes",
+    "mini waffles", "entrega", "a domicilio", "cotiza", "costo", "reserva",
+    "viernes de", "jueves de", "sabado de", "sábado de", "abrimos",
+    "cerramos", "ubicada en", "ubicado en", "encargos", "encargo"
+]
+
+KW_NOTICIA_FUERTE = [
+    "autoridades", "reportan", "se registra", "ocurrió", "informaron",
+    "policía", "policia", "incendio", "accidente", "protección civil",
+    "proteccion civil", "vecinos denuncian", "movilización", "movilizacion",
+    "hechos", "comunicado", "ayuntamiento", "bomberos", "seguridad",
+    "choque", "falleció", "fallecio", "detenido", "rescate"
+]
+
+
+def tiene_bloqueo_noticia(txt):
+    t = (txt or "").lower()
+    return any(kw in t for kw in KW_BLOQUEAR_NOTICIA)
+
+
+def tiene_senales_noticia(txt):
+    t = (txt or "").lower()
+    return any(kw in t for kw in KW_NOTICIA_FUERTE)
+
+
+def puede_ser_noticia_desde_json(txt):
+    if contar_palabras(txt) < NEWS_MIN_WORDS:
+        return False
+    if tiene_bloqueo_noticia(txt):
+        return False
+    if not tiene_senales_noticia(txt):
+        return False
+    return True
+
+
+# ═══════════════════════════════════════════════════════════════
+# PRE-CLASIFICACIÓN POR KEYWORDS
 # ═══════════════════════════════════════════════════════════════
 
 _KW = {
     'negocio': {
         2: [
-            'vendo', 'venta', 'se vende', 'precio', 'oferta', 'promoción', 'promocion',
-            'servicio', 'domicilio', 'pedido', 'encargo', 'disponible', 'delivery',
-            'envio', 'envío', 'whatsapp', 'cel', 'tel', 'pesos', 'mxn', 'repostería',
-            'reposteria', 'taller', 'reparaci', 'instalaci', 'plomero', 'electricista',
-            'carpintero', 'pintura', 'herreria', 'albañil', 'mantenimiento', 'cotiz',
-            'renta', 'alquiler', 'instalación gratis', 'rifa'
+            'vendo', 'venta', 'precio', 'oferta', 'servicio', 'domicilio', 'pedido',
+            'encargo', 'contamos con', 'disponible', 'delivery', 'envio', 'envío',
+            'whatsapp', 'cel', 'tel', 'pesos', 'mxn', 'dlls', 'repostería', 'reposteria',
+            'taller', 'reparaci', 'instalaci', 'plomero', 'electricista', 'carpintero',
+            'pintura', 'herreria', 'albañil', 'mantenimiento', 'cotiz', 'ubicados en',
+            'ubicado en', 'horario', 'frapp', 'smoothie', 'crepa', 'fresas con', 'menu', 'menú'
         ],
         1: [
             'comida', 'tacos', 'pizza', 'hamburguesa', 'torta', 'sushi', 'mariscos',
-            'pollo', 'carne', 'panadería', 'panaderia', 'pastel', 'refresco', 'agua',
-            'café', 'cafe', 'ropa', 'calzado', 'zapato', 'accesorio', 'joyeria',
-            'belleza', 'estética', 'estetica', 'uñas', 'cabello', 'maquillaje',
-            'masaje', 'spa', 'gym', 'clases', 'curso', 'academia', 'asesoría',
-            'asesoria', 'seguro', 'crédito', 'credito', 'préstamo', 'prestamo',
-            'inmueble', 'departamento', 'casa en renta'
+            'pollo', 'carne', 'panadería', 'panaderia', 'pastel', 'refresco', 'agua', 'café', 'cafe',
+            'ropa', 'calzado', 'zapato', 'accesorio', 'joyeria', 'joyería', 'belleza', 'estética',
+            'uñas', 'cabello', 'maquillaje', 'masaje', 'spa', 'gym', 'clases', 'curso',
+            'academia', 'asesoría', 'asesoria', 'seguro', 'crédito', 'credito', 'préstamo', 'prestamo',
+            'inmueble', 'renta', 'entrega'
         ],
     },
     'alerta': {
         2: [
             'robo', 'robaron', 'ladrón', 'ladron', 'sospechoso', 'bache', 'fuga de agua',
             'accidente', 'choque', 'atropelló', 'atropello', 'herido', 'peligro',
-            'alerta', 'cuidado', 'emergencia', 'sin luz', 'cable caído', 'cable caido',
-            'fuga de gas', 'se metieron'
+            'cuidado', 'alerta', 'auxilio', 'emergencia', 'sin luz'
         ],
-        1: ['incendio', 'inundación', 'inundacion', 'perro agresivo', 'persona sospechosa'],
+        1: ['incendio', 'inundación', 'inundacion', 'poste caido', 'fuga', 'cables']
     },
     'mascota': {
-        3: [
-            'perdí mi perro', 'perdi mi perro', 'perdí mi gato', 'perdi mi gato',
-            'se escapó mi', 'se escapo mi', 'se perdió mi', 'se perdio mi',
-            'en adopción', 'en adopcion', 'busca hogar', 'busco dueño', 'busco dueno',
-            'encontré un perro', 'encontre un perro', 'encontré un gato', 'encontre un gato',
-            'perro perdido', 'gato perdido'
+        2: [
+            'perdí mi perro', 'perdí mi gato', 'se escapó mi', 'se me escapó', 'se perdió mi',
+            'en adopción', 'en adopcion', 'busca hogar', 'busca familia', 'dar en adopción',
+            'encontré un perro', 'encontré un gato', 'perro perdido', 'gato perdido',
+            'si la ves', 'responde al nombre', 'avísame', 'la entregamos'
         ],
-        1: ['mascota', 'perro', 'gato', 'cachorro', 'gatito', 'canino', 'felino', 'adopción', 'adopcion'],
+        1: ['mascota', 'perro', 'gato', 'cachorro', 'gatito', 'canino', 'felino', 'adopción', 'adopcion']
     },
     'noticia': {
-        2: [
-            'autoridades', 'municipio', 'alcalde', 'gobierno', 'obra pública', 'obra publica',
-            'colonia informa', 'vecinos reportan', 'policía', 'policia', 'bomberos',
-            'comunicado', 'protección civil', 'proteccion civil'
-        ],
-        1: ['reunión', 'reunion', 'asamblea', 'informan', 'reportan', 'confirman'],
+        3: ['autoridades', 'policía', 'policia', 'bomberos', 'protección civil', 'proteccion civil'],
+        2: ['vecinos reportan', 'se registra', 'comunicado', 'ayuntamiento', 'movilización', 'movilizacion'],
+        1: ['reportan', 'informan', 'accidente', 'incendio', 'hechos']
     },
 }
 
 UMBRAL_KEYWORDS = 2
 
 
-def pre_clasificar_keywords(txt, autor=""):
-    """
-    Intenta clasificar el post sin IA usando keywords ponderadas.
-    Retorna: (tipo, score). Si score < umbral → ('ambiguo', 0).
-    """
-    texto_completo = (txt + ' ' + autor).lower()
+def pre_clasificar_keywords(txt, autor="", grupo_tipo="vecinos"):
+    texto_completo = ((txt or "") + ' ' + (autor or "")).lower()
     scores = {}
 
     for tipo, grupos in _KW.items():
@@ -227,27 +234,20 @@ def pre_clasificar_keywords(txt, autor=""):
     mejor_tipo = max(scores, key=scores.get)
     mejor_score = scores[mejor_tipo]
 
+    if mejor_tipo == 'noticia' and not puede_ser_noticia_desde_json(txt):
+        return 'ambiguo', 0
+
     if mejor_score >= UMBRAL_KEYWORDS:
-        empatados = [t for t, s in scores.items() if s == mejor_score and s > 0]
-        if len(empatados) == 1:
-            return mejor_tipo, mejor_score
+        return mejor_tipo, mejor_score
 
     return 'ambiguo', 0
 
 
 # ═══════════════════════════════════════════════════════════════
-# PASO 1 y 2 — LIMPIEZA Y DEDUPLICACIÓN
+# PASO 1: LIMPIEZA
 # ═══════════════════════════════════════════════════════════════
 
-def paso_1_limpieza(posts):
-    """
-    Limpieza completa sin IA:
-    1. Descarte previo (scrambled, muy corto, UI)
-    2. Extracción de teléfono desde texto original y autor
-    3. Limpieza de texto (regex)
-    4. Pre-clasificación por keywords
-    Marca cada post con: texto_limpio, telefono, pre_tipo, pre_score.
-    """
+def paso_1_limpieza(posts, grupo_tipo="vecinos"):
     limpios = []
     descartados = []
 
@@ -258,27 +258,21 @@ def paso_1_limpieza(posts):
             descartados.append(post)
             continue
 
-        txt_original = post.get("texto", "").strip()
+        txt_original = (post.get("texto") or "").strip()
+        txt_sin_urls = remover_urls(txt_original)
+        txt_limpio = limpiar_texto_regex(txt_sin_urls)
 
-        # Extraer teléfono ANTES de quitar URLs para no perder wa.me o formatos raros.
-        tel = (
-            extraer_telefono(txt_original)
-            or extraer_telefono(post.get("autor", ""))
-        )
-
-        txt_limpio = limpiar_texto_regex(txt_original)
         if len(txt_limpio) < 10:
             post['_descartado'] = 'vacio_tras_limpieza'
             descartados.append(post)
             continue
 
-        post["texto_limpio"] = txt_limpio
-        post["telefono"] = tel or extraer_telefono(txt_limpio)
-
-        pre_tipo, pre_score = pre_clasificar_keywords(txt_limpio, post.get("autor", ""))
-        post["pre_tipo"] = pre_tipo
-        post["pre_score"] = pre_score
-
+        post['texto_limpio'] = txt_limpio
+        post['telefono'] = extraer_telefono(txt_original) or extraer_telefono(post.get("autor", ""))
+        pre_tipo, pre_score = pre_clasificar_keywords(txt_limpio, post.get("autor", ""), grupo_tipo=grupo_tipo)
+        post['pre_tipo'] = pre_tipo
+        post['pre_score'] = pre_score
+        post['noticia_permitida'] = puede_ser_noticia_desde_json(txt_original)
         limpios.append(post)
 
     return limpios, descartados
@@ -287,71 +281,230 @@ def paso_1_limpieza(posts):
 def paso_2_clusters(posts):
     clusters = []
     usados = set()
-
     for i, p1 in enumerate(posts):
         if i in usados:
             continue
         cluster = [p1]
         usados.add(i)
-
         for j, p2 in enumerate(posts):
             if j in usados:
                 continue
-            sim = fuzz.token_set_ratio(p1["texto_limpio"], p2["texto_limpio"])
+            sim = fuzz.token_set_ratio(p1.get("texto_limpio", ""), p2.get("texto_limpio", ""))
             if sim >= 85:
                 cluster.append(p2)
                 usados.add(j)
-
         clusters.append(cluster)
-
     return clusters
+
+
+# ═══════════════════════════════════════════════════════════════
+# TÍTULOS / SEO / CLOUDINARY HELPERS
+# ═══════════════════════════════════════════════════════════════
+
+def _ascii(txt):
+    txt = unicodedata.normalize('NFKD', txt or '').encode('ascii', 'ignore').decode('ascii')
+    return txt
+
+
+def slugify(txt, max_words=10, max_len=90):
+    txt = _ascii(txt).lower()
+    txt = re.sub(r'[^a-z0-9\s\-]', ' ', txt)
+    txt = re.sub(r'\s+', ' ', txt).strip()
+    words = txt.split()[:max_words]
+    slug = '-'.join(words)
+    slug = re.sub(r'-{2,}', '-', slug).strip('-')
+    return slug[:max_len].strip('-') or 'imagen'
+
+
+def primeras_palabras(txt, n=8):
+    txt = re.sub(r'\s+', ' ', txt or '').strip()
+    words = txt.split()
+    return ' '.join(words[:n]).strip()
+
+
+def limpiar_titulo(txt, max_chars=85):
+    txt = re.sub(r'\s+', ' ', txt or '').strip(' .,-')
+    if len(txt) <= max_chars:
+        return txt
+    corte = txt[:max_chars].rstrip()
+    if ' ' in corte:
+        corte = corte.rsplit(' ', 1)[0]
+    return corte.strip(' .,-')
+
+
+def extraer_ubicacion_simple(txt):
+    t = txt or ''
+    patrones = [
+        r'\ben\s+([A-Za-zÁÉÍÓÚÑáéíóúñ0-9\-\s]{4,50})',
+        r'\bde\s+([A-Za-zÁÉÍÓÚÑáéíóúñ0-9\-\s]{4,50})'
+    ]
+    for pat in patrones:
+        m = re.search(pat, t, re.IGNORECASE)
+        if m:
+            frag = re.split(r'[,.]|\s+y\s', m.group(1))[0].strip()
+            frag = re.sub(r'\s+', ' ', frag)
+            if len(frag) >= 4:
+                return frag[:40]
+    return ''
+
+
+def generar_titulo_negocio(post, categoria_nombre=''):
+    txt = post.get('texto_limpio') or post.get('texto') or ''
+    ubic = extraer_ubicacion_simple(txt)
+    base = primeras_palabras(txt, 8)
+    if categoria_nombre and categoria_nombre.lower() not in ['general', 'mascotas']:
+        titulo = base or f"{categoria_nombre} en Mérida"
+    else:
+        titulo = base or 'Negocio local en Mérida'
+    if ubic and ubic.lower() not in titulo.lower():
+        titulo = f"{titulo} en {ubic}"
+    return limpiar_titulo(titulo.title()) or 'Negocio local en Mérida'
+
+
+def generar_titulo_mascota(post, categoria_id=11):
+    txt = (post.get('texto_limpio') or post.get('texto') or '').lower()
+    especie = 'Mascota'
+    if 'perro' in txt or 'perrito' in txt or 'cachorro' in txt:
+        especie = 'Perro'
+    elif 'gata' in txt or 'gato' in txt or 'gatita' in txt:
+        especie = 'Gato'
+
+    subtipo = {
+        14: 'perdido',
+        15: 'encontrado',
+        16: 'en adopción',
+    }.get(categoria_id, 'reportado')
+
+    ubic = extraer_ubicacion_simple(post.get('texto_limpio') or post.get('texto') or '')
+    titulo = f"{especie} {subtipo}"
+    if ubic:
+        titulo += f" en {ubic}"
+    return limpiar_titulo(titulo.title())
+
+
+def generar_titulo_alerta(post, categoria_nombre='Alerta'):
+    txt = post.get('texto_alerta') or post.get('texto_limpio') or post.get('texto') or ''
+    ubic = extraer_ubicacion_simple(txt)
+    base = categoria_nombre if categoria_nombre and categoria_nombre.lower() != 'alerta' else primeras_palabras(txt, 7)
+    titulo = base or 'Alerta vecinal'
+    if ubic and ubic.lower() not in titulo.lower():
+        titulo = f"{titulo} en {ubic}"
+    return limpiar_titulo(titulo.title())
+
+
+def generar_titulo_noticia_fallback(post):
+    txt = post.get('texto_limpio') or post.get('texto') or ''
+    primera = re.split(r'[.!?\n]', txt)[0].strip()
+    base = primera or primeras_palabras(txt, 10) or 'Noticia local en Mérida'
+    return limpiar_titulo(base.title(), max_chars=90)
+
+
+def generar_alt_imagen(post, config_grupo=None):
+    tipo = post.get('tipo') or post.get('_tipo_final') or post.get('tipo_detectado') or 'general'
+    txt = post.get('texto_limpio') or post.get('texto') or post.get('descripcion') or post.get('texto_alerta') or ''
+    ubic = extraer_ubicacion_simple(txt)
+
+    if tipo == 'mascota':
+        titulo = generar_titulo_mascota(post, post.get('categoria_id', 11))
+        alt = f"Imagen de {titulo.lower()}"
+    elif tipo == 'alerta':
+        alt = "Imagen de alerta vecinal"
+        if ubic:
+            alt += f" en {ubic}"
+    elif tipo == 'noticia':
+        titulo = post.get('titulo') or generar_titulo_noticia_fallback(post)
+        alt = f"Imagen relacionada con {titulo.lower()}"
+    else:
+        titulo = post.get('titulo') or primeras_palabras(txt, 6) or 'negocio local'
+        alt = f"Imagen de {titulo.lower()}"
+        if ubic and ubic.lower() not in alt.lower():
+            alt += f" en {ubic}"
+
+    return limpiar_titulo(alt, max_chars=125)
+
+
+def construir_public_id(post, img, meta=None, config_grupo=None, idx=0):
+    tipo = post.get('tipo') or post.get('_tipo_final') or post.get('tipo_detectado') or 'general'
+    txt = post.get('texto_limpio') or post.get('texto') or post.get('descripcion') or post.get('texto_alerta') or ''
+    tema = slugify(post.get('titulo') or primeras_palabras(txt, 6), max_words=8, max_len=55)
+    ciudad = slugify((meta or {}).get('city') or 'merida', max_words=3, max_len=20)
+    estado = slugify((meta or {}).get('state') or 'yucatan', max_words=3, max_len=20)
+    zona = slugify(extraer_ubicacion_simple(txt) or 'general', max_words=5, max_len=30)
+    img_id = None
+    if isinstance(img, dict):
+        img_id = img.get('fbid') or img.get('id')
+    img_id = img_id or post.get('fbid_post') or f"{idx+1}"
+    return slugify(f"{tema} {tipo} {ciudad} {estado} {zona} {img_id}", max_words=20, max_len=120)
+
+
+def parse_keywords(value):
+    if value is None:
+        return []
+    if isinstance(value, (list, tuple)):
+        return [str(x).strip().lower() for x in value if str(x).strip()]
+    if isinstance(value, str):
+        txt = value.strip()
+        if not txt:
+            return []
+        try:
+            parsed = ast.literal_eval(txt)
+            if isinstance(parsed, (list, tuple)):
+                return [str(x).strip().lower() for x in parsed if str(x).strip()]
+        except Exception:
+            pass
+        if '|' in txt:
+            parts = txt.split('|')
+        elif ',' in txt:
+            parts = txt.split(',')
+        else:
+            parts = [txt]
+        return [p.strip().lower() for p in parts if p.strip()]
+    return []
 
 
 # ─── MATCH DE COLONIAS ───────────────────────────────────────
 
 KEYWORDS_NOTICIAS = [
-    "noticias", "ultimas", "última", "última hora",
-    "policia", "policía", "seguridad", "yucatan", "yucatán",
-    "merida", "mérida", "informativo", "novedades", "prensa",
-    "notificaciones", "alerta", "urgente"
+    'noticias', 'ultimas', 'última', 'última hora', 'policia', 'policía',
+    'seguridad', 'yucatan', 'yucatán', 'merida', 'mérida', 'informativo',
+    'novedades', 'prensa', 'notificaciones', 'alerta', 'urgente'
 ]
 
 
 def detectar_tipo_por_nombre(group_name):
-    nombre_lower = group_name.lower()
+    nombre_lower = (group_name or '').lower()
     for kw in KEYWORDS_NOTICIAS:
         if kw in nombre_lower:
-            return "noticias"
-    return "vecinos"
+            return 'noticias'
+    return 'vecinos'
 
 
 def match_colonias(group_name):
     from db import obtener_colonias
-
     colonias = obtener_colonias()
-    nombre_lower = group_name.lower()
+    nombre_lower = (group_name or '').lower()
     candidatas = []
 
     for col in colonias:
-        col_lower = col["nombre"].lower()
+        col_lower = col['nombre'].lower()
         if col_lower in nombre_lower:
-            candidatas.append({"colonia": col, "score": 100, "tipo": "substring"})
+            candidatas.append({'colonia': col, 'score': 100, 'tipo': 'substring'})
             continue
         score = fuzz.partial_ratio(col_lower, nombre_lower)
         if score >= 75:
-            candidatas.append({"colonia": col, "score": score, "tipo": "fuzzy"})
+            candidatas.append({'colonia': col, 'score': score, 'tipo': 'fuzzy'})
 
-    candidatas.sort(key=lambda x: x["score"], reverse=True)
+    candidatas.sort(key=lambda x: x['score'], reverse=True)
 
     seen = set()
     unicas = []
     for c in candidatas:
-        if c["colonia"]["id"] not in seen:
-            seen.add(c["colonia"]["id"])
+        if c['colonia']['id'] not in seen:
+            seen.add(c['colonia']['id'])
             unicas.append(c)
 
     if not unicas:
-        return "ninguno", []
-    if len(unicas) == 1 and unicas[0]["score"] >= 85:
-        return "exacto", unicas
-    return "multiple", unicas[:5]
+        return 'ninguno', []
+    if len(unicas) == 1 and unicas[0]['score'] >= 85:
+        return 'exacto', unicas
+    return 'multiple', unicas[:5]

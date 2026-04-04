@@ -1,6 +1,6 @@
 from fastapi import FastAPI, UploadFile, File, Request
 from fastapi.staticfiles import StaticFiles
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, Response
 import json
 import threading
 import os
@@ -70,6 +70,7 @@ async def procesar(request: Request):
 
     posts = estado.get("_posts_temp", [])
     meta = estado.get("_meta_temp", {})
+
     if not posts:
         return JSONResponse({"error": "No hay posts cargados. Sube el archivo primero."}, status_code=400)
 
@@ -127,8 +128,6 @@ def descargar(nombre: str):
     ruta = os.path.join("static", "resultados", nombre)
     if not os.path.exists(ruta):
         return JSONResponse({"error": "Archivo no encontrado"}, status_code=404)
-
-    from fastapi.responses import Response
     with open(ruta, "rb") as f:
         data = f.read()
     return Response(
