@@ -175,7 +175,7 @@ REGLAS:
 6. Si el texto es solo una consulta o recomendación y no una oferta real, responde exactamente: IGNORAR
 
 Responde SOLO con JSON válido:
-{"titulo":"..."}"""
+{{"titulo":"..."}}"""
 
 
 def _titulo_pobre(titulo):
