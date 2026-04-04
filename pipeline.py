@@ -128,6 +128,7 @@ def ejecutar_pipeline(posts, meta, config_grupo, estado):
 
     total = max(len(clasificados), 1)
     aprobados = []
+    descartados_sin_imagen = 0
     for i, p in enumerate(clasificados):
         estado["progreso"] = 58 + int((i / total) * 22)
         autor = (p.get("autor") or "sin autor")[:40]
@@ -142,6 +143,13 @@ def ejecutar_pipeline(posts, meta, config_grupo, estado):
 
         if tipo == "noticia" and not p.get("noticia_permitida"):
             tipo = "negocio"
+
+        tiene_imagen_origen = bool(p.get("imagenes") or [])
+        if tipo != "noticia" and not tiene_imagen_origen:
+            p["_descartado"] = "sin_imagen"
+            resultados["ignorados"].append(p)
+            descartados_sin_imagen += 1
+            continue
 
         if tipo == "mascota":
             p["tipo"] = "mascota"
@@ -210,7 +218,19 @@ def ejecutar_pipeline(posts, meta, config_grupo, estado):
         imgs_ok += ok
         imgs_fail += fail
 
-    _set_estado(estado, detalles=f"Imágenes: {imgs_ok} ok, {imgs_fail} fallidas", actividad="Subida de imágenes terminada", add_history=True)
+    # Si un post no-noticia se quedó sin imágenes finales, descártalo del resultado
+    for bucket in ['negocios', 'alertas', 'mascotas']:
+        conservados = []
+        for p in resultados[bucket]:
+            if p.get('imagenes_cloudinary'):
+                conservados.append(p)
+            else:
+                p['_descartado'] = 'sin_imagen_final'
+                resultados['ignorados'].append(p)
+                descartados_sin_imagen += 1
+        resultados[bucket] = conservados
+
+    _set_estado(estado, detalles=f"Imágenes: {imgs_ok} ok, {imgs_fail} fallidas · sin imagen: {descartados_sin_imagen}", actividad="Subida de imágenes terminada", add_history=True)
 
     # ── PASO 6: Generar HTML ───────────────────────────────────────
     _set_estado(estado, paso="Generando reporte HTML", progreso=92, actividad="Armando el reporte visual HTML", add_history=True)
@@ -283,6 +303,7 @@ def ejecutar_pipeline(posts, meta, config_grupo, estado):
         "ignorados": len(resultados["ignorados"]),
         "imagenes_ok": imgs_ok,
         "imagenes_fail": imgs_fail,
+        "descartados_sin_imagen": descartados_sin_imagen,
         "db_nuevos": db_nuevos,
         "db_duplicados": db_duplicados,
     }
@@ -295,8 +316,8 @@ def _detectar_cat_mascota(texto):
 
     if any(w in txt for w in [
         "se escapó", "se escapo", "se me escapó", "se me escapo", "perdid", "extravi",
-        "si la ves", "si lo ves", "responde al nombre", "avísame", "avisame", "se salió", "se salio",
-        "no la persigas", "no lo persigas", "ayuda encontrar"
+        "si la ves", "si lo ves", "si la ven", "si lo ven", "responde al nombre", "avísame", "avisame", "se salió", "se salio",
+        "no la persigas", "no lo persigas", "ayuda encontrar", "si la encuentran", "si lo encuentran"
     ]):
         return 14
 

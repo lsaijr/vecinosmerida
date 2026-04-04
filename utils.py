@@ -366,17 +366,20 @@ NEGOCIO_TEMA_MAP = [
     (['panuchos'], 'Panuchos'),
     (['tacos al pastor', 'pastor'], 'Tacos al pastor'),
     (['tacos'], 'Tacos'),
-    (['pizza'], 'Pizzas'),
+    (['pizza', 'pizzas'], 'Pizzas'),
     (['hamburguesa', 'hamburguesas'], 'Hamburguesas'),
     (['postre', 'postres'], 'Postres'),
+    (['gomitas'], 'Gomitas'),
+    (['reposteria', 'repostería', 'panes', 'pastel', 'pasteles'], 'Repostería casera'),
     (['masaje', 'masajes'], 'Masajes'),
     (['flete', 'fletes', 'mudanza', 'mudanzas'], 'Fletes y mudanzas'),
-    (['clases', 'curso', 'academia'], 'Clases'),
-    (['uñas', 'unas', 'cabello', 'maquillaje'], 'Servicios de belleza'),
-    (['mueble', 'muebles'], 'Lavado de muebles'),
-    (['pintura', 'ceramica', 'cerámica'], 'Corrección de pintura'),
-    (['bateria', 'batería'], 'Baterías'),
-    (['ropa', 'vestido', 'blusa'], 'Ropa y accesorios'),
+    (['clases', 'curso', 'academia', 'vacaciones'], 'Clases'),
+    (['uñas', 'unas', 'cabello', 'maquillaje', 'lifting'], 'Servicios de belleza'),
+    (['mueble', 'muebles', 'sala', 'colchon', 'colchón'], 'Lavado de muebles'),
+    (['pintura', 'ceramica', 'cerámica', 'detallado'], 'Corrección de pintura'),
+    (['bateria', 'batería', 'optima'], 'Baterías'),
+    (['ropa', 'vestido', 'blusa', 'tenis', 'sandalia', 'calzado'], 'Ropa y accesorios'),
+    (['envios', 'envíos', 'paqueterias', 'paqueterías', 'estafeta', 'fedex'], 'Envíos'),
 ]
 
 ALERTA_TEMA_MAP = [
@@ -392,7 +395,7 @@ ALERTA_TEMA_MAP = [
 def _dedupe_repeated_phrases(txt):
     txt = re.sub(r'\s+', ' ', txt or '').strip()
     for _ in range(3):
-        nuevo = re.sub(r'([^,.!?]{3,60}?)\s+', r'', txt, flags=re.IGNORECASE)
+        nuevo = re.sub(r'(?i)\b([^,.!?]{3,60}?)\s+\1\b', r'\1', txt)
         if nuevo == txt:
             break
         txt = nuevo
@@ -455,14 +458,15 @@ def limpiar_titulo(txt, max_chars=72):
 def extraer_ubicacion_simple(txt):
     t = txt or ''
     patrones = [
-        r'en\s+([A-Za-zÁÉÍÓÚÑáéíóúñ0-9\-\s]{4,50})',
-        r'de\s+([A-Za-zÁÉÍÓÚÑáéíóúñ0-9\-\s]{4,50})'
+        r'\b(?:ubicados en|ubicado en|en|de)\s+([A-Za-zÁÉÍÓÚÑáéíóúñ0-9\-\s]{4,50})',
+        r'\bcerca de\s+([A-Za-zÁÉÍÓÚÑáéíóúñ0-9\-\s]{4,50})',
     ]
     for pat in patrones:
         m = re.search(pat, t, re.IGNORECASE)
         if m:
-            frag = re.split(r'[,.]|\s+y\s', m.group(1))[0].strip()
+            frag = re.split(r'[,.]|\s+y\s|\s+x\s', m.group(1))[0].strip()
             frag = re.sub(r'\s+', ' ', frag)
+            frag = re.sub(r'(?i)^(la|el|los|las)\s+', '', frag)
             if len(frag) >= 4:
                 return frag[:40]
     return ''
@@ -493,11 +497,67 @@ def tiene_senal_comercial_fuerte(post, txt):
     return any(kw in t for kw in COMERCIAL_FUERTE_HINTS)
 
 
+
+
+def _contains_kw(txt, kw):
+    t = _norm(txt)
+    k = _norm(kw)
+    if not k:
+        return False
+    if ' ' in k:
+        return k in t
+    return re.search(rf'(?<!\w){re.escape(k)}(?!\w)', t) is not None
+
+
+def _extraer_frase_comercial(txt):
+    t = _strip_saludos(txt or '')
+    t = _dedupe_repeated_phrases(t)
+    t = _dedupe_consecutive_words(t)
+    t = re.sub(r'[`*_#]+', ' ', t)
+    t = re.sub(r'\s+', ' ', t).strip(' .,:;!-?')
+    patrones = [
+        r'(?i)\b(?:a la venta|vendo|venta de|se vende[n]?|ofrezco|ofrezca)\s+(.+)',
+        r'(?i)\b(?:servicio de|realizamos|contamos con|disponible)\s+(.+)',
+        r'(?i)\b(?:clases de|clases)\s+(.+)',
+        r'(?i)\b(?:promocion de|promoción de|promo de)\s+(.+)',
+    ]
+    for pat in patrones:
+        m = re.search(pat, t)
+        if m:
+            frag = m.group(1).strip()
+            frag = re.split(r'[.!?]|\s+pero\s+|\s+porque\s+|\s+para\s+', frag, 1)[0].strip()
+            if len(frag.split()) >= 2:
+                return frag
+    frag = re.split(r'[.!?\n]', t)[0].strip()
+    frag = re.sub(r'(?i)^vecinos\s+', '', frag).strip()
+    return frag
+
+
+def _frase_a_titulo_comercial(txt, max_words=5):
+    frag = _extraer_frase_comercial(txt)
+    frag = re.sub(r'(?i)\b(?:buenas noches|buenos dias|buen día|buen dia|hola|vecinos)\b', ' ', frag)
+    frag = re.sub(r'[^A-Za-zÁÉÍÓÚÑáéíóúñ0-9\s/&+-]', ' ', frag)
+    frag = re.sub(r'\s+', ' ', frag).strip()
+    words = []
+    for w in frag.split():
+        wn = _norm(w)
+        if not wn or wn in STOPWORDS_TITULO:
+            continue
+        words.append(w)
+        if len(words) >= max_words:
+            break
+    return _smart_title_case(' '.join(words))
+
 def inferir_tema_negocio(txt, categoria_nombre=''):
     t = _norm(txt)
     for kws, tema in NEGOCIO_TEMA_MAP:
-        if any(_norm(kw) in t for kw in kws):
+        if any(_contains_kw(t, kw) for kw in kws):
             return tema
+
+    frase = _frase_a_titulo_comercial(txt, max_words=5)
+    if frase and len(frase.split()) >= 2:
+        return frase
+
     cat = (categoria_nombre or '').strip()
     if cat and cat.lower() not in ['general', 'mascotas']:
         return cat
@@ -517,21 +577,29 @@ def inferir_tema_alerta(txt, categoria_nombre='Alerta'):
 
 def generar_titulo_negocio(post, categoria_nombre=''):
     txt = post.get('texto_limpio') or post.get('texto') or ''
+    if es_post_consulta(txt):
+        return ''
     ubic = extraer_ubicacion_simple(txt)
     tema = inferir_tema_negocio(txt, categoria_nombre=categoria_nombre)
-    if es_post_consulta(txt):
-        titulo = f"Consulta sobre {tema.lower()}"
-    else:
-        titulo = tema
-        if ubic and _norm(ubic) not in _norm(titulo):
-            titulo = f"{titulo} en {ubic}"
-        elif not ubic and _norm('merida') not in _norm(titulo):
-            titulo = f"{titulo} en Mérida"
-    return limpiar_titulo(titulo, max_chars=60) or 'Negocio local en Mérida'
+    titulo = tema
+    if ubic and _norm(ubic) not in _norm(titulo) and len(_norm(ubic).split()) <= 4:
+        titulo = f"{titulo} en {ubic}"
+    titulo = limpiar_titulo(titulo, max_chars=60)
+    if titulo and titulo.lower() not in {'negocio local en merida', 'negocio local', 'general en merida'}:
+        return titulo
+
+    frase = _frase_a_titulo_comercial(txt, max_words=5)
+    if frase:
+        if ubic and _norm(ubic) not in _norm(frase):
+            frase = f"{frase} en {ubic}"
+        return limpiar_titulo(frase, max_chars=60)
+
+    return 'Negocio en Mérida'
 
 
 def generar_titulo_mascota(post, categoria_id=11):
-    txt = (post.get('texto_limpio') or post.get('texto') or '').lower()
+    txt_raw = post.get('texto_limpio') or post.get('texto') or ''
+    txt = txt_raw.lower()
     especie = 'Mascota'
     if any(x in txt for x in ['perro', 'perrita', 'perrito', 'cachorro']):
         especie = 'Perro'
@@ -539,7 +607,12 @@ def generar_titulo_mascota(post, categoria_id=11):
         especie = 'Gato'
 
     subtipo = {14: 'perdido', 15: 'encontrado', 16: 'en adopción'}.get(categoria_id, 'reportado')
-    ubic = extraer_ubicacion_simple(post.get('texto_limpio') or post.get('texto') or '')
+    if subtipo == 'reportado':
+        if any(x in txt for x in ['si la ves', 'si lo ves', 'si la ven', 'si lo ven', 'responde al nombre', 'avísame', 'avisame']):
+            subtipo = 'perdido'
+        elif any(x in txt for x in ['la entregamos', 'dar en adopción', 'dar en adopcion', 'busca familia', 'necesita hogar', 'vacunada', 'bañadita', 'banadita']):
+            subtipo = 'en adopción'
+    ubic = extraer_ubicacion_simple(txt_raw)
     titulo = f"{especie} {subtipo}"
     if ubic:
         titulo += f" en {ubic}"

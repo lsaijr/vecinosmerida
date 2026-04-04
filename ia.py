@@ -4,7 +4,7 @@ import os
 import re
 import time
 
-from utils import NEWS_MIN_WORDS, contar_palabras, es_post_consulta, generar_titulo_noticia_fallback, limpiar_titulo, parse_keywords
+from utils import NEWS_MIN_WORDS, contar_palabras, es_post_consulta, generar_titulo_noticia_fallback, limpiar_titulo, parse_keywords, tiene_senal_comercial_fuerte
 
 # ═══════════════════════════════════════════════════════════════
 # ROTACIÓN DE KEYS
@@ -168,22 +168,31 @@ Categoría sugerida: {categoria_nombre or 'General'}
 
 REGLAS:
 1. Máximo 6 palabras o 60 caracteres.
-2. Debe sonar natural y específico.
-3. No repitas palabras.
-4. No uses saludos, relleno ni preguntas.
+2. Debe sonar natural, específico y útil para SEO local.
+3. No repitas palabras ni frases.
+4. No uses saludos, relleno, preguntas ni emojis.
 5. No inventes datos no presentes.
-6. Si el texto es solo una consulta o recomendación y no una oferta real, responde exactamente: IGNORAR
+6. Evita títulos genéricos como "Negocio local en Mérida".
+7. Si el post es una consulta, recomendación o sugerencia y NO una oferta clara, responde exactamente: IGNORAR.
+8. Responde solo un JSON con la clave titulo.
+
+Ejemplos válidos:
+{{"titulo":"Fresas con crema en Mérida"}}
+{{"titulo":"Clases de baile en Mérida"}}
+{{"titulo":"Baterías Optima en Mérida"}}
 
 Responde SOLO con JSON válido:
 {{"titulo":"..."}}"""
 
 
 def _titulo_pobre(titulo):
-    t = (titulo or '').strip()
+    t = limpiar_titulo(titulo or '', max_chars=60)
     if not t:
         return True
-    tn = t.lower()
-    if tn in {'negocio local', 'general', 'servicio', 'mascotas', 'alerta'}:
+    tn = t.lower().strip()
+    if tn in {'negocio local', 'negocio local en merida', 'negocio en merida', 'general', 'servicio', 'mascotas', 'alerta'}:
+        return True
+    if '```' in tn or 'json' in tn:
         return True
     if len(t.split()) > 8:
         return True
@@ -192,9 +201,9 @@ def _titulo_pobre(titulo):
 
 def generar_titulo_negocio_ia(post, categoria_nombre='', prefer='gemini'):
     texto = post.get('texto_limpio') or post.get('texto') or ''
-    if es_post_consulta(texto):
+    if es_post_consulta(texto) and not tiene_senal_comercial_fuerte(post, texto):
         return None
-    if contar_palabras(texto) < 12:
+    if contar_palabras(texto) < 5:
         return None
 
     cache_key = f"negocio::{(categoria_nombre or '').lower()}::{texto.strip().lower()}"
@@ -206,16 +215,13 @@ def generar_titulo_negocio_ia(post, categoria_nombre='', prefer='gemini'):
 
     for proveedor in proveedores:
         try:
-            if proveedor == 'gemini':
-                raw = _llamar_gemini(prompt)
-            else:
-                raw = _llamar_groq(prompt, temperatura=0.2, modelo='llama-3.1-8b-instant')
-            if raw.strip().upper() == 'IGNORAR':
+            raw = _llamar_gemini(prompt) if proveedor == 'gemini' else _llamar_groq(prompt, temperatura=0.2, modelo='llama-3.1-8b-instant')
+            if 'IGNORAR' in (raw or '').upper():
                 return None
-            try:
-                titulo = _parsear_json(raw).get('titulo', '')
-            except Exception:
-                titulo = raw
+            datos = _parsear_json(raw)
+            titulo = datos.get('titulo', '') if isinstance(datos, dict) else str(datos)
+            if 'IGNORAR' in (titulo or '').upper():
+                return None
             titulo = limpiar_titulo(titulo, max_chars=60)
             if titulo and not _titulo_pobre(titulo):
                 _CACHE_TITULOS[cache_key] = titulo
@@ -318,8 +324,29 @@ def _llamar_gemini(prompt):
 
 
 def _parsear_json(texto):
-    texto = re.sub(r"```json|```", "", texto).strip()
-    return json.loads(texto)
+    texto = (texto or '').strip()
+    texto = re.sub(r"```(?:json)?|```", "", texto, flags=re.IGNORECASE).strip()
+    if not texto:
+        return {}
+    if texto.upper() == 'IGNORAR' or 'IGNORAR' == texto.strip().upper():
+        return {'titulo': 'IGNORAR'}
+    try:
+        return json.loads(texto)
+    except Exception:
+        pass
+
+    m = re.search(r'\{.*\}', texto, re.S)
+    if m:
+        bloque = m.group(0)
+        try:
+            return json.loads(bloque)
+        except Exception:
+            pass
+
+    m = re.search(r'"titulo"\s*:\s*"([^"]+)"', texto, re.S)
+    if m:
+        return {'titulo': m.group(1)}
+    return {'titulo': texto.strip()}
 
 
 # ═══════════════════════════════════════════════════════════════
@@ -369,24 +396,35 @@ def _limpiar_regex_fallback(texto):
     return texto
 
 
+def _contains_keyword_text(txt, kw):
+    txt_n = (txt or '').lower()
+    kw_n = (kw or '').lower().strip()
+    if not kw_n:
+        return False
+    if ' ' in kw_n:
+        return kw_n in txt_n
+    return re.search(rf'(?<!\w){re.escape(kw_n)}(?!\w)', txt_n) is not None
+
+
 def _detectar_categoria_negocio_keywords(texto, categorias):
     txt = (texto or '').lower()
     mejores = []
     mapa_por_nombre = {
-        'comida': ['menu', 'menú', 'tacos', 'pizza', 'hamburguesa', 'frapp', 'smoothie', 'crepa', 'fresas con', 'postre', 'waffle', 'hotcake'],
+        'comida': ['menu', 'menú', 'tacos', 'pizza', 'hamburguesa', 'frapp', 'smoothie', 'crepa', 'fresas con', 'postre', 'waffle', 'hotcake', 'panuchos', 'sopes', 'reposteria'],
         'salud': ['masaje', 'terapia', 'rehabilitacion', 'rehabilitación', 'psicolog', 'consultorio', 'doctor', 'nutricion', 'nutrición'],
         'ropa & accesorios': ['ropa', 'blusa', 'vestido', 'bolsa', 'accesorio', 'zapato', 'tenis', 'joyeria', 'joyería'],
-        'inmobiliaria': ['renta', 'alquiler', 'casa', 'departamento', 'terreno', 'inmueble'],
-        'belleza': ['uñas', 'cabello', 'maquillaje', 'spa', 'estetica', 'estética'],
+        'inmobiliaria': ['se renta', 'renta casa', 'renta departamento', 'departamento', 'terreno', 'inmueble', 'alquiler', 'venta de casa', 'venta de terreno'],
+        'belleza & estética': ['uñas', 'cabello', 'maquillaje', 'spa', 'estetica', 'estética', 'lifting'],
         'automotriz': ['auto', 'carro', 'pintura', 'ceramica', 'cerámica', 'mecanica', 'mecánica', 'bateria', 'llanta'],
-        'servicios': ['fletes', 'mudanza', 'plomero', 'electricista', 'carpintero', 'reparacion', 'reparación', 'mantenimiento'],
+        'general': [],
+        'servicios': ['fletes', 'mudanza', 'plomero', 'electricista', 'carpintero', 'reparacion', 'reparación', 'mantenimiento', 'envios', 'envíos'],
     }
 
     for cat in categorias:
         kws = parse_keywords(cat.get('keywords'))
         if not kws:
             kws = mapa_por_nombre.get((cat.get('nombre') or '').strip().lower(), [])
-        score = sum(1 for kw in kws if kw and kw in txt)
+        score = sum(1 for kw in kws if kw and _contains_keyword_text(txt, kw))
         if score > 0:
             mejores.append((score, cat['id']))
 
