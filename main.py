@@ -4,6 +4,7 @@ from fastapi.responses import JSONResponse, Response
 import json
 import threading
 import os
+import time
 
 from pipeline import ejecutar_pipeline
 from utils import match_colonias, detectar_tipo_por_nombre
@@ -18,6 +19,10 @@ estado = {
     "resumen": None,
     "detalles": "",
     "error": None,
+    "inicio_ts": None,
+    "elapsed_seconds": 0,
+    "actividad": "",
+    "historial": [],
 }
 
 
@@ -96,6 +101,10 @@ async def procesar(request: Request):
         "resumen": None,
         "detalles": "",
         "error": None,
+        "inicio_ts": time.time(),
+        "elapsed_seconds": 0,
+        "actividad": "Preparando procesamiento",
+        "historial": ["Inicio del procesamiento"],
     })
 
     def run():
@@ -106,6 +115,9 @@ async def procesar(request: Request):
             estado["paso"] = "Error"
             estado["progreso"] = 0
             estado["error"] = str(e)
+            estado["actividad"] = "Proceso detenido por error"
+            if estado.get("inicio_ts"):
+                estado["elapsed_seconds"] = int(time.time() - estado["inicio_ts"])
 
     threading.Thread(target=run, daemon=True).start()
     return {"status": "procesando"}
@@ -113,6 +125,11 @@ async def procesar(request: Request):
 
 @app.get("/status")
 def status():
+    inicio_ts = estado.get("inicio_ts")
+    elapsed_seconds = 0
+    if inicio_ts:
+        elapsed_seconds = int(time.time() - inicio_ts)
+        estado["elapsed_seconds"] = elapsed_seconds
     return {
         "paso": estado.get("paso"),
         "progreso": estado.get("progreso"),
@@ -120,6 +137,9 @@ def status():
         "archivo_html": estado.get("archivo_html"),
         "resumen": estado.get("resumen"),
         "error": estado.get("error"),
+        "elapsed_seconds": elapsed_seconds,
+        "actividad": estado.get("actividad", ""),
+        "historial": estado.get("historial", [])[-6:],
     }
 
 

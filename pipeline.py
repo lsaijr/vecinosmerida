@@ -47,6 +47,23 @@ POLITICAS = {
 }
 
 
+def _set_estado(estado, paso=None, progreso=None, detalles=None, actividad=None, add_history=False):
+    if paso is not None:
+        estado["paso"] = paso
+    if progreso is not None:
+        estado["progreso"] = progreso
+    if detalles is not None:
+        estado["detalles"] = detalles
+    if actividad is not None:
+        estado["actividad"] = actividad
+        if add_history:
+            hist = estado.setdefault("historial", [])
+            if not hist or hist[-1] != actividad:
+                hist.append(actividad)
+                if len(hist) > 20:
+                    del hist[:-20]
+
+
 def ejecutar_pipeline(posts, meta, config_grupo, estado):
     resultados = {
         "negocios": [],
@@ -68,26 +85,25 @@ def ejecutar_pipeline(posts, meta, config_grupo, estado):
     cats_alert_map = {str(c["id"]): c for c in cats_alertas}
 
     # ── PASO 1: Limpieza y preclasificación ───────────────────────
-    estado["paso"] = "Limpieza y pre-clasificación"
-    estado["progreso"] = 10
+    _set_estado(estado, paso="Limpieza y pre-clasificación", progreso=10, actividad="Limpiando textos y preparando posts", add_history=True)
     posts_limpios, descartados = paso_1_limpieza(posts, grupo_tipo=grupo_tipo)
-    estado["detalles"] = f"{len(posts_limpios)} útiles, {len(descartados)} descartados sin IA"
+    _set_estado(estado, detalles=f"{len(posts_limpios)} útiles, {len(descartados)} descartados sin IA", actividad="Limpieza terminada", add_history=True)
 
     # ── PASO 2: Deduplicación ─────────────────────────────────────
-    estado["paso"] = "Eliminando duplicados"
-    estado["progreso"] = 20
+    _set_estado(estado, paso="Eliminando duplicados", progreso=20, actividad="Comparando textos para eliminar duplicados", add_history=True)
     clusters = paso_2_clusters(posts_limpios)
     unicos = [c[0] for c in clusters]
     duplicados = sum(len(c) - 1 for c in clusters if len(c) > 1)
-    estado["detalles"] = f"{len(unicos)} únicos, {duplicados} duplicados eliminados"
+    _set_estado(estado, detalles=f"{len(unicos)} únicos, {duplicados} duplicados eliminados", actividad="Deduplicación terminada", add_history=True)
 
     # ── PASO 3: Clasificación ─────────────────────────────────────
-    estado["paso"] = "Clasificando posts"
-    estado["progreso"] = 35
+    _set_estado(estado, paso="Clasificando posts", progreso=35, actividad="Clasificando posts por reglas e IA", add_history=True)
     clasificados = []
     calls_ia_evitadas = 0
 
-    for p in unicos:
+    for idx, p in enumerate(unicos, 1):
+        if idx == 1 or idx % 8 == 0:
+            _set_estado(estado, actividad=f"Clasificando post {idx}/{len(unicos)}")
         pre_tipo = p.get("pre_tipo", "ambiguo")
         p["noticia_permitida"] = puede_ser_noticia_desde_json(p.get("texto", ""))
 
@@ -105,16 +121,19 @@ def ejecutar_pipeline(posts, meta, config_grupo, estado):
             p["error_clasificacion"] = err
         clasificados.append(p)
 
-    estado["detalles"] = f"Clasificados: {calls_ia_evitadas} por reglas, {len(unicos)-calls_ia_evitadas} por IA"
+    _set_estado(estado, detalles=f"Clasificados: {calls_ia_evitadas} por reglas, {len(unicos)-calls_ia_evitadas} por IA", actividad="Clasificación terminada", add_history=True)
 
     # ── PASO 4: Procesamiento ─────────────────────────────────────
-    estado["paso"] = "Procesando posts"
-    estado["progreso"] = 58
+    _set_estado(estado, paso="Procesando posts", progreso=58, actividad="Procesando contenido por tipo de post", add_history=True)
 
     total = max(len(clasificados), 1)
     aprobados = []
     for i, p in enumerate(clasificados):
         estado["progreso"] = 58 + int((i / total) * 22)
+        autor = (p.get("autor") or "sin autor")[:40]
+        tipo_prev = p.get("tipo_detectado") or "pendiente"
+        if i == 0 or i % 6 == 0:
+            _set_estado(estado, actividad=f"Procesando post {i+1}/{len(clasificados)} · {tipo_prev} · {autor}")
         tipo = p.get("tipo_detectado") or "ignorar"
 
         if tipo == "ignorar":
@@ -171,26 +190,30 @@ def ejecutar_pipeline(posts, meta, config_grupo, estado):
         resultados["negocios"].append(proc)
         aprobados.append(proc)
 
-    # ── PASO 5: Subir imágenes aprobadas a Cloudinary ──────────────
-    estado["paso"] = "Subiendo imágenes"
-    estado["progreso"] = 82
-    imgs_ok = imgs_fail = 0
-
     for p in aprobados:
-        imagenes = p.get("imagenes", []) or []
-        if imagenes:
-            res_imgs, ok, fail = subir_imagenes(p, meta=meta, config_grupo=config_grupo)
-            p["imagenes_cloudinary"] = res_imgs
-            imgs_ok += ok
-            imgs_fail += fail
-        else:
+        if not (p.get("imagenes") or []):
             p["imagenes_cloudinary"] = []
 
-    estado["detalles"] = f"Imágenes: {imgs_ok} ok, {imgs_fail} fallidas"
+    # ── PASO 5: Subir imágenes aprobadas a Cloudinary ──────────────
+    _set_estado(estado, paso="Subiendo imágenes", progreso=82, actividad="Preparando subida de imágenes a Cloudinary", add_history=True)
+    imgs_ok = imgs_fail = 0
+
+    posts_con_imagen = [x for x in aprobados if (x.get("imagenes") or [])]
+    total_con_imagen = max(len(posts_con_imagen), 1)
+    for idx_img, p in enumerate(posts_con_imagen, 1):
+        autor = (p.get("autor") or "sin autor")[:40]
+        num_imgs_post = len(p.get("imagenes", []) or [])
+        _set_estado(estado, actividad=f"Subiendo imágenes de {autor} · post {idx_img}/{total_con_imagen} · {num_imgs_post} imagen(es)")
+        imagenes = p.get("imagenes", []) or []
+        res_imgs, ok, fail = subir_imagenes(p, meta=meta, config_grupo=config_grupo)
+        p["imagenes_cloudinary"] = res_imgs
+        imgs_ok += ok
+        imgs_fail += fail
+
+    _set_estado(estado, detalles=f"Imágenes: {imgs_ok} ok, {imgs_fail} fallidas", actividad="Subida de imágenes terminada", add_history=True)
 
     # ── PASO 6: Generar HTML ───────────────────────────────────────
-    estado["paso"] = "Generando reporte HTML"
-    estado["progreso"] = 92
+    _set_estado(estado, paso="Generando reporte HTML", progreso=92, actividad="Armando el reporte visual HTML", add_history=True)
     nombre_archivo = generar_html_resultados(
         resultados=resultados,
         meta=meta,
@@ -201,14 +224,19 @@ def ejecutar_pipeline(posts, meta, config_grupo, estado):
     )
 
     # ── PASO 7: Guardar en DB ──────────────────────────────────────
-    estado["paso"] = "Guardando en base de datos"
-    estado["progreso"] = 96
+    _set_estado(estado, paso="Guardando en base de datos", progreso=96, actividad="Insertando registros en base de datos", add_history=True)
 
     colonia_ids = config_grupo.get("colonia_ids") or [None]
     colonia_id = colonia_ids[0]
     db_nuevos = db_duplicados = 0
 
+    total_db = len(resultados["negocios"]) + len(resultados["mascotas"]) + len(resultados["noticias"]) + len(resultados["alertas"])
+    db_idx = 0
+
     for p in resultados["negocios"] + resultados["mascotas"]:
+        db_idx += 1
+        if db_idx == 1 or db_idx % 12 == 0:
+            _set_estado(estado, actividad=f"Guardando en DB {db_idx}/{max(total_db,1)}")
         try:
             _, st = insertar_negocio(p, colonia_id)
             db_nuevos += 1 if st == "nuevo" else 0
@@ -217,6 +245,9 @@ def ejecutar_pipeline(posts, meta, config_grupo, estado):
             resultados["errores"].append({"tipo": "db_negocio", "error": str(e), "autor": p.get("autor")})
 
     for p in resultados["noticias"]:
+        db_idx += 1
+        if db_idx == 1 or db_idx % 12 == 0:
+            _set_estado(estado, actividad=f"Guardando en DB {db_idx}/{max(total_db,1)}")
         try:
             _, st = insertar_noticia(p, colonia_id)
             db_nuevos += 1 if st == "nuevo" else 0
@@ -225,6 +256,9 @@ def ejecutar_pipeline(posts, meta, config_grupo, estado):
             resultados["errores"].append({"tipo": "db_noticia", "error": str(e), "autor": p.get("autor")})
 
     for p in resultados["alertas"]:
+        db_idx += 1
+        if db_idx == 1 or db_idx % 12 == 0:
+            _set_estado(estado, actividad=f"Guardando en DB {db_idx}/{max(total_db,1)}")
         try:
             _, st = insertar_alerta(p, colonia_id)
             db_nuevos += 1 if st == "nuevo" else 0
@@ -234,8 +268,7 @@ def ejecutar_pipeline(posts, meta, config_grupo, estado):
 
     actualizar_grupo_stats(meta.get("group_id"), len(posts))
 
-    estado["paso"] = "Completado"
-    estado["progreso"] = 100
+    _set_estado(estado, paso="Completado", progreso=100, actividad="Proceso completado", add_history=True)
     estado["archivo_html"] = nombre_archivo
     estado["resumen"] = {
         "total_entrada": len(posts),
