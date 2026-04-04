@@ -138,7 +138,7 @@ def ejecutar_pipeline(posts, meta, config_grupo, estado):
             if proc.get("error_ia"):
                 proc["_error_visible"] = proc["error_ia"]
             cat_nombre = cats_alert_map.get(str(proc.get("categoria_id")), {}).get("nombre", "Alerta")
-            proc["titulo"] = generar_titulo_alerta(proc, cat_nombre=cat_nombre)
+            proc["titulo"] = generar_titulo_alerta(proc, categoria_nombre=cat_nombre)
             resultados["alertas"].append(proc)
             aprobados.append(proc)
             continue

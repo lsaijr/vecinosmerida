@@ -382,7 +382,9 @@ def generar_titulo_mascota(post, categoria_id=11):
     return limpiar_titulo(titulo.title())
 
 
-def generar_titulo_alerta(post, categoria_nombre='Alerta'):
+def generar_titulo_alerta(post, categoria_nombre='Alerta', cat_nombre=None):
+    if cat_nombre and (not categoria_nombre or categoria_nombre == 'Alerta'):
+        categoria_nombre = cat_nombre
     txt = post.get('texto_alerta') or post.get('texto_limpio') or post.get('texto') or ''
     ubic = extraer_ubicacion_simple(txt)
     base = categoria_nombre if categoria_nombre and categoria_nombre.lower() != 'alerta' else primeras_palabras(txt, 7)
