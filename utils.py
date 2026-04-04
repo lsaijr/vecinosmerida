@@ -269,10 +269,21 @@ def paso_1_limpieza(posts, grupo_tipo="vecinos"):
 
         post['texto_limpio'] = txt_limpio
         post['telefono'] = extraer_telefono(txt_original) or extraer_telefono(post.get("autor", ""))
+        post['noticia_permitida'] = puede_ser_noticia_desde_json(txt_original)
+
+        if es_post_consulta(txt_original) and not tiene_senal_comercial_fuerte(post, txt_original):
+            post['_descartado'] = 'consulta_baja_prioridad'
+            descartados.append(post)
+            continue
+
+        if contar_palabras(txt_limpio) < 5 and not tiene_senal_comercial_fuerte(post, txt_original):
+            post['_descartado'] = 'post_demasiado_debil'
+            descartados.append(post)
+            continue
+
         pre_tipo, pre_score = pre_clasificar_keywords(txt_limpio, post.get("autor", ""), grupo_tipo=grupo_tipo)
         post['pre_tipo'] = pre_tipo
         post['pre_score'] = pre_score
-        post['noticia_permitida'] = puede_ser_noticia_desde_json(txt_original)
         limpios.append(post)
 
     return limpios, descartados
@@ -306,6 +317,12 @@ def _ascii(txt):
     return txt
 
 
+def _norm(txt):
+    txt = _ascii(txt).lower()
+    txt = re.sub(r'[^a-z0-9\s]', ' ', txt)
+    return re.sub(r'\s+', ' ', txt).strip()
+
+
 def slugify(txt, max_words=10, max_len=90):
     txt = _ascii(txt).lower()
     txt = re.sub(r'[^a-z0-9\s\-]', ' ', txt)
@@ -322,21 +339,124 @@ def primeras_palabras(txt, n=8):
     return ' '.join(words[:n]).strip()
 
 
-def limpiar_titulo(txt, max_chars=85):
-    txt = re.sub(r'\s+', ' ', txt or '').strip(' .,-')
-    if len(txt) <= max_chars:
-        return txt
-    corte = txt[:max_chars].rstrip()
-    if ' ' in corte:
-        corte = corte.rsplit(' ', 1)[0]
-    return corte.strip(' .,-')
+SALUDOS_TITULO = [
+    'buenas noches', 'buenos dias', 'buen día', 'buen dia', 'hola', 'vecinos', 'amigos', 'amigas'
+]
+CONSULTA_HINTS = [
+    'alguien vende', 'quien vende', 'quién vende', 'alguien sabe', 'saben donde', 'saben dónde',
+    'recomienden', 'recomendacion', 'recomendación', 'sugerencias', 'donde venden', 'dónde venden',
+    'donde hay', 'dónde hay', 'sopes o panuchos', 'panuchos o sopes', 'que me recomiendan',
+    'qué me recomiendan', 'conocen a', 'alguna recomendacion', 'alguna recomendación'
+]
+COMERCIAL_FUERTE_HINTS = [
+    'vendo', 'venta', 'precio', 'pesos', '$', 'whatsapp', 'telefono', 'tel', 'servicio',
+    'domicilio', 'pedido', 'pedidos', 'menu', 'menú', 'horario', 'contamos con', 'ubicados en',
+    'ubicado en', 'promo', 'promocion', 'promoción', 'cotiza', 'reserva', 'entrega', 'disponible'
+]
+STOPWORDS_TITULO = {'de', 'en', 'para', 'con', 'sin', 'por', 'y', 'a', 'al', 'del', 'la', 'el', 'los', 'las'}
+
+NEGOCIO_TEMA_MAP = [
+    (['fresas con crema', 'fresas'], 'Fresas con crema'),
+    (['frappe', 'frappé', 'frappes', 'frappés'], 'Frappés'),
+    (['smoothie', 'smoothies'], 'Smoothies'),
+    (['crepa', 'crepas'], 'Crepas'),
+    (['waffle', 'waffles'], 'Waffles'),
+    (['hotcake', 'hotcakes'], 'Hotcakes'),
+    (['sopes'], 'Sopes'),
+    (['panuchos'], 'Panuchos'),
+    (['tacos al pastor', 'pastor'], 'Tacos al pastor'),
+    (['tacos'], 'Tacos'),
+    (['pizza'], 'Pizzas'),
+    (['hamburguesa', 'hamburguesas'], 'Hamburguesas'),
+    (['postre', 'postres'], 'Postres'),
+    (['masaje', 'masajes'], 'Masajes'),
+    (['flete', 'fletes', 'mudanza', 'mudanzas'], 'Fletes y mudanzas'),
+    (['clases', 'curso', 'academia'], 'Clases'),
+    (['uñas', 'unas', 'cabello', 'maquillaje'], 'Servicios de belleza'),
+    (['mueble', 'muebles'], 'Lavado de muebles'),
+    (['pintura', 'ceramica', 'cerámica'], 'Corrección de pintura'),
+    (['bateria', 'batería'], 'Baterías'),
+    (['ropa', 'vestido', 'blusa'], 'Ropa y accesorios'),
+]
+
+ALERTA_TEMA_MAP = [
+    (['fuga de agua', 'fuga'], 'Fuga de agua'),
+    (['bache', 'baches'], 'Bache reportado'),
+    (['robo', 'robaron', 'asalto'], 'Robo reportado'),
+    (['choque', 'accidente'], 'Accidente reportado'),
+    (['sin luz', 'cfe'], 'Falla eléctrica'),
+    (['perro agresivo'], 'Perro agresivo reportado'),
+]
+
+
+def _dedupe_repeated_phrases(txt):
+    txt = re.sub(r'\s+', ' ', txt or '').strip()
+    for _ in range(3):
+        nuevo = re.sub(r'([^,.!?]{3,60}?)\s+', r'', txt, flags=re.IGNORECASE)
+        if nuevo == txt:
+            break
+        txt = nuevo
+    return txt
+
+
+def _dedupe_consecutive_words(txt):
+    words = (txt or '').split()
+    out = []
+    for w in words:
+        nw = _norm(w)
+        if out and _norm(out[-1]) == nw:
+            continue
+        out.append(w)
+    return ' '.join(out)
+
+
+def _strip_saludos(txt):
+    t = re.sub(r'\s+', ' ', txt or '').strip()
+    tn = _norm(t)
+    for saludo in SALUDOS_TITULO:
+        s = _norm(saludo)
+        if tn.startswith(s):
+            t = t[len(saludo):].strip(' .,:;-')
+            tn = _norm(t)
+    return t
+
+
+def _smart_title_case(txt):
+    words = (txt or '').split()
+    out = []
+    for i, w in enumerate(words):
+        if not w:
+            continue
+        if i > 0 and _norm(w) in STOPWORDS_TITULO:
+            out.append(w.lower())
+        elif w.isupper() and len(w) <= 4:
+            out.append(w)
+        else:
+            out.append(w[:1].upper() + w[1:].lower())
+    return ' '.join(out)
+
+
+def limpiar_titulo(txt, max_chars=72):
+    txt = (txt or '').replace('*', ' ')
+    txt = re.sub(r'[!?]{2,}', '?', txt)
+    txt = re.sub(r'\.{2,}', '.', txt)
+    txt = _strip_saludos(txt)
+    txt = _dedupe_repeated_phrases(txt)
+    txt = _dedupe_consecutive_words(txt)
+    txt = re.sub(r'\s+', ' ', txt).strip(' .,:;-?')
+    if len(txt) > max_chars:
+        corte = txt[:max_chars].rstrip()
+        if ' ' in corte:
+            corte = corte.rsplit(' ', 1)[0]
+        txt = corte.strip(' .,:;-?')
+    return _smart_title_case(txt)
 
 
 def extraer_ubicacion_simple(txt):
     t = txt or ''
     patrones = [
-        r'\ben\s+([A-Za-zÁÉÍÓÚÑáéíóúñ0-9\-\s]{4,50})',
-        r'\bde\s+([A-Za-zÁÉÍÓÚÑáéíóúñ0-9\-\s]{4,50})'
+        r'en\s+([A-Za-zÁÉÍÓÚÑáéíóúñ0-9\-\s]{4,50})',
+        r'de\s+([A-Za-zÁÉÍÓÚÑáéíóúñ0-9\-\s]{4,50})'
     ]
     for pat in patrones:
         m = re.search(pat, t, re.IGNORECASE)
@@ -348,38 +468,84 @@ def extraer_ubicacion_simple(txt):
     return ''
 
 
+def es_post_consulta(txt):
+    t = _norm(txt)
+    if any(kw in t for kw in CONSULTA_HINTS):
+        return True
+    if ('?' in (txt or '') or '¿' in (txt or '')) and any(w in t for w in ['alguien', 'quien', 'donde', 'recomienden', 'saben']):
+        return True
+    return False
+
+
+def tiene_senal_comercial_fuerte(post, txt):
+    t = _norm(txt)
+    num_imgs = post.get('num_imgs')
+    if num_imgs is None:
+        num_imgs = len(post.get('imagenes') or [])
+    if num_imgs and num_imgs > 0:
+        return True
+    if post.get('url_post'):
+        return True
+    if extraer_telefono(txt):
+        return True
+    if re.search(r'\$\s?\d+|\d+\s*(pesos|mxn)', txt or '', re.IGNORECASE):
+        return True
+    return any(kw in t for kw in COMERCIAL_FUERTE_HINTS)
+
+
+def inferir_tema_negocio(txt, categoria_nombre=''):
+    t = _norm(txt)
+    for kws, tema in NEGOCIO_TEMA_MAP:
+        if any(_norm(kw) in t for kw in kws):
+            return tema
+    cat = (categoria_nombre or '').strip()
+    if cat and cat.lower() not in ['general', 'mascotas']:
+        return cat
+    return 'Negocio local'
+
+
+def inferir_tema_alerta(txt, categoria_nombre='Alerta'):
+    t = _norm(txt)
+    for kws, tema in ALERTA_TEMA_MAP:
+        if any(_norm(kw) in t for kw in kws):
+            return tema
+    cat = (categoria_nombre or '').strip()
+    if cat and cat.lower() != 'alerta':
+        return cat
+    return 'Alerta vecinal'
+
+
 def generar_titulo_negocio(post, categoria_nombre=''):
     txt = post.get('texto_limpio') or post.get('texto') or ''
     ubic = extraer_ubicacion_simple(txt)
-    base = primeras_palabras(txt, 8)
-    if categoria_nombre and categoria_nombre.lower() not in ['general', 'mascotas']:
-        titulo = base or f"{categoria_nombre} en Mérida"
+    tema = inferir_tema_negocio(txt, categoria_nombre=categoria_nombre)
+    if es_post_consulta(txt):
+        titulo = f"Consulta sobre {tema.lower()}"
     else:
-        titulo = base or 'Negocio local en Mérida'
-    if ubic and ubic.lower() not in titulo.lower():
-        titulo = f"{titulo} en {ubic}"
-    return limpiar_titulo(titulo.title()) or 'Negocio local en Mérida'
+        titulo = tema
+        if ubic and _norm(ubic) not in _norm(titulo):
+            titulo = f"{titulo} en {ubic}"
+        elif not ubic and _norm('merida') not in _norm(titulo):
+            titulo = f"{titulo} en Mérida"
+    return limpiar_titulo(titulo, max_chars=60) or 'Negocio local en Mérida'
 
 
 def generar_titulo_mascota(post, categoria_id=11):
     txt = (post.get('texto_limpio') or post.get('texto') or '').lower()
     especie = 'Mascota'
-    if 'perro' in txt or 'perrito' in txt or 'cachorro' in txt:
+    if any(x in txt for x in ['perro', 'perrita', 'perrito', 'cachorro']):
         especie = 'Perro'
-    elif 'gata' in txt or 'gato' in txt or 'gatita' in txt:
+    elif any(x in txt for x in ['gata', 'gato', 'gatita']):
         especie = 'Gato'
 
-    subtipo = {
-        14: 'perdido',
-        15: 'encontrado',
-        16: 'en adopción',
-    }.get(categoria_id, 'reportado')
-
+    subtipo = {14: 'perdido', 15: 'encontrado', 16: 'en adopción'}.get(categoria_id, 'reportado')
     ubic = extraer_ubicacion_simple(post.get('texto_limpio') or post.get('texto') or '')
     titulo = f"{especie} {subtipo}"
     if ubic:
         titulo += f" en {ubic}"
-    return limpiar_titulo(titulo.title())
+    elif subtipo == 'en adopción':
+        titulo += ' en Mérida'
+    return limpiar_titulo(titulo, max_chars=62) or 'Mascota reportada'
 
 
 def generar_titulo_alerta(post, categoria_nombre='Alerta', cat_nombre=None):
@@ -387,18 +553,18 @@ def generar_titulo_alerta(post, categoria_nombre='Alerta', cat_nombre=None):
         categoria_nombre = cat_nombre
     txt = post.get('texto_alerta') or post.get('texto_limpio') or post.get('texto') or ''
     ubic = extraer_ubicacion_simple(txt)
-    base = categoria_nombre if categoria_nombre and categoria_nombre.lower() != 'alerta' else primeras_palabras(txt, 7)
-    titulo = base or 'Alerta vecinal'
-    if ubic and ubic.lower() not in titulo.lower():
+    tema = inferir_tema_alerta(txt, categoria_nombre=categoria_nombre)
+    titulo = tema
+    if ubic and _norm(ubic) not in _norm(titulo):
         titulo = f"{titulo} en {ubic}"
-    return limpiar_titulo(titulo.title())
+    return limpiar_titulo(titulo, max_chars=62) or 'Alerta vecinal'
 
 
 def generar_titulo_noticia_fallback(post):
     txt = post.get('texto_limpio') or post.get('texto') or ''
     primera = re.split(r'[.!?\n]', txt)[0].strip()
-    base = primera or primeras_palabras(txt, 10) or 'Noticia local en Mérida'
-    return limpiar_titulo(base.title(), max_chars=90)
+    base = primera or primeras_palabras(txt, 12) or 'Noticia local en Mérida'
+    return limpiar_titulo(base, max_chars=88) or 'Noticia local en Mérida'
 
 
 def generar_alt_imagen(post, config_grupo=None):
@@ -417,18 +583,15 @@ def generar_alt_imagen(post, config_grupo=None):
         titulo = post.get('titulo') or generar_titulo_noticia_fallback(post)
         alt = f"Imagen relacionada con {titulo.lower()}"
     else:
-        titulo = post.get('titulo') or primeras_palabras(txt, 6) or 'negocio local'
+        titulo = post.get('titulo') or generar_titulo_negocio(post, categoria_nombre='')
         alt = f"Imagen de {titulo.lower()}"
-        if ubic and ubic.lower() not in alt.lower():
-            alt += f" en {ubic}"
-
     return limpiar_titulo(alt, max_chars=125)
 
 
 def construir_public_id(post, img, meta=None, config_grupo=None, idx=0):
     tipo = post.get('tipo') or post.get('_tipo_final') or post.get('tipo_detectado') or 'general'
     txt = post.get('texto_limpio') or post.get('texto') or post.get('descripcion') or post.get('texto_alerta') or ''
-    tema = slugify(post.get('titulo') or primeras_palabras(txt, 6), max_words=8, max_len=55)
+    tema = slugify(post.get('titulo') or generar_titulo_negocio(post, categoria_nombre=''), max_words=8, max_len=55)
     ciudad = slugify((meta or {}).get('city') or 'merida', max_words=3, max_len=20)
     estado = slugify((meta or {}).get('state') or 'yucatan', max_words=3, max_len=20)
     zona = slugify(extraer_ubicacion_simple(txt) or 'general', max_words=5, max_len=30)

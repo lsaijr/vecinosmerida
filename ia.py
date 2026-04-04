@@ -4,7 +4,7 @@ import os
 import re
 import time
 
-from utils import NEWS_MIN_WORDS, generar_titulo_noticia_fallback, parse_keywords
+from utils import NEWS_MIN_WORDS, contar_palabras, es_post_consulta, generar_titulo_noticia_fallback, limpiar_titulo, parse_keywords
 
 # ═══════════════════════════════════════════════════════════════
 # ROTACIÓN DE KEYS
@@ -157,6 +157,74 @@ Responde ÚNICAMENTE con JSON válido:
 {{"titulo":"...","texto":"...","categoria_id":1}}"""
 
 
+def _prompt_titulo_negocio(texto, categoria_nombre=""):
+    return f"""Genera un título MUY corto y claro para un directorio local de Mérida.
+
+TEXTO:
+{texto}
+
+CONTEXTO:
+Categoría sugerida: {categoria_nombre or 'General'}
+
+REGLAS:
+1. Máximo 6 palabras o 60 caracteres.
+2. Debe sonar natural y específico.
+3. No repitas palabras.
+4. No uses saludos, relleno ni preguntas.
+5. No inventes datos no presentes.
+6. Si el texto es solo una consulta o recomendación y no una oferta real, responde exactamente: IGNORAR
+
+Responde SOLO con JSON válido:
+{"titulo":"..."}"""
+
+
+def _titulo_pobre(titulo):
+    t = (titulo or '').strip()
+    if not t:
+        return True
+    tn = t.lower()
+    if tn in {'negocio local', 'general', 'servicio', 'mascotas', 'alerta'}:
+        return True
+    if len(t.split()) > 8:
+        return True
+    return False
+
+
+def generar_titulo_negocio_ia(post, categoria_nombre='', prefer='gemini'):
+    texto = post.get('texto_limpio') or post.get('texto') or ''
+    if es_post_consulta(texto):
+        return None
+    if contar_palabras(texto) < 12:
+        return None
+
+    cache_key = f"negocio::{(categoria_nombre or '').lower()}::{texto.strip().lower()}"
+    if cache_key in _CACHE_TITULOS:
+        return _CACHE_TITULOS[cache_key]
+
+    prompt = _prompt_titulo_negocio(texto, categoria_nombre=categoria_nombre)
+    proveedores = ['gemini', 'groq'] if prefer == 'gemini' else ['groq', 'gemini']
+
+    for proveedor in proveedores:
+        try:
+            if proveedor == 'gemini':
+                raw = _llamar_gemini(prompt)
+            else:
+                raw = _llamar_groq(prompt, temperatura=0.2, modelo='llama-3.1-8b-instant')
+            if raw.strip().upper() == 'IGNORAR':
+                return None
+            try:
+                titulo = _parsear_json(raw).get('titulo', '')
+            except Exception:
+                titulo = raw
+            titulo = limpiar_titulo(titulo, max_chars=60)
+            if titulo and not _titulo_pobre(titulo):
+                _CACHE_TITULOS[cache_key] = titulo
+                return titulo
+        except Exception:
+            continue
+    return None
+
+
 def _prompt_alerta(texto, cat_alertas):
     padres = [c for c in cat_alertas if c["parent_id"] is None]
     cats_str = ""
@@ -194,6 +262,7 @@ _CACHE_NEGOCIO = {}
 _CACHE_ALERTA = {}
 _CACHE_NOTICIA = {}
 _CACHE_LIMPIEZA = {}
+_CACHE_TITULOS = {}
 
 
 def _esperar_key(last_calls, key, intervalo):

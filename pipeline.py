@@ -8,13 +8,14 @@ from db import (
     obtener_categorias_noticias,
 )
 from generar_html import generar_html_resultados
-from ia import clasificar_tipo, debe_usar_gemini, procesar_alerta, procesar_negocio, procesar_noticia
+from ia import clasificar_tipo, debe_usar_gemini, generar_titulo_negocio_ia, procesar_alerta, procesar_negocio, procesar_noticia
 from utils import (
     NEWS_MIN_WORDS,
     generar_titulo_alerta,
     generar_titulo_mascota,
     generar_titulo_negocio,
     generar_titulo_noticia_fallback,
+    limpiar_titulo,
     paso_1_limpieza,
     paso_2_clusters,
     puede_ser_noticia_desde_json,
@@ -150,7 +151,7 @@ def ejecutar_pipeline(posts, meta, config_grupo, estado):
             proc = procesar_noticia(p, cats_noticias, usar_gemini=usar_gemini, modo=modo)
             if proc.get("error_ia"):
                 proc["_error_visible"] = proc["error_ia"]
-            proc["titulo"] = proc.get("titulo") or generar_titulo_noticia_fallback(proc)
+            proc["titulo"] = limpiar_titulo(proc.get("titulo") or generar_titulo_noticia_fallback(proc), max_chars=88)
             resultados["noticias"].append(proc)
             aprobados.append(proc)
             continue
@@ -165,7 +166,8 @@ def ejecutar_pipeline(posts, meta, config_grupo, estado):
         if not proc.get("telefono"):
             proc["telefono"] = p.get("telefono")
         categoria_nombre = cats_neg_map.get(str(proc.get("categoria_id")), {}).get("nombre", "General")
-        proc["titulo"] = generar_titulo_negocio(proc, categoria_nombre=categoria_nombre)
+        titulo_ai = generar_titulo_negocio_ia(proc, categoria_nombre=categoria_nombre, prefer="gemini")
+        proc["titulo"] = titulo_ai or generar_titulo_negocio(proc, categoria_nombre=categoria_nombre)
         resultados["negocios"].append(proc)
         aprobados.append(proc)
 
