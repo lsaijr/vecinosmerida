@@ -122,7 +122,11 @@ def ejecutar_pipeline(posts, meta, config_grupo, estado):
             clasificados.append(p)
             continue
 
-        tipo, err = clasificar_tipo(p.get("texto_limpio", ""))
+        tipo, err = clasificar_tipo(
+            p.get("texto_limpio", ""),
+            grupo_tipo=grupo_tipo,
+            grupo_nombre=meta.get("group_name", ""),
+        )
         if tipo == "noticia" and not p["noticia_permitida"]:
             tipo = "negocio" if pre_tipo == "ambiguo" else pre_tipo
         p["tipo_detectado"] = tipo

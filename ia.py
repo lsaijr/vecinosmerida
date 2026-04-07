@@ -9,6 +9,7 @@ from utils import (
     generar_titulo_noticia_fallback, limpiar_titulo,
     parse_keywords, tiene_senal_comercial_fuerte,
     generar_titulo_negocio,
+    NEGOCIO_CATEGORIA_KEYWORDS,
 )
 
 # ═══════════════════════════════════════════════════════════════
@@ -129,20 +130,36 @@ def interpretar_error(proveedor, error):
 # PROMPTS
 # ═══════════════════════════════════════════════════════════════
 
-def _prompt_clasificar_tipo(texto):
+def _prompt_clasificar_tipo(texto, grupo_tipo="vecinos", grupo_nombre=""):
+    contexto_grupo = {
+        "vecinos": "grupo de vecinos de una colonia en Mérida, Yucatán. Mezcla de negocios, alertas, noticias locales y mascotas.",
+        "noticias": "grupo de noticias locales de Mérida y Yucatán. La mayoría son noticias; pocos posts son negocios.",
+        "mascotas": "grupo dedicado a mascotas perdidas, encontradas y en adopción en Mérida. Casi todo es mascota.",
+        "negocios": "grupo de compra-venta y negocios locales de Mérida. La gran mayoría son negocios.",
+    }.get(grupo_tipo, "grupo de Facebook de vecinos en Mérida, Yucatán.")
+
     return f"""Clasifica el siguiente texto de Facebook en UNA sola categoría.
+
+CONTEXTO: Es un post de un {contexto_grupo}{f' Nombre del grupo: {grupo_nombre}.' if grupo_nombre else ''}
 
 TEXTO:
 {texto}
 
-CATEGORÍAS POSIBLES:
-- "negocio": venta de productos, servicios, ofertas comerciales, anuncios de negocios
-- "noticia": eventos, accidentes, política, deportes, cultura, información de interés general
-- "alerta": incidentes locales inmediatos (baches, robos, personas sospechosas, perros agresivos, fugas de agua, problemas de infraestructura en una colonia específica)
+CATEGORÍAS:
+- "negocio": venta de productos/servicios, ofertas, anuncios de negocios, precios
+- "noticia": eventos, accidentes, política, cultura, información general de interés
+- "alerta": incidentes locales inmediatos (bache, robo, sospechoso, fuga de agua, accidente en colonia)
 - "mascota": mascotas perdidas, encontradas o en adopción
-- "ignorar": spam, contenido irrelevante, texto sin sentido, menos de 20 palabras útiles
+- "ignorar": spam, texto sin sentido, saludos solos, menos de 15 palabras útiles
 
-Responde ÚNICAMENTE con una de estas palabras exactas: negocio, noticia, alerta, mascota, ignorar"""
+EJEMPLOS:
+- "Se vende sala, precio 3,500 pesos, llame al 999..." → negocio
+- "Incendio en la calle 64 moviliza a bomberos de Mérida" → noticia
+- "Cuidado, hay bache profundo en calle 20 cerca del Oxxo" → alerta
+- "Se perdió mi perrita labrador, responde al nombre Luna" → mascota
+- "Buenos días a todos 😊" → ignorar
+
+Responde ÚNICAMENTE con una de estas palabras: negocio, noticia, alerta, mascota, ignorar"""
 
 
 def _prompt_negocio(texto, categorias):
@@ -162,18 +179,33 @@ Responde ÚNICAMENTE con un JSON válido:
 
 def _prompt_noticia(texto, categorias, modo="completa"):
     cats_str = ", ".join([f"{c['id']}:{c['nombre']}" for c in categorias])
+
+    ejemplos_titulos = """
+EJEMPLOS DE TÍTULOS CORRECTOS:
+✓ "Incendio en predio de la calle 64 moviliza a bomberos de Mérida"
+✓ "Vecinos de Francisco de Montejo denuncian baches en avenida principal"
+✓ "Joven es detenido tras robo en colonia Nueva Sambulá"
+✓ "Ayuntamiento de Mérida anuncia corte de agua en 5 colonias"
+✓ "Festival gratuito en el parque de San Sebastián este 25 de abril"
+
+EJEMPLOS DE TÍTULOS INCORRECTOS (NO hagas esto):
+✗ "Noticia importante de Mérida" — demasiado genérico
+✗ "Vecinos reportan situación" — no dice qué pasó
+✗ "Incidente ocurrido el día de hoy en la ciudad" — vago
+✗ "URGENTE: Situación de emergencia" — sensacionalista y vacío"""
+
     if modo == "ligera":
         return f"""Eres un editor de noticias locales de Mérida, Yucatán, México.
 
 TEXTO ORIGINAL:
 {texto}
+{ejemplos_titulos}
 
-REGLAS ESTRICTAS:
-1. NO inventes hechos, causas, delitos, autoridades, consecuencias ni contexto no presente en el texto.
-2. NO agregues información externa.
-3. titulo: crea un título SEO claro y directo de máximo 90 caracteres. Sin emojis ni markdown.
-4. texto: reescribe el contenido en 1 párrafo breve y fiel al original.
-5. categoria_id: elige el número más adecuado de: {cats_str}
+REGLAS:
+1. titulo: titular SEO de máximo 90 caracteres. Incluye el QUIÉN, QUÉ y DÓNDE si están en el texto.
+2. NO inventes hechos, causas ni consecuencias ausentes en el texto.
+3. texto: 1 párrafo breve y fiel al original. No copies literalmente.
+4. categoria_id: elige de: {cats_str}
 
 Responde ÚNICAMENTE con JSON válido:
 {{"titulo":"...","texto":"...","categoria_id":1}}"""
@@ -182,44 +214,53 @@ Responde ÚNICAMENTE con JSON válido:
 
 TEXTO ORIGINAL:
 {texto}
+{ejemplos_titulos}
 
-REGLAS ESTRICTAS:
-1. NO inventes hechos, causas, delitos, autoridades, consecuencias ni contexto no presente en el texto.
-2. NO agregues información externa.
-3. titulo: escribe un titular optimizado para SEO, claro y directo. Máximo 90 caracteres. Sin emojis ni markdown.
-4. texto: redacta la noticia manteniendo exclusivamente los hechos presentes en el texto original.
-5. categoria_id: elige el número más adecuado de: {cats_str}
+REGLAS:
+1. titulo: titular SEO de máximo 90 caracteres. Incluye el QUIÉN, QUÉ y DÓNDE presentes en el texto.
+2. NO inventes hechos, causas, delitos, autoridades, consecuencias ni contexto ausentes en el texto.
+3. texto: redacta la noticia con los hechos del texto original. Mínimo 2 oraciones. No copies literalmente.
+4. categoria_id: elige de: {cats_str}
 
 Responde ÚNICAMENTE con JSON válido:
 {{"titulo":"...","texto":"...","categoria_id":1}}"""
 
 
 def _prompt_titulo_negocio(texto, categoria_nombre=""):
-    return f"""Genera un título MUY corto y claro para un directorio local de Mérida.
+    return f"""Eres un editor de directorios locales de Mérida, Yucatán. Tu tarea es generar un título corto, claro y útil para una publicación de Facebook de un negocio o servicio local.
 
-TEXTO:
+TEXTO DEL POST:
 {texto}
 
-CONTEXTO:
-Categoría sugerida: {categoria_nombre or 'General'}
+CATEGORÍA DETECTADA: {categoria_nombre or 'General'}
 
 REGLAS:
-1. Máximo 6 palabras o 60 caracteres.
-2. Debe sonar natural, específico y útil para SEO local.
-3. No repitas palabras ni frases.
-4. No uses saludos, relleno, preguntas ni emojis.
-5. No inventes datos no presentes en el texto.
-6. Evita títulos genéricos como "Negocio local en Mérida".
-7. Si el post es una consulta o sugerencia y NO una oferta clara, responde exactamente: IGNORAR
-8. Responde solo con un JSON con la clave titulo. Sin markdown, sin bloques de código.
+1. Máximo 7 palabras. Máximo 65 caracteres.
+2. Describe QUÉ ofrece el negocio, no hables del post.
+3. No uses saludos, preguntas, emojis ni puntuación final.
+4. No inventes datos que no estén en el texto.
+5. Incluye la colonia o zona SI está mencionada en el texto.
+6. Si el post es una consulta o pregunta (no una oferta), responde exactamente: IGNORAR
 
-Ejemplos válidos:
-{{"titulo":"Fresas con crema en Mérida"}}
-{{"titulo":"Clases de baile en Mérida"}}
-{{"titulo":"Baterías Optima en Mérida"}}
+EJEMPLOS CORRECTOS:
+{{"titulo": "Plomería y fontanería en Mérida"}}
+{{"titulo": "Instalación de cámaras de seguridad"}}
+{{"titulo": "Clases de inglés en Francisco de Montejo"}}
+{{"titulo": "Fumigación y control de plagas"}}
+{{"titulo": "Baterías para auto Optima en Mérida"}}
+{{"titulo": "Fotografía de bodas y XV años"}}
+{{"titulo": "Repostería artesanal a domicilio"}}
+{{"titulo": "Renta de inflables para fiestas"}}
+{{"titulo": "Cerrajería 24 horas en Mérida"}}
+{{"titulo": "Diseño gráfico y logos"}}
 
-Responde SOLO con JSON válido:
-{{"titulo":"..."}}"""
+EJEMPLOS INCORRECTOS (NO hagas esto):
+{{"titulo": "Negocio local en Mérida"}}  <- demasiado genérico
+{{"titulo": "Servicio"}}  <- demasiado corto
+{{"titulo": "Este negocio ofrece servicios de calidad"}}  <- no describe nada
+
+Responde ÚNICAMENTE con JSON válido:
+{{"titulo": "..."}}"""
 
 
 def _prompt_alerta(texto, cat_alertas):
@@ -380,13 +421,13 @@ def _parsear_json(texto):
 # CLASIFICAR TIPO DE POST
 # ═══════════════════════════════════════════════════════════════
 
-def clasificar_tipo(texto):
+def clasificar_tipo(texto, grupo_tipo="vecinos", grupo_nombre=""):
     key = (texto or '').strip().lower()
     if key in _CACHE_CLASIFICAR:
         return _CACHE_CLASIFICAR[key], None
 
     try:
-        prompt = _prompt_clasificar_tipo(texto)
+        prompt = _prompt_clasificar_tipo(texto, grupo_tipo=grupo_tipo, grupo_nombre=grupo_nombre)
         resultado = _llamar_groq(prompt, temperatura=0.1)
         tipo = resultado.strip().lower()
         if tipo not in ["negocio", "noticia", "alerta", "mascota", "ignorar"]:
@@ -412,32 +453,40 @@ def _contains_keyword_text(txt, kw):
 
 
 def _detectar_categoria_negocio_keywords(texto, categorias):
+    """
+    Detecta la categoría de un negocio por keywords sin usar IA.
+    Prioridad:
+    1. keywords de la DB (columna 'keywords' en cat_categorias)
+    2. NEGOCIO_CATEGORIA_KEYWORDS — mapa robusto en código (fallback)
+    3. None → la IA decidirá
+    """
     txt = (texto or '').lower()
     mejores = []
-    mapa_por_nombre = {
-        'comida': ['menu', 'menú', 'tacos', 'pizza', 'hamburguesa', 'frapp', 'smoothie',
-                   'crepa', 'fresas con', 'postre', 'waffle', 'hotcake', 'panuchos', 'sopes',
-                   'reposteria', 'antojo'],
-        'salud': ['masaje', 'terapia', 'rehabilitacion', 'rehabilitación', 'psicolog',
-                  'consultorio', 'doctor', 'nutricion', 'nutrición'],
-        'ropa & accesorios': ['ropa', 'blusa', 'vestido', 'bolsa', 'accesorio',
-                               'zapato', 'tenis', 'joyeria', 'joyería'],
-        'inmobiliaria': ['se renta', 'renta casa', 'renta departamento', 'departamento',
-                         'terreno', 'inmueble', 'alquiler', 'venta de casa', 'venta de terreno'],
-        'belleza & estética': ['uñas', 'cabello', 'maquillaje', 'spa', 'estetica', 'estética', 'lifting'],
-        'automotriz': ['auto', 'carro', 'pintura', 'ceramica', 'cerámica', 'mecanica',
-                       'mecánica', 'bateria', 'llanta'],
-        'servicios': ['fletes', 'mudanza', 'plomero', 'electricista', 'carpintero',
-                      'reparacion', 'reparación', 'mantenimiento', 'envios', 'envíos'],
-    }
 
     for cat in categorias:
-        kws = parse_keywords(cat.get('keywords'))
+        nombre_cat = (cat.get('nombre') or '').strip().lower()
+
+        # 1. Keywords de la DB (mayor prioridad)
+        kws_db = parse_keywords(cat.get('keywords'))
+
+        # 2. Fallback: buscar por nombre normalizado en NEGOCIO_CATEGORIA_KEYWORDS
+        kws_fallback = []
+        if not kws_db:
+            for clave, kws in NEGOCIO_CATEGORIA_KEYWORDS.items():
+                # Match si el nombre de la categoría contiene la clave o viceversa
+                if clave in nombre_cat or nombre_cat in clave:
+                    kws_fallback = kws
+                    break
+
+        kws = kws_db or kws_fallback
         if not kws:
-            kws = mapa_por_nombre.get((cat.get('nombre') or '').strip().lower(), [])
+            continue
+
         score = sum(1 for kw in kws if kw and _contains_keyword_text(txt, kw))
         if score > 0:
-            mejores.append((score, cat['id']))
+            # Bonus: keywords de DB tienen más peso que fallback
+            peso_extra = 10 if kws_db else 0
+            mejores.append((score + peso_extra, cat['id']))
 
     if mejores:
         mejores.sort(reverse=True)
