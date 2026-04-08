@@ -95,15 +95,19 @@ _GEO_YUCATAN = [
     'telchac', 'hunucmá', 'hunucma', 'tizimín', 'tizimin', 'oxkutzcab',
     'tekax', 'maxcanú', 'maxcanu', 'dzilam', 'sisal', 'chicxulub',
     'municipio de', 'ayuntamiento de', 'sspe', 'seye', 'conkal',
+    # Sureste relevante para audiencia yucateca:
+    'cancún', 'cancun', 'quintana roo', 'campeche', 'chetumal',
+    'playa del carmen', 'tulum', 'holbox', 'isla mujeres',
 ]
 
 _GEO_EXTERNA = [
     'california', 'estados unidos', 'eeuu', 'cdmx', 'ciudad de mexico',
     'guadalajara', 'monterrey', 'nuevo leon', 'jalisco', 'puebla',
-    'cancún', 'cancun', 'quintana roo', 'veracruz', 'chiapas', 'oaxaca',
-    'tabasco', 'campeche', 'totonacapan', 'huimilpan', 'coahuila',
-    'ahmsa', 'tamaulipas', 'sinaloa', 'sonora', 'tijuana', 'juarez',
-    'acapulco', 'mazatlan', 'torreon', 'torreón', 'saltillo',
+    'veracruz', 'chiapas', 'oaxaca', 'tabasco', 'totonacapan',
+    'huimilpan', 'coahuila', 'ahmsa', 'tamaulipas', 'sinaloa',
+    'sonora', 'tijuana', 'juarez', 'acapulco', 'mazatlan',
+    'torreon', 'torreón', 'saltillo', 'indonesia', 'tailandia',
+    'irán', 'iran', 'israel', 'ucrania', 'rusia', 'cuba',
 ]
 
 
@@ -460,7 +464,7 @@ def pre_clasificar_keywords(txt, autor="", grupo_tipo="vecinos"):
 # ═══════════════════════════════════════════════════════════════
 
 # Mínimo de palabras con contenido real para que un negocio sea publicable
-NEGOCIO_MIN_PALABRAS_CONTENIDO = 10
+NEGOCIO_MIN_PALABRAS_CONTENIDO = 12
 
 
 def paso_1_limpieza(posts, grupo_tipo="vecinos"):

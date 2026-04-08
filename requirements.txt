@@ -5,4 +5,4 @@ mysql-connector-python
 cloudinary
 rapidfuzz
 groq
-google-generativeai
+google-genai

@@ -674,10 +674,17 @@ def procesar_alerta(post, cat_alertas):
 # ═══════════════════════════════════════════════════════════════
 
 def debe_usar_gemini(texto, categoria_id=None):
-    """Usa Gemini para noticias largas o de alta importancia."""
+    """
+    Usa Gemini para noticias largas o que requieren mejor redacción.
+    categoria_id se reserva para uso futuro cuando se conozca antes del procesamiento.
+    """
     palabras = len((texto or '').split())
     if palabras >= 140:
         return True
-    if categoria_id in [1, 2]:  # Política, Seguridad
+    # Señales de alta importancia que justifican Gemini
+    t = (texto or '').lower()
+    if any(kw in t for kw in ['homicidio', 'feminicidio', 'balacera', 'asesinato',
+                                'gobernador', 'alcalde', 'congreso', 'reforma',
+                                'corrupción', 'corrupcion', 'detención masiva']):
         return True
     return False

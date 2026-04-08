@@ -12,6 +12,9 @@ from db import buscar_grupo, registrar_grupo, obtener_colonias
 
 app = FastAPI()
 
+# ── Lock: garantiza un solo pipeline activo a la vez ─────────────────────────
+_pipeline_lock = threading.Lock()
+
 estado = {
     "paso": "esperando",
     "progreso": 0,
@@ -71,10 +74,17 @@ async def analizar_grupo(file: UploadFile = File(...)):
 @app.post("/procesar")
 async def procesar(request: Request):
     global estado
-    body = await request.json()
 
+    # Rechazar si ya hay un proceso corriendo
+    if _pipeline_lock.locked():
+        return JSONResponse(
+            {"error": "Ya hay un proceso en curso. Espera a que termine antes de iniciar otro."},
+            status_code=409
+        )
+
+    body = await request.json()
     posts = estado.get("_posts_temp", [])
-    meta = estado.get("_meta_temp", {})
+    meta  = estado.get("_meta_temp", {})
 
     if not posts:
         return JSONResponse({"error": "No hay posts cargados. Sube el archivo primero."}, status_code=400)
@@ -109,6 +119,7 @@ async def procesar(request: Request):
 
     def run():
         global estado
+        _pipeline_lock.acquire()
         try:
             ejecutar_pipeline(posts, meta, config_grupo, estado)
         except Exception as e:
@@ -118,6 +129,8 @@ async def procesar(request: Request):
             estado["actividad"] = "Proceso detenido por error"
             if estado.get("inicio_ts"):
                 estado["elapsed_seconds"] = int(time.time() - estado["inicio_ts"])
+        finally:
+            _pipeline_lock.release()
 
     threading.Thread(target=run, daemon=True).start()
     return {"status": "procesando"}
@@ -140,6 +153,7 @@ def status():
         "elapsed_seconds": elapsed_seconds,
         "actividad": estado.get("actividad", ""),
         "historial": estado.get("historial", [])[-6:],
+        "ocupado": _pipeline_lock.locked(),
     }
 
 

@@ -26,6 +26,16 @@ from utils import (
     es_noticia_geograficamente_valida,
 )
 from cloudinary_service import subir_imagenes
+from collections import defaultdict
+
+
+def _tiene_url_imagen_valida(post):
+    """Verifica si el post tiene al menos una URL de imagen válida ANTES de llamar a la IA."""
+    imgs = post.get("imagenes") or []
+    return any(
+        isinstance(img, dict) and (img.get("url_temp") or "").startswith("http")
+        for img in imgs
+    )
 
 
 POLITICAS = {
@@ -177,6 +187,13 @@ def ejecutar_pipeline(posts, meta, config_grupo, estado):
             descartados_sin_imagen += 1
             continue
 
+        # ── Validar URL real ANTES de gastar tokens de IA ─────────
+        if requiere_imagen_en_grupo(tipo, grupo_tipo) and not _tiene_url_imagen_valida(p):
+            p["_descartado"] = "sin_url_imagen_valida"
+            resultados["ignorados"].append(p)
+            descartados_sin_imagen += 1
+            continue
+
         if tipo == "mascota":
             p["tipo"] = "mascota"
             p["categoria_id"] = _detectar_cat_mascota(p.get("texto_limpio", ""))
@@ -319,6 +336,57 @@ def ejecutar_pipeline(posts, meta, config_grupo, estado):
 
     actualizar_grupo_stats(meta.get("group_id"), len(posts))
 
+    # ── PASO 8: Reporte de clientes potenciales (autores repetidores) ──────────
+    _set_estado(estado, paso="Analizando clientes potenciales", progreso=99,
+                actividad="Identificando autores que publicaron múltiples veces", add_history=True)
+
+    author_posts = defaultdict(list)
+    for p in posts:
+        autor = (p.get("autor") or "desconocido").strip()
+        if autor not in ("desconocido", "sin autor"):
+            author_posts[autor].append(p)
+
+    clientes_potenciales = []
+    for autor, aposts in author_posts.items():
+        if len(aposts) < 2:
+            continue
+        from utils import extraer_telefono
+        phones = []
+        for ap in aposts:
+            tel = extraer_telefono(ap.get("texto") or "")
+            if tel and tel not in phones:
+                phones.append(tel)
+
+        tl_all = " ".join((ap.get("texto") or "").lower() for ap in aposts)
+        if any(k in tl_all for k in ["oferta","promo","pedido","laborando","servicio","vendemos","disponible","taller","pizza","ropa"]):
+            categoria = "COMERCIOS"
+        elif any(k in tl_all for k in ["perro","gato","gatito","adopción","adopcion","rescate","perdido","mascota"]):
+            categoria = "MASCOTAS"
+        else:
+            categoria = "OTRO"
+
+        muestra = max(aposts, key=lambda x: len(x.get("texto") or ""))
+        clientes_potenciales.append({
+            "autor":     autor,
+            "num_posts": len(aposts),
+            "categoria": categoria,
+            "telefonos": phones,
+            "muestra":   (muestra.get("texto") or "")[:200],
+        })
+
+    clientes_potenciales.sort(key=lambda x: x["num_posts"], reverse=True)
+
+    # Log de descartados con motivo
+    log_descartados = [
+        {
+            "autor":   (p.get("autor") or "?")[:40],
+            "motivo":  p.get("_descartado", "desconocido"),
+            "palabras": len((p.get("texto") or "").split()),
+            "texto":   (p.get("texto") or "")[:120],
+        }
+        for p in resultados["ignorados"]
+    ]
+
     _set_estado(estado, paso="Completado", progreso=100, actividad="Proceso completado", add_history=True)
     estado["archivo_html"] = nombre_archivo
     estado["resumen"] = {
@@ -337,6 +405,8 @@ def ejecutar_pipeline(posts, meta, config_grupo, estado):
         "descartados_sin_imagen": descartados_sin_imagen,
         "db_nuevos": db_nuevos,
         "db_duplicados": db_duplicados,
+        "clientes_potenciales": clientes_potenciales,
+        "log_descartados": log_descartados,
         **get_resumen_costo(),
     }
     return nombre_archivo
