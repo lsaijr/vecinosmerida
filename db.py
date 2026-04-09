@@ -359,3 +359,132 @@ def insertar_alerta(p, colonia_id):
     cursor.close()
     conn.close()
     return aid, "nuevo"
+
+
+# ─── EMPLEO ──────────────────────────────────────────────────
+
+EMPLEO_AREAS_SQL = """
+CREATE TABLE IF NOT EXISTS empleo_areas (
+  id        TINYINT AUTO_INCREMENT PRIMARY KEY,
+  nombre    VARCHAR(60) NOT NULL,
+  slug      VARCHAR(40) NOT NULL UNIQUE,
+  icono     VARCHAR(10),
+  color_hex VARCHAR(7)
+);
+
+INSERT IGNORE INTO empleo_areas (nombre, slug, icono, color_hex) VALUES
+('Cocina y alimentos',      'cocina',          '🍳', '#f97316'),
+('Ventas y atención',       'ventas',          '💼', '#10b981'),
+('Seguridad',               'seguridad',       '🛡', '#3b82f6'),
+('Transporte y logística',  'transporte',      '🚗', '#6366f1'),
+('Administrativo',          'administrativo',  '📋', '#8b5cf6'),
+('Limpieza y mantenimiento','limpieza',        '🧹', '#06b6d4'),
+('Construcción',            'construccion',    '🏗', '#78716c'),
+('Salud',                   'salud',           '🏥', '#ef4444'),
+('Tecnología',              'tecnologia',      '💻', '#0ea5e9'),
+('Educación',               'educacion',       '📚', '#7c3aed'),
+('Almacén',                 'almacen',         '📦', '#f59e0b'),
+('General',                 'general',         '💼', '#6b7280');
+
+CREATE TABLE IF NOT EXISTS empleos (
+  id              INT AUTO_INCREMENT PRIMARY KEY,
+  tipo            ENUM('oferta','busqueda') NOT NULL DEFAULT 'oferta',
+  area_id         TINYINT,
+  puesto          VARCHAR(150),
+  empresa         VARCHAR(150),
+  descripcion     TEXT,
+  horario         VARCHAR(100),
+  zona            VARCHAR(100),
+  telefono        VARCHAR(20),
+  imagen_url      VARCHAR(500),
+  autor           VARCHAR(200),
+  colonia_id      INT,
+  fbid_post       VARCHAR(30) UNIQUE,
+  fecha_captura   DATE,
+  activo          TINYINT DEFAULT 1,
+  creado_en       TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  FOREIGN KEY (area_id) REFERENCES empleo_areas(id)
+);
+"""
+
+
+def empleo_ya_existe(fbid_post):
+    if not fbid_post:
+        return None
+    conn = get_conn()
+    cursor = conn.cursor()
+    cursor.execute("SELECT id FROM empleos WHERE fbid_post = %s LIMIT 1", (str(fbid_post),))
+    row = cursor.fetchone()
+    cursor.close()
+    conn.close()
+    return row[0] if row else None
+
+
+def _get_area_id(area_nombre):
+    """Retorna el id de empleo_areas por nombre, o None."""
+    SLUG_MAP = {
+        'Cocina':          'cocina',
+        'Ventas':          'ventas',
+        'Seguridad':       'seguridad',
+        'Transporte':      'transporte',
+        'Administrativo':  'administrativo',
+        'Limpieza':        'limpieza',
+        'Construcción':    'construccion',
+        'Salud':           'salud',
+        'Tecnología':      'tecnologia',
+        'Educación':       'educacion',
+        'Almacén':         'almacen',
+        'General':         'general',
+    }
+    slug = SLUG_MAP.get(area_nombre or 'General', 'general')
+    conn = get_conn()
+    cursor = conn.cursor()
+    cursor.execute("SELECT id FROM empleo_areas WHERE slug = %s LIMIT 1", (slug,))
+    row = cursor.fetchone()
+    cursor.close()
+    conn.close()
+    return row[0] if row else None
+
+
+def insertar_empleo(p, colonia_id):
+    fbid_post = p.get("fbid_post")
+    existing  = empleo_ya_existe(fbid_post)
+    if existing:
+        return existing, "duplicado"
+
+    area_id   = _get_area_id(p.get("area"))
+    imgs      = p.get("imagenes_cloudinary") or []
+    img_url   = _img_url(imgs[0]) if imgs else None
+    telefono  = p.get("telefono") or None
+
+    conn   = get_conn()
+    cursor = conn.cursor()
+    cursor.execute(
+        """
+        INSERT INTO empleos
+          (tipo, area_id, puesto, empresa, descripcion,
+           horario, zona, telefono, imagen_url,
+           autor, colonia_id, fbid_post, fecha_captura)
+        VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
+        """,
+        (
+            p.get("tipo_empleo", "oferta"),
+            area_id,
+            (p.get("puesto") or "")[:150] or None,
+            (p.get("empresa") or p.get("autor") or "")[:150] or None,
+            p.get("descripcion", "")[:4000],
+            (p.get("horario") or "")[:100] or None,
+            (p.get("zona") or "")[:100] or None,
+            telefono,
+            img_url,
+            (p.get("autor") or "")[:200],
+            colonia_id,
+            fbid_post,
+            p.get("fecha_captura"),
+        ),
+    )
+    empleo_id = cursor.lastrowid
+    conn.commit()
+    cursor.close()
+    conn.close()
+    return empleo_id, "nuevo"

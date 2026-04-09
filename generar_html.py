@@ -14,6 +14,7 @@ def _color_por_tipo(tipo):
         "noticia": ("#1d4ed8", "rgba(59,130,246,.12)", "📰"),
         "alerta":  ("#dc2626", "rgba(220,38,38,.12)",  "⚠️"),
         "mascota": ("#059669", "rgba(5,150,105,.12)",  "🐾"),
+        "empleo":  ("#0ea5e9", "rgba(14,165,233,.12)", "💼"),
     }
     return mapa.get(tipo, ("#495057", "rgba(108,117,125,.1)", "📌"))
 
@@ -31,7 +32,11 @@ def generar_html_resultados(resultados, meta, config_grupo, cats_negocios, cats_
         if tipo == "ignorados":
             continue
         for p in lista:
-            p["_tipo_final"] = tipo[:-1] if tipo.endswith("s") else tipo
+            # "empleos" → "empleo", "negocios" → "negocio", etc.
+            if tipo == "empleos":
+                p["_tipo_final"] = "empleo"
+            else:
+                p["_tipo_final"] = tipo[:-1] if tipo.endswith("s") else tipo
             todos.append(p)
 
     resumen = {
@@ -40,6 +45,7 @@ def generar_html_resultados(resultados, meta, config_grupo, cats_negocios, cats_
         "noticias": len(resultados.get("noticias", [])),
         "alertas": len(resultados.get("alertas", [])),
         "mascotas": len(resultados.get("mascotas", [])),
+        "empleos": len(resultados.get("empleos", [])),
         "ignorados": len(resultados.get("ignorados", [])),
     }
 
@@ -92,6 +98,11 @@ def generar_html_resultados(resultados, meta, config_grupo, cats_negocios, cats_
         elif tipo == "mascota":
             titulo = p.get("titulo", cat_nombre)
             texto_completo = p.get("descripcion", p.get("texto_limpio", ""))
+        elif tipo == "empleo":
+            tipo_emp = p.get("tipo_empleo", "oferta")
+            puesto   = p.get("puesto") or ("Vacante disponible" if tipo_emp == "oferta" else "Busca empleo")
+            titulo   = puesto
+            texto_completo = p.get("descripcion", p.get("texto_limpio", ""))
         else:
             titulo = p.get("titulo", p.get("nombre", p.get("texto_limpio", "")[:60]))
             texto_completo = p.get("descripcion", p.get("texto_limpio", ""))
@@ -106,7 +117,7 @@ def generar_html_resultados(resultados, meta, config_grupo, cats_negocios, cats_
                 for a in img_assets
             )
             gal_html = f"""
-<div class="gal" onclick="openLB({imgs_js}, 0, {json.dumps(titulo)})">
+<div class="gal" onclick='openLB({imgs_js}, 0, {json.dumps(titulo)})'>
   <div class="gal-track" id="gt_{hash(titulo) % 99999}">
     {imgs_tags}
   </div>
@@ -121,9 +132,31 @@ def generar_html_resultados(resultados, meta, config_grupo, cats_negocios, cats_
   <span class="gal-badge" style="position:absolute;top:10px;left:10px;background:rgba(0,0,0,.72)!important;color:#fff!important">{emoji_tipo} {tipo.upper()}</span>
 </div>"""
 
-        # Footer con teléfono
+        # Footer con teléfono / WhatsApp
         footer_html = ""
-        if tel:
+        if tipo == "empleo":
+            # Card de empleo: botón WA directo + tags de área, horario, zona
+            tags_html = ""
+            area    = p.get("area", "")
+            icon_e  = p.get("icon", "💼")
+            horario = p.get("horario", "")
+            zona    = p.get("zona", "")
+            if area:
+                tags_html += f'<span style="font-size:.67rem;font-weight:600;padding:2px 8px;border-radius:99px;background:#f1f5f9;color:#475569">{icon_e} {area}</span> '
+            if horario:
+                tags_html += f'<span style="font-size:.67rem;font-weight:600;padding:2px 8px;border-radius:99px;background:#dcfce7;color:#15803d">⏰ {horario}</span> '
+            if zona:
+                tags_html += f'<span style="font-size:.67rem;font-weight:600;padding:2px 8px;border-radius:99px;background:#dbeafe;color:#1d4ed8">📍 {zona}</span>'
+            wa_btn = ""
+            if tel:
+                msg = "Hola%2C+vi+tu+vacante+en+VecinosMérida+y+me+interesa+aplicar."
+                wa_btn = f'<a class="bwa" href="https://wa.me/52{tel}?text={msg}" target="_blank">💬 Contactar</a>'
+            footer_html = f"""
+<div style="padding:8px 16px 14px;display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap;border-top:1px solid #f1f5f9">
+  <div style="display:flex;gap:5px;flex-wrap:wrap">{tags_html}</div>
+  {wa_btn}
+</div>"""
+        elif tel:
             wa_url = f"https://wa.me/52{tel}?text=Hola!%20Vi%20tu%20publicación%20en%20VecinosMerida.com"
             footer_html = f"""
 <div class="cfoot">
@@ -186,7 +219,7 @@ def generar_html_resultados(resultados, meta, config_grupo, cats_negocios, cats_
     tipos_presentes = list({p["_tipo_final"] for p in todos})
     filtros_html = '<button class="fb on r" data-tipo="todos" onclick="filtrar(this)">Todos</button>\n'
     etiquetas = {"negocio": "🏪 Negocios", "noticia": "📰 Noticias",
-                 "alerta": "⚠️ Alertas", "mascota": "🐾 Mascotas"}
+                 "alerta": "⚠️ Alertas", "mascota": "🐾 Mascotas", "empleo": "💼 Empleos"}
     for t in ["negocio", "noticia", "alerta", "mascota"]:
         if t in tipos_presentes:
             cnt = resumen.get(t + "s", 0)
@@ -294,6 +327,7 @@ body{{font-family:'DM Sans',sans-serif;background:var(--crema);color:var(--carbo
     <div><div class="stat-n">{resumen['noticias']}</div><div class="stat-l">Noticias</div></div>
     <div><div class="stat-n">{resumen['alertas']}</div><div class="stat-l">Alertas</div></div>
     <div><div class="stat-n">{resumen['mascotas']}</div><div class="stat-l">Mascotas</div></div>
+    <div><div class="stat-n">{resumen['empleos']}</div><div class="stat-l">Empleos</div></div>
     <div><div class="stat-n">{resumen['ignorados']}</div><div class="stat-l">Ignorados</div></div>
   </div>
 </section>

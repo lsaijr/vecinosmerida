@@ -688,3 +688,123 @@ def debe_usar_gemini(texto, categoria_id=None):
                                 'corrupción', 'corrupcion', 'detención masiva']):
         return True
     return False
+
+
+# ═══════════════════════════════════════════════════════════════
+# EMPLEO — PROMPT Y PROCESAMIENTO
+# ═══════════════════════════════════════════════════════════════
+
+_CACHE_EMPLEO = {}
+
+
+def _prompt_empleo(texto, tipo_empleo='oferta'):
+    """Prompt para extraer puesto y área de un post de empleo."""
+    if tipo_empleo == 'oferta':
+        instruccion = (
+            "Extrae el puesto de trabajo ofertado. "
+            "Si hay varios puestos, únelos con coma (máximo 3)."
+        )
+    else:
+        instruccion = (
+            "Describe en pocas palabras el perfil laboral que busca esta persona. "
+            "Ejemplo: 'Cajera con experiencia', 'Cocinero turno matutino'."
+        )
+
+    return f"""Eres un asistente que procesa anuncios de empleo en Mérida, Yucatán.
+
+TEXTO DEL ANUNCIO:
+{texto[:400]}
+
+INSTRUCCIONES:
+1. puesto: {instruccion} Máximo 6 palabras. Sin puntuación final.
+   Si no puedes determinarlo con certeza, responde: GENERAL
+2. area: Elige UNA de estas áreas según el puesto:
+   Cocina, Ventas, Seguridad, Transporte, Administrativo,
+   Limpieza, Construcción, Salud, Tecnología, Educación, Almacén, General
+
+Responde ÚNICAMENTE con JSON válido:
+{{"puesto": "...", "area": "..."}}"""
+
+
+def procesar_empleo(post, tipo_empleo='oferta'):
+    """
+    Procesa un post de empleo:
+    - Limpia el texto con limpiar_texto_empleo()
+    - Extrae horario y zona por keywords (sin IA)
+    - Extrae puesto y área con Groq (con caché)
+    - Fallback a keywords si Groq falla
+    """
+    from utils import (
+        limpiar_texto_empleo, get_empleo_area,
+        extraer_horario_empleo, extraer_zona_empleo,
+    )
+
+    texto_orig  = post.get('texto_limpio') or post.get('texto') or ''
+    texto_clean = limpiar_texto_empleo(texto_orig)
+    cache_key   = f"empleo::{tipo_empleo}::{texto_orig.strip().lower()}"
+
+    horario = extraer_horario_empleo(texto_orig)
+    zona    = extraer_zona_empleo(texto_orig)
+    area_kw, icon_kw, color_kw = get_empleo_area(texto_orig)
+
+    if cache_key in _CACHE_EMPLEO:
+        datos = dict(_CACHE_EMPLEO[cache_key])
+        return {
+            **post,
+            'tipo':           'empleo',
+            'tipo_empleo':    tipo_empleo,
+            'descripcion':    texto_clean,
+            'horario':        horario,
+            'zona':           zona,
+            'area':           datos.get('area', area_kw),
+            'icon':           icon_kw,
+            'color':          color_kw,
+            'puesto':         datos.get('puesto'),
+            'error_ia':       None,
+        }
+
+    # Intentar con Groq
+    error_msg = None
+    puesto    = None
+    area      = area_kw
+
+    try:
+        prompt  = _prompt_empleo(texto_clean, tipo_empleo)
+        raw     = _llamar_groq(prompt, temperatura=0.1)
+        datos   = _parsear_json(raw)
+        puesto_raw = (datos.get('puesto') or '').strip()
+        area_raw   = (datos.get('area')   or '').strip()
+
+        if puesto_raw.upper() != 'GENERAL' and len(puesto_raw.split()) <= 8:
+            puesto = puesto_raw
+        if area_raw in {
+            'Cocina', 'Ventas', 'Seguridad', 'Transporte', 'Administrativo',
+            'Limpieza', 'Construcción', 'Salud', 'Tecnología', 'Educación',
+            'Almacén', 'General'
+        }:
+            area = area_raw
+
+        _CACHE_EMPLEO[cache_key] = {'puesto': puesto, 'area': area}
+
+    except Exception as e:
+        error_msg = interpretar_error('Groq', e)
+
+    # Actualizar icono/color según área final
+    from utils import EMPLEO_AREAS
+    cfg   = EMPLEO_AREAS.get(area, {})
+    icon  = cfg.get('icon', icon_kw)
+    color = cfg.get('color', color_kw)
+
+    return {
+        **post,
+        'tipo':        'empleo',
+        'tipo_empleo': tipo_empleo,
+        'descripcion': texto_clean,
+        'horario':     horario,
+        'zona':        zona,
+        'area':        area,
+        'icon':        icon,
+        'color':       color,
+        'puesto':      puesto,
+        'error_ia':    error_msg,
+    }

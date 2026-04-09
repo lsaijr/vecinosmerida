@@ -58,6 +58,17 @@ CONFIG_GRUPO = {
         "validar_noticia_ia":  False,
         "filtrar_geo_externa": False,
     },
+    "empleo": {
+        "tipos_permitidos":    ["empleo"],
+        "tipos_prioritarios":  ["empleo"],
+        "min_palabras_noticia": 9999,
+        "min_palabras_mascota": 9999,
+        "requiere_imagen":     [],
+        "no_requiere_imagen":  ["empleo"],
+        "largo_es_negocio":    False,
+        "validar_noticia_ia":  False,
+        "filtrar_geo_externa": False,
+    },
 }
 
 
@@ -433,6 +444,279 @@ _KW = {
 }
 
 UMBRAL_KEYWORDS = 2
+
+
+# ═══════════════════════════════════════════════════════════════
+# EMPLEO — KEYWORDS, ÁREAS Y FUNCIONES DE EXTRACCIÓN
+# ═══════════════════════════════════════════════════════════════
+
+OFERTA_KW = [
+    'se solicita', 'se solicitan', 'solicitamos', 'estamos contratando',
+    'buscamos personal', 'vacante', 'vacantes', 'contratación inmediata',
+    'únete a nuestro equipo', 'estamos buscando', 'requisitos', 'sueldo',
+    'interesados presentarse', 'interesados comunicarse', 'envía tu cv',
+    'manda tu cv', 'se busca', 'urge', 'pago semanal', 'pago quincenal',
+    'prestaciones', 'solicito personal', 'solicita personal', 'contratando',
+    'contrata', 'reclutamiento', 'talento', 'solicito', 'buscamos',
+    'están solicitando', 'están contratando', 'no se requiere experiencia',
+]
+
+BUSQUEDA_KW = [
+    'busco trabajo', 'busco empleo', 'ando en busca', 'estoy buscando trabajo',
+    'estoy buscando empleo', 'algún trabajo', 'algún empleo', 'algun trabajo',
+    'algun empleo', 'busco por las', 'necesito trabajo', 'ofrezco mis servicios',
+    'en búsqueda de empleo', 'en busca de empleo', 'busco oportunidad',
+    'ando buscando', 'busco por el rumbo',
+]
+
+EMPLEO_AREAS = {
+    'Cocina':          {
+        'icon': '🍳', 'color': '#f97316',
+        'kws': ['cocina', 'cocinero', 'cocinera', 'chef', 'cocinar', 'lavaloza',
+                'lava loza', 'mesero', 'mesera', 'bartender', 'ayudante de cocina',
+                'panadero', 'repostería', 'cafetería', 'barista'],
+    },
+    'Ventas':          {
+        'icon': '💼', 'color': '#10b981',
+        'kws': ['ventas', 'vendedor', 'vendedora', 'cajero', 'cajera',
+                'atención al cliente', 'servicio al cliente', 'promotor',
+                'asesor de crédito', 'asesor comercial', 'ejecutivo de ventas',
+                'módulo de crédito', 'tarjeta de crédito'],
+    },
+    'Seguridad':       {
+        'icon': '🛡', 'color': '#3b82f6',
+        'kws': ['seguridad', 'guardia', 'vigilante', 'velador', 'custodi',
+                'protección activos', 'oficial de seguridad'],
+    },
+    'Transporte':      {
+        'icon': '🚗', 'color': '#6366f1',
+        'kws': ['chofer', 'chófer', 'conductor', 'operador', 'repartidor',
+                'mensajero', 'cargador', 'montacarguista', 'paquetería',
+                'reparto', 'ayudante de chofer', 'estibador', 'logística'],
+    },
+    'Administrativo':  {
+        'icon': '📋', 'color': '#8b5cf6',
+        'kws': ['administrativo', 'asistente', 'recepcionista', 'secretaria',
+                'recursos humanos', 'contabilidad', 'contador', 'facturación',
+                'auxiliar contable', 'digitalizador'],
+    },
+    'Limpieza':        {
+        'icon': '🧹', 'color': '#06b6d4',
+        'kws': ['limpieza', 'intendencia', 'mantenimiento', 'plomero',
+                'electricista', 'pintor', 'jardinero', 'carpintero',
+                'mozo', 'camarista', 'lavador', 'pulidor'],
+    },
+    'Construcción':    {
+        'icon': '🏗', 'color': '#78716c',
+        'kws': ['construcción', 'obra', 'albañil', 'soldador', 'instalador',
+                'panel solar', 'herrería', 'llantera', 'llantero'],
+    },
+    'Salud':           {
+        'icon': '🏥', 'color': '#ef4444',
+        'kws': ['enfermera', 'enfermero', 'médico', 'doctor', 'psicólogo',
+                'terapeuta', 'farmacia', 'clínica', 'hospital', 'veterinaria'],
+    },
+    'Tecnología':      {
+        'icon': '💻', 'color': '#0ea5e9',
+        'kws': ['programador', 'desarrollador', 'sistemas', 'software',
+                'soporte técnico', 'analista de datos', 'social media',
+                'diseño web', 'control de plagas'],
+    },
+    'Educación':       {
+        'icon': '📚', 'color': '#7c3aed',
+        'kws': ['maestro', 'maestra', 'profesor', 'profesora', 'docente',
+                'tutor', 'guardería', 'preescolar', 'asistente educativo'],
+    },
+    'Almacén':         {
+        'icon': '📦', 'color': '#f59e0b',
+        'kws': ['almacén', 'almacen', 'bodega', 'surtidor', 'inventario',
+                'ferreter', 'auxiliar de tienda', 'gomart', 'soriana',
+                'encargado de tienda'],
+    },
+}
+
+EMPLEO_HORARIO_KW = {
+    'Tiempo completo': ['tiempo completo', '8 horas', 'jornada completa',
+                        'lunes a viernes', 'lunes a sábado', 'lunes a sabado'],
+    'Medio tiempo':    ['medio tiempo', '4 horas', 'part time'],
+    'Fin de semana':   ['fin de semana', 'sábado y domingo', 'fines de semana'],
+    'Nocturno':        ['turno nocturno', 'nocturno', 'noche'],
+    'Vespertino':      ['turno vespertino', 'vespertino'],
+    'Matutino':        ['turno matutino', 'matutino'],
+    'Por día':         ['por día', 'por dia', 'días de juego'],
+}
+
+EMPLEO_ZONA_KW = [
+    'zona norte', 'zona sur', 'zona oriente', 'zona poniente', 'zona centro',
+    'francisco de montejo', 'fco. de montejo', 'altabrisa', 'pensiones',
+    'las américas', 'las americas', 'caucel', 'chuburna', 'vergeles', 'mulsay',
+    'kanasín', 'kanasin', 'polígono 108', 'ciudad caucel', 'cordemex',
+    'galerías mérida', 'xcumpich', 'dzityá',
+]
+
+EMPLEO_SIGLAS = {
+    'IMSS', 'INFONAVIT', 'FONACOT', 'RFC', 'INE', 'CURP', 'IFE', 'SAT',
+    'CV', 'RH', 'CDMX', 'ISO', 'ISSSTE', 'IVA', 'AM', 'PM',
+}
+
+EMPLEO_SECCIONES = [
+    'Requisitos', 'Ofrecemos', 'Horario', 'Zona', 'Ubicación', 'Ubicacion',
+    'Sueldo', 'Pago', 'Actividades', 'Funciones', 'Beneficios', 'Contacto',
+    'Interesados', 'Lo que ofrecemos', 'Lo que buscamos', 'Prestaciones',
+    'Nota', 'Buscamos',
+]
+
+
+def get_empleo_area(txt):
+    """Detecta el área laboral de un post de empleo por keywords."""
+    t = (txt or '').lower()
+    for area, cfg in EMPLEO_AREAS.items():
+        if any(kw in t for kw in cfg['kws']):
+            return area, cfg['icon'], cfg['color']
+    return 'General', '💼', '#6b7280'
+
+
+def extraer_horario_empleo(txt):
+    """Extrae tipo de horario de un post de empleo."""
+    t = (txt or '').lower()
+    for label, kws in EMPLEO_HORARIO_KW.items():
+        if any(k in t for k in kws):
+            return label
+    return None
+
+
+def extraer_zona_empleo(txt):
+    """Extrae zona geográfica de un post de empleo."""
+    t = (txt or '').lower()
+    for z in EMPLEO_ZONA_KW:
+        if z in t:
+            return z.title()
+    m = re.search(
+        r'(?:zona|ubicación|ubicacion)[:\s]+([A-ZÁÉÍÓÚÑ][a-záéíóúñA-ZÁÉÍÓÚÑ\s,]{3,30})',
+        txt or '', re.I
+    )
+    if m:
+        return m.group(1).strip().split('\n')[0][:30]
+    return None
+
+
+def _cap_primera(s):
+    s = s.strip()
+    if not s:
+        return s
+    for i, c in enumerate(s):
+        if c.isalpha():
+            return s[:i] + c.upper() + s[i + 1:]
+    return s
+
+
+def _pct_caps_empleo(texto):
+    palabras = [re.sub(r'\W', '', w) for w in texto.split()]
+    largas = [w for w in palabras if len(w) > 3 and w not in EMPLEO_SIGLAS]
+    if not largas:
+        return 0
+    return sum(1 for w in largas if w.isupper()) / len(largas)
+
+
+def _bajar_caps_empleo(texto):
+    palabras = texto.split()
+    resultado = []
+    for w in palabras:
+        nucleo = re.sub(r'\W', '', w)
+        if nucleo.upper() in EMPLEO_SIGLAS:
+            resultado.append(nucleo.upper())
+        else:
+            resultado.append(w.lower())
+    return _cap_primera(' '.join(resultado))
+
+
+def limpiar_texto_empleo(txt):
+    """
+    Limpia texto de posts de empleo:
+    - Quita URLs, emojis, hashtags, menciones, teléfonos, emails
+    - Inserta saltos antes de secciones (Requisitos:, Ofrecemos:, etc.)
+    - Normaliza mayúsculas excesivas respetando siglas (IMSS, RFC, etc.)
+    - Capitaliza correctamente inicio de oración
+    """
+    if not txt:
+        return ''
+
+    t = re.sub(r'https?://\S+|wa\.me\S*|rebrand\.ly\S*', '', txt)
+    t = re.sub(r'@\[\d+:\d+:[^\]]*\]|@\w+', '', t)
+    t = re.sub(r'#\w+', '', t)
+    t = re.sub(r'[\U0001F300-\U0001FFFF\u2600-\u27BF]+', ' ', t, flags=re.UNICODE)
+    t = re.sub(r'[\U0001D400-\U0001D7FF]+', '', t, flags=re.UNICODE)
+    t = re.sub(r'[*_`~]', '', t)
+    t = re.sub(r'(?m)^[•·\-–—]\s*', '', t)
+    t = re.sub(r'\S+@\S+\.\S+', '', t)
+    t = re.sub(r'(?<!\d)\d{3}[\s\-.]?\d{3}[\s\-.]?\d{4}(?!\d)', '', t)
+    t = re.sub(r'(?i)\bTelf?\.\s*', '', t)
+    t = re.sub(r'^#+\s*', '', t, flags=re.M)
+    t = re.sub(r'\.{2,}', '.', t)
+    t = re.sub(r'!{2,}', '!', t)
+    t = re.sub(r'\?{2,}', '?', t)
+    t = re.sub(r'\(\s*\)', '', t)
+
+    # Insertar saltos antes de secciones conocidas
+    for sec in EMPLEO_SECCIONES:
+        t = re.sub(
+            rf'(?<!\n)\s*\b({re.escape(sec)}s?:)',
+            r'\n\1', t, flags=re.I
+        )
+
+    # Separar bullets pegados
+    t = re.sub(r'-([A-ZÁÉÍÓÚÑ][a-záéíóúñ])', r'\n\1', t)
+    t = re.sub(r'\n{3,}', '\n\n', t)
+
+    # Normalizar caps por línea
+    lines_out = []
+    for linea in t.split('\n'):
+        linea = re.sub(r' {2,}', ' ', linea).strip()
+        if not linea:
+            lines_out.append('')
+            continue
+        if _pct_caps_empleo(linea) >= 0.45:
+            linea = _bajar_caps_empleo(linea)
+            linea = re.sub(
+                r'([.!?])\s+([a-záéíóúñ])',
+                lambda m: m.group(1) + ' ' + m.group(2).upper(),
+                linea
+            )
+        else:
+            linea = _cap_primera(linea)
+        lines_out.append(linea)
+
+    # Quitar blancos consecutivos
+    clean = []
+    prev_blank = False
+    for l in lines_out:
+        if not l:
+            if not prev_blank:
+                clean.append('')
+            prev_blank = True
+        else:
+            clean.append(l)
+            prev_blank = False
+
+    t = '\n'.join(clean).strip()
+    if t and t[0].isalpha() and t[0].islower():
+        t = t[0].upper() + t[1:]
+    t = re.sub(r' ([,.:;])', r'\1', t)
+    t = re.sub(r'([.:;,])([A-Za-záéíóúñÁÉÍÓÚÑ])', r'\1 \2', t)
+    return t.strip()
+
+
+def clasificar_tipo_empleo(txt):
+    """
+    Retorna 'oferta', 'busqueda', o None si no es un post de empleo.
+    Se llama antes de Groq para evitar llamadas innecesarias.
+    """
+    t = (txt or '').lower()
+    if any(k in t for k in OFERTA_KW):
+        return 'oferta'
+    if any(k in t for k in BUSQUEDA_KW):
+        return 'busqueda'
+    return None
 
 
 def pre_clasificar_keywords(txt, autor="", grupo_tipo="vecinos"):
@@ -1291,9 +1575,35 @@ KEYWORDS_NOTICIAS = [
     'novedades', 'prensa', 'notificaciones', 'alerta', 'urgente'
 ]
 
+KEYWORDS_EMPLEO = [
+    'empleo', 'empleos', 'trabajo', 'trabajos', 'vacante', 'vacantes',
+    'bolsa de trabajo', 'oportunidad laboral', 'busco trabajo', 'busco empleo',
+    'oferta de trabajo', 'reclutamiento', 'contratación',
+]
+
+KEYWORDS_MASCOTAS = [
+    'mascotas', 'mascota', 'adopcion', 'adopción', 'perros perdidos',
+    'gatos perdidos', 'rescate animal', 'animales',
+]
+
+KEYWORDS_NEGOCIOS = [
+    'negocios', 'compra', 'venta', 'anuncios', 'marketplace',
+    'directorio', 'comercios', 'servicios',
+]
+
 
 def detectar_tipo_por_nombre(group_name):
     nombre_lower = (group_name or '').lower()
+    # Empleo primero — evita falsos positivos con "seguridad" en noticias
+    for kw in KEYWORDS_EMPLEO:
+        if kw in nombre_lower:
+            return 'empleo'
+    for kw in KEYWORDS_MASCOTAS:
+        if kw in nombre_lower:
+            return 'mascotas'
+    for kw in KEYWORDS_NEGOCIOS:
+        if kw in nombre_lower:
+            return 'negocios'
     for kw in KEYWORDS_NOTICIAS:
         if kw in nombre_lower:
             return 'noticias'

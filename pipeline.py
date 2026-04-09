@@ -1,6 +1,7 @@
 from db import (
     actualizar_grupo_stats,
     insertar_alerta,
+    insertar_empleo,
     insertar_negocio,
     insertar_noticia,
     obtener_categorias_alertas,
@@ -8,7 +9,7 @@ from db import (
     obtener_categorias_noticias,
 )
 from generar_html import generar_html_resultados
-from ia import clasificar_tipo, debe_usar_gemini, generar_titulo_negocio_ia, procesar_alerta, procesar_negocio, procesar_noticia, get_resumen_costo, reset_contadores, _titulo_pobre
+from ia import clasificar_tipo, debe_usar_gemini, generar_titulo_negocio_ia, procesar_alerta, procesar_negocio, procesar_noticia, procesar_empleo, get_resumen_costo, reset_contadores, _titulo_pobre
 from utils import (
     generar_alt_imagen,
     NEWS_MIN_WORDS,
@@ -24,6 +25,9 @@ from utils import (
     tipo_permitido_en_grupo,
     requiere_imagen_en_grupo,
     es_noticia_geograficamente_valida,
+    clasificar_tipo_empleo,
+    OFERTA_KW,
+    BUSQUEDA_KW,
 )
 from cloudinary_service import subir_imagenes
 from collections import defaultdict
@@ -59,6 +63,11 @@ POLITICAS = {
         "ia_categoria_negocio": "fallback",
         "noticia_ligera": True,
     },
+    "empleo": {
+        "ia_clasificacion": "solo_ambiguos",
+        "ia_categoria_negocio": False,
+        "noticia_ligera": False,
+    },
 }
 
 
@@ -85,6 +94,7 @@ def ejecutar_pipeline(posts, meta, config_grupo, estado):
         "noticias": [],
         "alertas": [],
         "mascotas": [],
+        "empleos": [],
         "ignorados": [],
         "errores": [],
     }
@@ -125,6 +135,16 @@ def ejecutar_pipeline(posts, meta, config_grupo, estado):
             _set_estado(estado, actividad=f"Clasificando post {idx}/{len(unicos)}")
         pre_tipo = p.get("pre_tipo", "ambiguo")
         p["noticia_permitida"] = puede_ser_noticia_desde_json(p.get("texto", ""))
+
+        # ── Detección directa de empleo (sin Groq) ───────────────
+        if grupo_tipo == "empleo":
+            tipo_emp = clasificar_tipo_empleo(p.get("texto_limpio", ""))
+            if tipo_emp:
+                p["tipo_detectado"]  = "empleo"
+                p["tipo_empleo"]     = tipo_emp
+                calls_ia_evitadas   += 1
+                clasificados.append(p)
+                continue
 
         if pre_tipo != "ambiguo":
             p["tipo_detectado"] = pre_tipo
@@ -204,6 +224,15 @@ def ejecutar_pipeline(posts, meta, config_grupo, estado):
             aprobados.append(p)
             continue
 
+        if tipo == "empleo":
+            tipo_empleo = p.get("tipo_empleo", "oferta")
+            proc = procesar_empleo(p, tipo_empleo=tipo_empleo)
+            if proc.get("error_ia"):
+                proc["_error_visible"] = proc["error_ia"]
+            resultados["empleos"].append(proc)
+            aprobados.append(proc)
+            continue
+
         if tipo == "alerta":
             proc = procesar_alerta(p, cats_alertas)
             if proc.get("error_ia"):
@@ -267,7 +296,7 @@ def ejecutar_pipeline(posts, meta, config_grupo, estado):
         imgs_fail += fail
 
     # Si un post no-noticia se quedó sin imágenes finales, descártalo del resultado
-    for bucket in ['negocios', 'alertas', 'mascotas']:
+    for bucket in ['negocios', 'alertas', 'mascotas', 'empleos']:
         conservados = []
         for p in resultados[bucket]:
             if p.get('imagenes_cloudinary'):
@@ -334,6 +363,17 @@ def ejecutar_pipeline(posts, meta, config_grupo, estado):
         except Exception as e:
             resultados["errores"].append({"tipo": "db_alerta", "error": str(e), "autor": p.get("autor")})
 
+    for p in resultados["empleos"]:
+        db_idx += 1
+        if db_idx == 1 or db_idx % 12 == 0:
+            _set_estado(estado, actividad=f"Guardando en DB {db_idx}/{max(total_db,1)}")
+        try:
+            _, st = insertar_empleo(p, colonia_id)
+            db_nuevos += 1 if st == "nuevo" else 0
+            db_duplicados += 1 if st == "duplicado" else 0
+        except Exception as e:
+            resultados["errores"].append({"tipo": "db_empleo", "error": str(e), "autor": p.get("autor")})
+
     actualizar_grupo_stats(meta.get("group_id"), len(posts))
 
     # ── PASO 8: Reporte de clientes potenciales (autores repetidores) ──────────
@@ -399,6 +439,7 @@ def ejecutar_pipeline(posts, meta, config_grupo, estado):
         "noticias": len(resultados["noticias"]),
         "alertas": len(resultados["alertas"]),
         "mascotas": len(resultados["mascotas"]),
+        "empleos": len(resultados["empleos"]),
         "ignorados": len(resultados["ignorados"]),
         "imagenes_ok": imgs_ok,
         "imagenes_fail": imgs_fail,
