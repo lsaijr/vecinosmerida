@@ -7,6 +7,8 @@ from db import (
     obtener_categorias_alertas,
     obtener_categorias_negocios,
     obtener_categorias_noticias,
+    upsert_autor,
+    registrar_actividad,
 )
 from generar_html import generar_html_resultados
 from ia import clasificar_tipo, debe_usar_gemini, generar_titulo_negocio_ia, procesar_alerta, procesar_negocio, procesar_noticia, procesar_empleo, get_resumen_costo, reset_contadores, _titulo_pobre
@@ -375,6 +377,41 @@ def ejecutar_pipeline(posts, meta, config_grupo, estado):
             resultados["errores"].append({"tipo": "db_empleo", "error": str(e), "autor": p.get("autor")})
 
     actualizar_grupo_stats(meta.get("group_id"), len(posts))
+
+    # ── Registrar actividad de autores ────────────────────────
+    group_id_meta   = meta.get("group_id", "")
+    group_name_meta = meta.get("group_name", "")
+    fecha_captura   = meta.get("fecha_captura")
+
+    # Todos los posts aprobados con su tipo
+    _tipo_map = {
+        "negocios": "negocio",
+        "mascotas": "mascota",
+        "noticias": "noticia",
+        "alertas":  "alerta",
+        "empleos":  "empleo",
+    }
+    for bucket, tipo_str in _tipo_map.items():
+        for p in resultados.get(bucket, []):
+            autor_id_fb = p.get("autor_id")
+            if not autor_id_fb:
+                continue
+            try:
+                autor_db_id = upsert_autor(autor_id_fb, p.get("autor", ""))
+                registrar_actividad(
+                    autor_db_id,
+                    group_id_meta,
+                    group_name_meta,
+                    tipo_str,
+                    fbid_post   = p.get("fbid_post"),
+                    fecha       = fecha_captura,
+                )
+            except Exception as e:
+                resultados["errores"].append({
+                    "tipo":  "db_autor",
+                    "error": str(e),
+                    "autor": p.get("autor"),
+                })
 
     # ── PASO 8: Reporte de clientes potenciales (autores repetidores) ──────────
     _set_estado(estado, paso="Analizando clientes potenciales", progreso=99,

@@ -488,3 +488,89 @@ def insertar_empleo(p, colonia_id):
     cursor.close()
     conn.close()
     return empleo_id, "nuevo"
+
+
+# ─── AUTORES Y ACTIVIDAD ─────────────────────────────────────
+
+def upsert_autor(autor_id_fb, nombre):
+    """
+    Inserta el autor si no existe, o actualiza su nombre si cambió.
+    Retorna el id interno (PK) del autor.
+    """
+    if not autor_id_fb:
+        return None
+
+    conn   = get_conn()
+    cursor = conn.cursor()
+
+    cursor.execute(
+        "SELECT id, nombre FROM autores WHERE autor_id_fb = %s LIMIT 1",
+        (str(autor_id_fb),)
+    )
+    row = cursor.fetchone()
+
+    if row:
+        autor_db_id    = row[0]
+        nombre_actual  = row[1] or ''
+        nombre_nuevo   = (nombre or '').strip()[:200]
+        # Actualizar nombre solo si cambió y el nuevo no está vacío
+        if nombre_nuevo and nombre_nuevo != nombre_actual:
+            cursor.execute(
+                "UPDATE autores SET nombre = %s WHERE id = %s",
+                (nombre_nuevo, autor_db_id)
+            )
+            conn.commit()
+    else:
+        cursor.execute(
+            "INSERT INTO autores (autor_id_fb, nombre) VALUES (%s, %s)",
+            (str(autor_id_fb), (nombre or '').strip()[:200])
+        )
+        conn.commit()
+        autor_db_id = cursor.lastrowid
+
+    cursor.close()
+    conn.close()
+    return autor_db_id
+
+
+def registrar_actividad(autor_db_id, group_id, group_name, tipo_post,
+                         fbid_post=None, fecha=None):
+    """
+    Registra una aparición del autor en un grupo con un tipo de post.
+    Evita duplicados por fbid_post si está disponible.
+    """
+    if not autor_db_id:
+        return
+
+    conn   = get_conn()
+    cursor = conn.cursor()
+
+    # Evitar duplicado si ya registramos este post exacto
+    if fbid_post:
+        cursor.execute(
+            "SELECT id FROM autor_actividad WHERE fbid_post = %s LIMIT 1",
+            (str(fbid_post),)
+        )
+        if cursor.fetchone():
+            cursor.close()
+            conn.close()
+            return
+
+    cursor.execute(
+        """
+        INSERT INTO autor_actividad
+          (autor_id, group_id, group_name, tipo_post, fbid_post, fecha)
+        VALUES (%s, %s, %s, %s, %s, %s)
+        """,
+        (
+            autor_db_id,
+            (group_id   or '')[:30],
+            (group_name or '')[:200],
+            (tipo_post  or 'otro')[:30],
+            str(fbid_post)[:30] if fbid_post else None,
+            fecha,
+        )
+    )
+    conn.commit()
+    cursor.close()
+    conn.close()
