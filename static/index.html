@@ -108,9 +108,28 @@ textarea{resize:vertical;min-height:70px;}
 .stat-num{font-family:'Fraunces',serif;font-size:1.6rem;font-weight:700;color:var(--carbon);}
 .stat-lbl{font-size:.7rem;color:var(--gris);text-transform:uppercase;letter-spacing:.06em;margin-top:2px;}
 .btn-ver{display:inline-block;padding:12px 24px;background:var(--rojo);color:#fff;text-decoration:none;border-radius:12px;font-weight:600;font-size:.9rem;margin-right:10px;}
-.btn-dl{display:inline-block;padding:12px 24px;background:transparent;color:var(--carbon);text-decoration:none;border-radius:12px;font-weight:600;font-size:.9rem;border:1.5px solid var(--borde);}
+.btn-db{display:inline-block;padding:12px 24px;background:#1a1a2e;color:#fff;text-decoration:none;border-radius:12px;font-weight:600;font-size:.9rem;border:none;cursor:pointer;font-family:'DM Sans',sans-serif;transition:background .2s;}
+.btn-db:hover{background:#2d2d4e;}
+.btn-db:disabled{background:#aaa;cursor:not-allowed;}
 .btn-nuevo{margin-top:16px;width:100%;padding:11px;background:transparent;border:1.5px solid var(--borde);border-radius:10px;font-family:'DM Sans',sans-serif;font-size:.88rem;cursor:pointer;color:var(--gris);transition:border-color .2s;}
 .btn-nuevo:hover{border-color:var(--carbon);color:var(--carbon);}
+/* DB Report Modal */
+.db-modal{display:none;position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:2000;align-items:center;justify-content:center;padding:16px;}
+.db-modal.open{display:flex;}
+.db-box{background:#fff;border-radius:20px;width:100%;max-width:560px;max-height:85vh;overflow-y:auto;box-shadow:0 20px 80px rgba(0,0,0,.3);padding:28px;}
+.db-box h3{font-family:'Fraunces',serif;font-size:1.3rem;margin-bottom:20px;color:var(--carbon);}
+.db-stat-row{display:flex;justify-content:space-between;align-items:center;padding:10px 0;border-bottom:1px solid var(--borde);font-size:.88rem;}
+.db-stat-row:last-child{border-bottom:none;}
+.db-stat-row .lbl{color:var(--gris);}
+.db-stat-row .val{font-weight:700;color:var(--carbon);}
+.db-stat-row .val.ok{color:#16a34a;}
+.db-stat-row .val.dup{color:#d97706;}
+.db-stat-row .val.err{color:#dc2626;}
+.db-saving{text-align:center;padding:24px 0;}
+.db-saving .spin{font-size:2rem;animation:spin 1s linear infinite;display:inline-block;}
+@keyframes spin{to{transform:rotate(360deg)}}
+.db-close{margin-top:20px;width:100%;padding:11px;background:var(--rojo);color:#fff;border:none;border-radius:10px;font-family:'DM Sans',sans-serif;font-size:.9rem;font-weight:600;cursor:pointer;}
+.db-error-list{font-size:.78rem;color:#dc2626;background:#fef2f2;border:1px solid #fecaca;border-radius:8px;padding:10px;margin-top:12px;max-height:120px;overflow-y:auto;}
 </style>
 </head>
 <body>
@@ -432,8 +451,49 @@ function mostrarResultado(data){
   if(data.archivo_html){
     document.getElementById('resultBtns').innerHTML =
       '<a class="btn-ver" href="/static/resultados/'+data.archivo_html+'" target="_blank">Ver reporte →</a>' +
-      '<a class="btn-dl" href="/descargar/'+data.archivo_html+'" download>Descargar</a>';
+      '<button class="btn-db" id="btnInsertarDB" onclick="insertarDB()">💾 Insertar a DB</button>';
   }
+}
+
+// ── DB INSERT ─────────────────────────────────────────────────
+function insertarDB(){
+  var btn = document.getElementById('btnInsertarDB');
+  btn.disabled = true;
+  btn.textContent = '⏳ Guardando...';
+
+  var modal = document.getElementById('dbModal');
+  document.getElementById('dbContent').innerHTML =
+    '<div class="db-saving"><div class="spin">⚙️</div><p style="margin-top:12px;color:#6b7280;font-size:.9rem">Guardando en base de datos...</p></div>';
+  modal.classList.add('open');
+
+  fetch('/guardar-db', {method:'POST'})
+    .then(function(r){ return r.json(); })
+    .then(function(d){
+      btn.textContent = '✅ Guardado';
+      var html = '';
+      if(d.error){
+        html = '<p style="color:#dc2626;font-weight:600">❌ '+d.error+'</p>';
+      } else {
+        html += '<div class="db-stat-row"><span class="lbl">Negocios nuevos</span><span class="val ok">+'+d.negocios_nuevos+'</span></div>';
+        html += '<div class="db-stat-row"><span class="lbl">Negocios duplicados</span><span class="val dup">'+d.negocios_dup+'</span></div>';
+        html += '<div class="db-stat-row"><span class="lbl">Noticias nuevas</span><span class="val ok">+'+d.noticias_nuevas+'</span></div>';
+        html += '<div class="db-stat-row"><span class="lbl">Noticias duplicadas</span><span class="val dup">'+d.noticias_dup+'</span></div>';
+        html += '<div class="db-stat-row"><span class="lbl">Alertas nuevas</span><span class="val ok">+'+d.alertas_nuevas+'</span></div>';
+        html += '<div class="db-stat-row"><span class="lbl">Alertas duplicadas</span><span class="val dup">'+d.alertas_dup+'</span></div>';
+        html += '<div class="db-stat-row"><span class="lbl">Mascotas nuevas</span><span class="val ok">+'+d.mascotas_nuevas+'</span></div>';
+        html += '<div class="db-stat-row"><span class="lbl">Mascotas duplicadas</span><span class="val dup">'+d.mascotas_dup+'</span></div>';
+        html += '<div class="db-stat-row"><span class="lbl">Empleos nuevos</span><span class="val ok">+'+d.empleos_nuevos+'</span></div>';
+        html += '<div class="db-stat-row"><span class="lbl" style="font-weight:600">Total guardado</span><span class="val ok" style="font-size:1.1rem">'+d.total_nuevos+'</span></div>';
+        if(d.errores && d.errores.length){
+          html += '<div class="db-error-list"><strong>Errores ('+d.errores.length+'):</strong><br>'+d.errores.map(function(e){return e.tipo+': '+e.error;}).join('<br>')+'</div>';
+        }
+      }
+      document.getElementById('dbContent').innerHTML = html;
+    })
+    .catch(function(e){
+      btn.textContent = '❌ Error';
+      document.getElementById('dbContent').innerHTML = '<p style="color:#dc2626">Error de conexión: '+e+'</p>';
+    });
 }
 
 function reiniciar(){
@@ -452,5 +512,14 @@ function reiniciar(){
   actualizarTimer(0);
 }
 </script>
+<!-- DB REPORT MODAL -->
+<div class="db-modal" id="dbModal">
+  <div class="db-box">
+    <h3>📦 Reporte de guardado en DB</h3>
+    <div id="dbContent"></div>
+    <button class="db-close" onclick="document.getElementById('dbModal').classList.remove('open')">Cerrar</button>
+  </div>
+</div>
+
 </body>
 </html>
