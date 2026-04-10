@@ -150,14 +150,18 @@ textarea{resize:vertical;min-height:70px;}
     </div>
     <div class="upload-body">
       <div class="drop-zone" id="dropZone">
-        <input type="file" id="fileInput" accept=".json" onchange="archivoSeleccionado(this)">
+        <input type="file" id="fileInput" accept=".json" multiple onchange="archivoSeleccionado(this)">
         <div class="drop-icon">📂</div>
-        <div class="drop-title">Arrastra tu JSON aquí</div>
-        <div class="drop-sub">o haz clic para seleccionar</div>
+        <div class="drop-title">Arrastra hasta 4 JSONs aquí</div>
+        <div class="drop-sub">o haz clic para seleccionar (máx. 4 grupos)</div>
         <div class="file-name" id="fileName"></div>
       </div>
-      <button class="btn-analizar" id="btnAnalizar" disabled onclick="analizarGrupo()">
-        Analizar grupo →
+
+      <!-- Lista de archivos seleccionados -->
+      <div id="fileList" style="display:none;margin-top:14px;display:flex;flex-direction:column;gap:8px;"></div>
+
+      <button class="btn-analizar" id="btnAnalizar" disabled onclick="analizarSiguiente()">
+        Analizar grupos →
       </button>
     </div>
   </div>
@@ -206,11 +210,16 @@ textarea{resize:vertical;min-height:70px;}
 </div>
 
 <script>
-var archivoFile = null;
-var datosMeta = {};
-var configGrupo = {};
+// ── ESTADO GLOBAL ──────────────────────────────────────────
+var archivos       = [];   // Array de File (máx 4)
+var cola           = [];   // Array de {file, meta, config} pendientes
+var colaIdx        = 0;    // Índice actual en cola
 var intervaloStatus = null;
 var inicioClienteTs = null;
+var datosMeta      = {};
+var configGrupo    = {};
+var resumenTotal   = {procesados:0,negocios:0,noticias:0,alertas:0,mascotas:0,empleos:0,ignorados:0};
+var reportesHTML   = [];   // URLs de reportes generados
 
 // ── DROP ZONE ──────────────────────────────────────────────
 var dz = document.getElementById('dropZone');
@@ -218,58 +227,83 @@ dz.addEventListener('dragover', function(e){ e.preventDefault(); dz.classList.ad
 dz.addEventListener('dragleave', function(){ dz.classList.remove('over'); });
 dz.addEventListener('drop', function(e){
   e.preventDefault(); dz.classList.remove('over');
-  var f = e.dataTransfer.files[0];
-  if(f && f.name.endsWith('.json')) setArchivo(f);
+  var files = Array.from(e.dataTransfer.files).filter(function(f){ return f.name.endsWith('.json'); });
+  setArchivos(files);
 });
 
 function archivoSeleccionado(input){
-  if(input.files[0]) setArchivo(input.files[0]);
-}
-function setArchivo(f){
-  archivoFile = f;
-  document.getElementById('fileName').textContent = '📄 ' + f.name;
-  document.getElementById('fileName').style.display = 'block';
-  document.getElementById('btnAnalizar').disabled = false;
+  if(input.files.length) setArchivos(Array.from(input.files));
 }
 
-// ── ANALIZAR GRUPO ─────────────────────────────────────────
-async function analizarGrupo(){
-  if(!archivoFile) return;
+function setArchivos(files){
+  archivos = files.slice(0, 4);
+  var fl = document.getElementById('fileList');
+  var fn = document.getElementById('fileName');
+  fn.style.display = 'none';
+
+  if(archivos.length === 0){ fl.style.display='none'; return; }
+
+  fl.style.display = 'flex';
+  fl.innerHTML = archivos.map(function(f, i){
+    return '<div style="display:flex;align-items:center;gap:8px;padding:8px 12px;background:var(--crema);border-radius:8px;font-size:.83rem;">'
+      + '<span style="font-size:1rem">📄</span>'
+      + '<span style="flex:1;font-weight:600;color:var(--carbon);">' + f.name + '</span>'
+      + '<span style="color:var(--gris);font-size:.75rem">' + (i+1) + '/' + archivos.length + '</span>'
+      + '</div>';
+  }).join('');
+
   var btn = document.getElementById('btnAnalizar');
-  btn.disabled = true;
-  btn.textContent = 'Analizando...';
+  btn.disabled = false;
+  btn.textContent = archivos.length > 1
+    ? 'Analizar ' + archivos.length + ' grupos →'
+    : 'Analizar grupo →';
+}
+
+// ── ARRANCAR COLA ──────────────────────────────────────────
+async function analizarSiguiente(){
+  if(archivos.length === 0) return;
+  // Inicializar cola
+  cola = archivos.map(function(f){ return {file: f, config: null}; });
+  colaIdx = 0;
+  resumenTotal = {procesados:0,negocios:0,noticias:0,alertas:0,mascotas:0,empleos:0,ignorados:0};
+  reportesHTML = [];
+  document.getElementById('btnAnalizar').disabled = true;
+  await analizarArchivo(cola[colaIdx].file);
+}
+
+async function analizarArchivo(file){
+  var btn = document.getElementById('btnAnalizar');
+  btn.textContent = 'Analizando ' + (colaIdx+1) + '/' + cola.length + '...';
 
   var fd = new FormData();
-  fd.append('file', archivoFile);
-
+  fd.append('file', file);
   try {
-    var res = await fetch('/analizar-grupo', { method:'POST', body:fd });
+    var res = await fetch('/analizar-grupo', {method:'POST', body:fd});
     var data = await res.json();
-    if(data.error){ alert(data.error); btn.disabled=false; btn.textContent='Analizar grupo →'; return; }
+    if(data.error){ alert(data.error); reiniciar(); return; }
     mostrarModal(data);
-  } catch(e) {
-    alert('Error al analizar el archivo.');
-    btn.disabled = false;
-    btn.textContent = 'Analizar grupo →';
+  } catch(e){
+    alert('Error al analizar ' + file.name);
+    reiniciar();
   }
 }
 
 // ── MODAL ──────────────────────────────────────────────────
 function mostrarModal(data){
   datosMeta = data;
-  document.getElementById('modalTitulo').textContent = data.conocido ? '✅ Grupo reconocido' : '🆕 Grupo nuevo detectado';
+  var total = cola.length;
+  var actual = colaIdx + 1;
+  var sufijo = total > 1 ? ' (' + actual + '/' + total + ')' : '';
+  document.getElementById('modalTitulo').textContent = (data.conocido ? '✅ Grupo reconocido' : '🆕 Grupo nuevo detectado') + sufijo;
   document.getElementById('modalSubtitulo').textContent = data.total_posts + ' posts · ' + data.group_name;
 
   var body = '';
-
-  // Info del grupo
   body += '<div class="grupo-info"><div class="grupo-icon">👥</div><div><div class="grupo-nombre">' + data.group_name + '</div><div class="grupo-id">ID: ' + data.group_id + '</div></div></div>';
 
   if(data.conocido){
-    body += '<div class="success-box"><span>✅</span><span>Este grupo ya está registrado como <strong>' + data.tipo + '</strong>. Se usará la configuración guardada.</span></div>';
+    body += '<div class="success-box"><span>✅</span><span>Grupo registrado como <strong>' + data.tipo + '</strong>. Se usará configuración guardada.</span></div>';
     configGrupo = { guardar_grupo: false };
   } else {
-    // Tipo de contenido
     var tipoOpts = ['noticias','vecinos','mascotas','empleo','mixto'].map(function(t){
       var sel = t === data.tipo_sugerido ? 'selected' : '';
       var etiq = {noticias:'📰 Noticias',vecinos:'🏘️ Vecinos / Negocios',mascotas:'🐾 Mascotas',empleo:'💼 Empleo',mixto:'🔀 Mixto'}[t];
@@ -277,19 +311,18 @@ function mostrarModal(data){
     }).join('');
     body += '<div class="field-wrap"><div class="field-label">Tipo de contenido</div><select id="selTipo" onchange="onTipoChange(this.value)">'+tipoOpts+'</select></div>';
 
-    // Colonias — se ocultan si es empleo
     var esEmpleo = data.tipo_sugerido === 'empleo';
     var coloniaDisplay = esEmpleo ? 'style="display:none"' : '';
     if(data.match_colonias === 'exacto'){
       var col = data.candidatas[0].colonia;
       body += '<div id="wrapColonia" '+coloniaDisplay+'>';
-      body += '<div class="success-box"><span>📍</span><span>Colonia detectada automáticamente: <strong>' + col.nombre + '</strong></span></div>';
+      body += '<div class="success-box"><span>📍</span><span>Colonia detectada: <strong>' + col.nombre + '</strong></span></div>';
       body += '<input type="hidden" id="coloniaExacta" value="'+col.id+':'+col.nombre+'">';
       body += '</div>';
     } else {
       var aviso = data.match_colonias === 'multiple'
-        ? '⚠️ Se detectaron varias colonias posibles. Selecciona las que apliquen:'
-        : '❓ No se detectó colonia automáticamente. Selecciona de la lista:';
+        ? '⚠️ Varias colonias posibles. Selecciona las que apliquen:'
+        : '❓ Sin colonia detectada. Selecciona de la lista:';
       body += '<div id="wrapColonia" '+coloniaDisplay+'>';
       body += '<div class="alert-box"><span>📍</span><span>'+aviso+'</span></div>';
       body += '<div class="field-wrap"><div class="field-label">Colonias que cubre este grupo</div><div class="colonias-list" id="coloniasList">';
@@ -297,16 +330,18 @@ function mostrarModal(data){
         var checked = data.candidatas && data.candidatas.some(function(x){ return x.colonia.id === c.id; }) ? 'checked' : '';
         body += '<div class="colonia-item"><input type="checkbox" id="col_'+c.id+'" value="'+c.id+':'+c.nombre+'" '+checked+'><label for="col_'+c.id+'">'+c.nombre+'</label></div>';
       });
-      body += '</div></div>';
-      body += '</div>';
+      body += '</div></div></div>';
     }
-
-    // Notas opcionales
     body += '<div class="field-wrap"><div class="field-label">Notas (opcional)</div><textarea id="notasGrupo" placeholder="Observaciones sobre este grupo..."></textarea></div>';
   }
 
   document.getElementById('modalBody').innerHTML = body;
   document.getElementById('modalOverlay').classList.add('open');
+
+  // Cambiar texto del botón confirmar según posición en cola
+  var btnConf = document.getElementById('btnConfirmar');
+  var esUltimo = colaIdx === cola.length - 1;
+  btnConf.textContent = esUltimo ? 'Procesar →' : 'Siguiente grupo →';
 }
 
 function onTipoChange(val){
@@ -317,16 +352,14 @@ function onTipoChange(val){
 function cerrarModal(){
   document.getElementById('modalOverlay').classList.remove('open');
   document.getElementById('btnAnalizar').disabled = false;
-  document.getElementById('btnAnalizar').textContent = 'Analizar grupo →';
+  document.getElementById('btnAnalizar').textContent = 'Analizar grupos →';
 }
 
-// ── CONFIRMAR Y PROCESAR ───────────────────────────────────
+// ── CONFIRMAR CONFIGURACIÓN ────────────────────────────────
 async function confirmarYProcesar(){
   var colIds = [], colNombres = [];
 
-  if(datosMeta.conocido){
-    // Usar config guardada en DB
-  } else {
+  if(!datosMeta.conocido){
     var exactaInput = document.getElementById('coloniaExacta');
     if(exactaInput){
       var parts = exactaInput.value.split(':');
@@ -343,14 +376,12 @@ async function confirmarYProcesar(){
   }
 
   var tipo = datosMeta.conocido ? datosMeta.tipo : (document.getElementById('selTipo') ? document.getElementById('selTipo').value : 'vecinos');
+  if(tipo === 'empleo'){ colIds = []; colNombres = ['General / Toda Mérida']; }
 
-  // Empleo no requiere colonia — asignar General automáticamente
-  if(tipo === 'empleo'){
-    colIds = []; colNombres = ['General / Toda Mérida'];
-  }
   var notas = document.getElementById('notasGrupo') ? document.getElementById('notasGrupo').value : '';
 
-  configGrupo = {
+  // Guardar config de este archivo en la cola
+  cola[colaIdx].config = {
     tipo: tipo,
     colonia_ids: colIds,
     colonia_nombres: colNombres,
@@ -359,28 +390,68 @@ async function confirmarYProcesar(){
   };
 
   cerrarModal();
-  iniciarProcesamiento();
-}
 
-// ── PROCESAMIENTO ──────────────────────────────────────────
-async function iniciarProcesamiento(){
-  document.getElementById('uploadCard').style.display = 'none';
-  document.getElementById('progressCard').classList.add('visible');
-
-  inicioClienteTs = Date.now();
-  actualizarTimer(0);
-  try {
-    await fetch('/procesar', {
-      method: 'POST',
-      headers: {'Content-Type': 'application/json'},
-      body: JSON.stringify(configGrupo)
-    });
-    monitorearStatus();
-  } catch(e) {
-    document.getElementById('progressStep').textContent = 'Error al iniciar el proceso.';
+  // Si hay más archivos por configurar, analizar el siguiente
+  colaIdx++;
+  if(colaIdx < cola.length){
+    await analizarArchivo(cola[colaIdx].file);
+  } else {
+    // Todos configurados — arrancar procesamiento secuencial
+    colaIdx = 0;
+    iniciarProcesamientoSecuencial();
   }
 }
 
+// ── PROCESAMIENTO SECUENCIAL ───────────────────────────────
+async function iniciarProcesamientoSecuencial(){
+  document.getElementById('uploadCard').style.display = 'none';
+  document.getElementById('progressCard').classList.add('visible');
+  inicioClienteTs = Date.now();
+  actualizarTimer(0);
+  await procesarSiguienteEnCola();
+}
+
+async function procesarSiguienteEnCola(){
+  if(colaIdx >= cola.length){
+    mostrarResultadoFinal();
+    return;
+  }
+
+  var item = cola[colaIdx];
+  // Actualizar título de progreso
+  document.getElementById('progressStep').textContent =
+    'Grupo ' + (colaIdx+1) + '/' + cola.length + ': ' + item.file.name.replace('.json','');
+
+  // Subir el archivo al servidor
+  var fd = new FormData();
+  fd.append('file', item.file);
+  try {
+    await fetch('/analizar-grupo', {method:'POST', body:fd});
+    await fetch('/procesar', {
+      method: 'POST',
+      headers: {'Content-Type':'application/json'},
+      body: JSON.stringify(item.config)
+    });
+    monitorearStatus(function onCompletado(data){
+      // Acumular resumen
+      var r = data.resumen || {};
+      resumenTotal.procesados += r.procesados||0;
+      resumenTotal.negocios   += r.negocios||0;
+      resumenTotal.noticias   += r.noticias||0;
+      resumenTotal.alertas    += r.alertas||0;
+      resumenTotal.mascotas   += r.mascotas||0;
+      resumenTotal.empleos    += r.empleos||0;
+      resumenTotal.ignorados  += r.ignorados||0;
+      if(data.archivo_html) reportesHTML.push(data.archivo_html);
+      colaIdx++;
+      procesarSiguienteEnCola();
+    });
+  } catch(e){
+    document.getElementById('progressStep').textContent = '❌ Error en ' + item.file.name;
+  }
+}
+
+// ── PROCESAMIENTO ──────────────────────────────────────────
 function formatTime(sec){
   sec = Math.max(0, parseInt(sec || 0, 10));
   var m = String(Math.floor(sec/60)).padStart(2,'0');
@@ -395,7 +466,6 @@ function actualizarTimer(sec){
 function pintarHistorial(items, actividadActual){
   var el = document.getElementById('progressHistory');
   if(!items || !items.length){
-    // Si no hay historial pero hay actividad actual, mostrarla sola
     if(actividadActual){
       el.innerHTML = '<li><span class="phi-icon"><span class="phi-active"></span></span><span class="phi-text-active">' + actividadActual + '</span></li>';
     } else {
@@ -403,13 +473,10 @@ function pintarHistorial(items, actividadActual){
     }
     return;
   }
-  // El historial ya viene de más antiguo a más reciente
-  // Revertimos para mostrar más reciente arriba
   var invertidos = items.slice().reverse();
   var html = '';
   invertidos.forEach(function(x, i){
     if(i === 0){
-      // El más reciente = en curso (si hay actividad actual que coincide o simplemente el último)
       html += '<li><span class="phi-icon"><span class="phi-active"></span></span><span class="phi-text-active">' + x + '</span></li>';
     } else {
       html += '<li><span class="phi-icon"><span class="phi-done">✓</span></span><span class="phi-text-done">' + x + '</span></li>';
@@ -418,57 +485,106 @@ function pintarHistorial(items, actividadActual){
   el.innerHTML = html;
 }
 
-function monitorearStatus(){
+function monitorearStatus(onCompletado){
+  if(intervaloStatus) clearInterval(intervaloStatus);
   intervaloStatus = setInterval(async function(){
     try {
       var res = await fetch('/status');
       var data = await res.json();
 
-      document.getElementById('progressStep').textContent = data.paso + (data.detalles ? ' — ' + data.detalles : '');
+      // Mostrar grupo actual en el título de progreso
+      var grupoLabel = colaIdx < cola.length
+        ? ' · Grupo ' + (colaIdx+1) + '/' + cola.length
+        : '';
+      document.getElementById('progressStep').textContent = data.paso + (data.detalles ? ' — ' + data.detalles : '') + grupoLabel;
       document.getElementById('progressFill').style.width = data.progreso + '%';
       document.getElementById('progressPct').textContent = data.progreso + '%';
-      actualizarTimer(data.elapsed_seconds || (inicioClienteTs ? Math.floor((Date.now()-inicioClienteTs)/1000) : 0));
+      actualizarTimer(inicioClienteTs ? Math.floor((Date.now()-inicioClienteTs)/1000) : 0);
       document.getElementById('progressActivity').textContent = data.actividad || 'Trabajando...';
       pintarHistorial(data.historial || [], data.actividad || '');
 
       if(data.progreso >= 100 || data.paso === 'Completado'){
         clearInterval(intervaloStatus);
-        mostrarResultado(data);
+        intervaloStatus = null;
+        if(onCompletado) onCompletado(data);
       }
       if(data.paso === 'Error'){
         clearInterval(intervaloStatus);
         document.getElementById('progressStep').textContent = '❌ ' + (data.error || 'Error desconocido');
-        document.getElementById('progressActivity').textContent = 'Proceso detenido';
       }
     } catch(e){}
   }, 1500);
 }
 
-function mostrarResultado(data){
+function mostrarResultadoFinal(){
   document.getElementById('progressCard').classList.remove('visible');
   document.getElementById('resultCard').classList.add('visible');
 
-  var r = data.resumen || {};
-  var elapsed = data.elapsed_seconds || (inicioClienteTs ? Math.floor((Date.now()-inicioClienteTs)/1000) : 0);
+  var elapsed = inicioClienteTs ? Math.floor((Date.now()-inicioClienteTs)/1000) : 0;
+  var r = resumenTotal;
   var stats = [
-    {n: r.procesados||0, l:'Procesados'},
-    {n: r.negocios||0, l:'Negocios'},
-    {n: r.noticias||0, l:'Noticias'},
-    {n: r.alertas||0, l:'Alertas'},
-    {n: r.mascotas||0, l:'Mascotas'},
-    {n: r.ignorados||0, l:'Ignorados'}
+    {n: r.procesados, l:'Procesados'},
+    {n: r.negocios,   l:'Negocios'},
+    {n: r.noticias,   l:'Noticias'},
+    {n: r.alertas,    l:'Alertas'},
+    {n: r.mascotas,   l:'Mascotas'},
+    {n: r.ignorados,  l:'Ignorados'}
   ];
+  if(r.empleos > 0) stats.splice(5,0,{n:r.empleos, l:'Empleos'});
+
   document.getElementById('resultStats').innerHTML = stats.map(function(s){
     return '<div class="stat-box"><div class="stat-num">'+s.n+'</div><div class="stat-lbl">'+s.l+'</div></div>';
   }).join('');
 
-  document.getElementById('resultBtns').insertAdjacentHTML('beforebegin', '<div class="result-extra">Tiempo total: <strong>' + formatTime(elapsed) + '</strong></div>');
+  document.getElementById('resultBtns').insertAdjacentHTML('beforebegin',
+    '<div class="result-extra">Tiempo total: <strong>' + formatTime(elapsed) + '</strong>'
+    + (cola.length > 1 ? ' · <strong>' + cola.length + ' grupos</strong> procesados' : '') + '</div>');
 
-  if(data.archivo_html){
-    document.getElementById('resultBtns').innerHTML =
-      '<a class="btn-ver" href="/static/resultados/'+data.archivo_html+'" target="_blank">Ver reporte →</a>' +
-      '<button class="btn-db" id="btnInsertarDB" onclick="insertarDB()">💾 Insertar a DB</button>';
-  }
+  // Botones por cada reporte
+  var btnsHTML = '';
+  reportesHTML.forEach(function(nombre, i){
+    var label = cola.length > 1 ? 'Ver reporte ' + (i+1) : 'Ver reporte →';
+    btnsHTML += '<a class="btn-ver" href="/static/resultados/'+nombre+'" target="_blank" style="margin-bottom:8px">'+label+'</a> ';
+  });
+  btnsHTML += '<button class="btn-db" id="btnInsertarDB" onclick="insertarDB()">💾 Insertar a DB</button>';
+  document.getElementById('resultBtns').innerHTML = btnsHTML;
+}
+
+function reiniciar(){
+  archivos = []; cola = []; colaIdx = 0;
+  resumenTotal = {procesados:0,negocios:0,noticias:0,alertas:0,mascotas:0,empleos:0,ignorados:0};
+  reportesHTML = [];
+  document.getElementById('fileInput').value = '';
+  document.getElementById('fileName').style.display = 'none';
+  document.getElementById('fileList').style.display = 'none';
+  document.getElementById('fileList').innerHTML = '';
+  document.getElementById('btnAnalizar').disabled = true;
+  document.getElementById('btnAnalizar').textContent = 'Analizar grupos →';
+  document.getElementById('uploadCard').style.display = 'block';
+  document.getElementById('progressCard').classList.remove('visible');
+  document.getElementById('resultCard').classList.remove('visible');
+  document.getElementById('progressActivity').textContent = 'Preparando...';
+  document.getElementById('progressHistory').innerHTML = '';
+  document.getElementById('resultBtns').innerHTML = '';
+  inicioClienteTs = null;
+  actualizarTimer(0);
+  if(intervaloStatus){ clearInterval(intervaloStatus); intervaloStatus = null; }
+}
+  document.getElementById('resultStats').innerHTML = stats.map(function(s){
+    return '<div class="stat-box"><div class="stat-num">'+s.n+'</div><div class="stat-lbl">'+s.l+'</div></div>';
+  }).join('');
+
+  document.getElementById('resultBtns').insertAdjacentHTML('beforebegin',
+    '<div class="result-extra">Tiempo total: <strong>' + formatTime(elapsed) + '</strong>'
+    + (cola.length > 1 ? ' · <strong>' + cola.length + ' grupos</strong> procesados' : '') + '</div>');
+
+  var btnsHTML = '';
+  reportesHTML.forEach(function(nombre, i){
+    var label = cola.length > 1 ? 'Ver reporte ' + (i+1) : 'Ver reporte →';
+    btnsHTML += '<a class="btn-ver" href="/static/resultados/'+nombre+'" target="_blank" style="margin-bottom:8px">'+label+'</a> ';
+  });
+  btnsHTML += '<button class="btn-db" id="btnInsertarDB" onclick="insertarDB()">💾 Insertar a DB</button>';
+  document.getElementById('resultBtns').innerHTML = btnsHTML;
 }
 
 // ── DB INSERT ─────────────────────────────────────────────────
@@ -510,22 +626,6 @@ function insertarDB(){
       btn.textContent = '❌ Error';
       document.getElementById('dbContent').innerHTML = '<p style="color:#dc2626">Error de conexión: '+e+'</p>';
     });
-}
-
-function reiniciar(){
-  archivoFile = null;
-  document.getElementById('fileInput').value = '';
-  document.getElementById('fileName').style.display = 'none';
-  document.getElementById('btnAnalizar').disabled = true;
-  document.getElementById('btnAnalizar').textContent = 'Analizar grupo →';
-  document.getElementById('uploadCard').style.display = 'block';
-  document.getElementById('progressCard').classList.remove('visible');
-  document.getElementById('resultCard').classList.remove('visible');
-  document.getElementById('progressActivity').textContent = 'Preparando...';
-  document.getElementById('progressHistory').innerHTML = '';
-  document.getElementById('resultBtns').innerHTML = '';
-  inicioClienteTs = null;
-  actualizarTimer(0);
 }
 </script>
 <!-- DB REPORT MODAL -->
