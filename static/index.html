@@ -114,7 +114,7 @@ textarea{resize:vertical;min-height:70px;}
 
 <section class="hero">
   <div class="hero-badge">VecinosMérida.com</div>
-  <h1>Pipeline de<br><span>Procesamiento -  Prueba</span></h1>
+  <h1>Pipeline de<br><span>Procesamiento</span></h1>
   <p>Sube un JSON de Facebook para clasificar, procesar con IA y generar el reporte visual</p>
 </section>
 
@@ -364,8 +364,15 @@ function mostrarResultado(data){
   document.getElementById('resultCard').classList.add('visible');
   var r = data.resumen||{};
   var elapsed = data.elapsed_seconds||(inicioClienteTs?Math.floor((Date.now()-inicioClienteTs)/1000):0);
-  var stats = [{n:r.procesados||0,l:'Procesados'},{n:r.negocios||0,l:'Negocios'},{n:r.noticias||0,l:'Noticias'},{n:r.alertas||0,l:'Alertas'},{n:r.mascotas||0,l:'Mascotas'},{n:r.ignorados||0,l:'Ignorados'}];
-  if((r.empleos||0)>0) stats.splice(5,0,{n:r.empleos,l:'Empleos'});
+  var stats = [
+    {n: r.procesados||0, l:'Procesados'},
+    {n: r.negocios||0,   l:'Negocios'},
+    {n: r.noticias||0,   l:'Noticias'},
+    {n: r.alertas||0,    l:'Alertas'},
+    {n: r.mascotas||0,   l:'Mascotas'},
+    {n: r.empleos||0,    l:'Empleos'},
+    {n: r.ignorados||0,  l:'Ignorados'}
+  ];
   document.getElementById('resultStats').innerHTML = stats.map(function(s){
     return '<div class="stat-box"><div class="stat-num">'+s.n+'</div><div class="stat-lbl">'+s.l+'</div></div>';
   }).join('');
