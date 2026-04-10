@@ -270,22 +270,27 @@ function mostrarModal(data){
     configGrupo = { guardar_grupo: false };
   } else {
     // Tipo de contenido
-    var tipoOpts = ['noticias','vecinos','mascotas','mixto'].map(function(t){
+    var tipoOpts = ['noticias','vecinos','mascotas','empleo','mixto'].map(function(t){
       var sel = t === data.tipo_sugerido ? 'selected' : '';
-      var etiq = {noticias:'📰 Noticias',vecinos:'🏘️ Vecinos / Negocios',mascotas:'🐾 Mascotas',mixto:'🔀 Mixto'}[t];
+      var etiq = {noticias:'📰 Noticias',vecinos:'🏘️ Vecinos / Negocios',mascotas:'🐾 Mascotas',empleo:'💼 Empleo',mixto:'🔀 Mixto'}[t];
       return '<option value="'+t+'" '+sel+'>'+etiq+'</option>';
     }).join('');
-    body += '<div class="field-wrap"><div class="field-label">Tipo de contenido</div><select id="selTipo">'+tipoOpts+'</select></div>';
+    body += '<div class="field-wrap"><div class="field-label">Tipo de contenido</div><select id="selTipo" onchange="onTipoChange(this.value)">'+tipoOpts+'</select></div>';
 
-    // Colonias
+    // Colonias — se ocultan si es empleo
+    var esEmpleo = data.tipo_sugerido === 'empleo';
+    var coloniaDisplay = esEmpleo ? 'style="display:none"' : '';
     if(data.match_colonias === 'exacto'){
       var col = data.candidatas[0].colonia;
+      body += '<div id="wrapColonia" '+coloniaDisplay+'>';
       body += '<div class="success-box"><span>📍</span><span>Colonia detectada automáticamente: <strong>' + col.nombre + '</strong></span></div>';
       body += '<input type="hidden" id="coloniaExacta" value="'+col.id+':'+col.nombre+'">';
+      body += '</div>';
     } else {
       var aviso = data.match_colonias === 'multiple'
         ? '⚠️ Se detectaron varias colonias posibles. Selecciona las que apliquen:'
         : '❓ No se detectó colonia automáticamente. Selecciona de la lista:';
+      body += '<div id="wrapColonia" '+coloniaDisplay+'>';
       body += '<div class="alert-box"><span>📍</span><span>'+aviso+'</span></div>';
       body += '<div class="field-wrap"><div class="field-label">Colonias que cubre este grupo</div><div class="colonias-list" id="coloniasList">';
       data.todas_colonias.forEach(function(c){
@@ -293,6 +298,7 @@ function mostrarModal(data){
         body += '<div class="colonia-item"><input type="checkbox" id="col_'+c.id+'" value="'+c.id+':'+c.nombre+'" '+checked+'><label for="col_'+c.id+'">'+c.nombre+'</label></div>';
       });
       body += '</div></div>';
+      body += '</div>';
     }
 
     // Notas opcionales
@@ -301,6 +307,11 @@ function mostrarModal(data){
 
   document.getElementById('modalBody').innerHTML = body;
   document.getElementById('modalOverlay').classList.add('open');
+}
+
+function onTipoChange(val){
+  var wrap = document.getElementById('wrapColonia');
+  if(wrap) wrap.style.display = val === 'empleo' ? 'none' : '';
 }
 
 function cerrarModal(){
@@ -332,6 +343,11 @@ async function confirmarYProcesar(){
   }
 
   var tipo = datosMeta.conocido ? datosMeta.tipo : (document.getElementById('selTipo') ? document.getElementById('selTipo').value : 'vecinos');
+
+  // Empleo no requiere colonia — asignar General automáticamente
+  if(tipo === 'empleo'){
+    colIds = []; colNombres = ['General / Toda Mérida'];
+  }
   var notas = document.getElementById('notasGrupo') ? document.getElementById('notasGrupo').value : '';
 
   configGrupo = {
