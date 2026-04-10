@@ -158,7 +158,7 @@ textarea{resize:vertical;min-height:70px;}
       </div>
 
       <!-- Lista de archivos seleccionados -->
-      <div id="fileList" style="display:none;margin-top:14px;display:flex;flex-direction:column;gap:8px;"></div>
+      <div id="fileList" style="display:none;margin-top:14px;flex-direction:column;gap:8px;"></div>
 
       <button class="btn-analizar" id="btnAnalizar" disabled onclick="analizarSiguiente()">
         Analizar grupos →
@@ -238,10 +238,15 @@ function archivoSeleccionado(input){
 function setArchivos(files){
   archivos = files.slice(0, 4);
   var fl = document.getElementById('fileList');
-  var fn = document.getElementById('fileName');
-  fn.style.display = 'none';
+  var btn = document.getElementById('btnAnalizar');
 
-  if(archivos.length === 0){ fl.style.display='none'; return; }
+  if(archivos.length === 0){
+    fl.style.display = 'none';
+    fl.innerHTML = '';
+    btn.disabled = true;
+    btn.textContent = 'Analizar grupos →';
+    return;
+  }
 
   fl.style.display = 'flex';
   fl.innerHTML = archivos.map(function(f, i){
@@ -252,7 +257,6 @@ function setArchivos(files){
       + '</div>';
   }).join('');
 
-  var btn = document.getElementById('btnAnalizar');
   btn.disabled = false;
   btn.textContent = archivos.length > 1
     ? 'Analizar ' + archivos.length + ' grupos →'
