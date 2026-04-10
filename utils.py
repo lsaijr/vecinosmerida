@@ -7,6 +7,7 @@ from rapidfuzz import fuzz
 # from db import obtener_colonias
 
 NEWS_MIN_WORDS = 70
+UTILS_VERSION = "2026-04-10-v3"
 
 # ═══════════════════════════════════════════════════════════════
 # CONFIGURACIÓN POR TIPO DE GRUPO
