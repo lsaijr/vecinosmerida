@@ -157,7 +157,97 @@ def status():
     }
 
 
-@app.get("/descargar/{nombre}")
+@app.post("/guardar-db")
+async def guardar_db():
+    """
+    Guarda en DB los resultados del último pipeline procesado.
+    Retorna un reporte de nuevos vs duplicados por tipo.
+    """
+    from db import (
+        insertar_negocio, insertar_noticia, insertar_alerta,
+        insertar_empleo, actualizar_grupo_stats,
+        upsert_autor_completo, registrar_actividad,
+    )
+
+    resumen = estado.get("resumen")
+    if not resumen:
+        return JSONResponse({"error": "No hay resultados procesados. Ejecuta el pipeline primero."}, status_code=400)
+
+    # Recuperar resultados del pipeline desde el estado
+    # El pipeline los guarda en estado["_resultados"]
+    resultados = estado.get("_resultados")
+    meta        = estado.get("_meta_temp", {})
+    config      = estado.get("_config_temp", {})
+    if not resultados:
+        return JSONResponse({"error": "Resultados no disponibles. Ejecuta el pipeline primero."}, status_code=400)
+
+    colonia_ids = config.get("colonia_ids") or [None]
+    colonia_id  = colonia_ids[0]
+    group_id    = meta.get("group_id", "")
+    group_name  = meta.get("group_name", "")
+    fecha       = meta.get("fecha_captura")
+
+    conteo = {
+        "negocios_nuevos": 0, "negocios_dup": 0,
+        "noticias_nuevas": 0, "noticias_dup": 0,
+        "alertas_nuevas":  0, "alertas_dup":  0,
+        "mascotas_nuevas": 0, "mascotas_dup": 0,
+        "empleos_nuevos":  0, "empleos_dup":  0,
+        "errores": [],
+    }
+
+    BUCKETS = [
+        ("negocios",  insertar_negocio,  "negocios_nuevos",  "negocios_dup"),
+        ("mascotas",  insertar_negocio,  "mascotas_nuevas",  "mascotas_dup"),
+        ("noticias",  insertar_noticia,  "noticias_nuevas",  "noticias_dup"),
+        ("alertas",   insertar_alerta,   "alertas_nuevas",   "alertas_dup"),
+        ("empleos",   insertar_empleo,   "empleos_nuevos",   "empleos_dup"),
+    ]
+
+    for bucket, fn_insertar, key_nuevo, key_dup in BUCKETS:
+        for p in resultados.get(bucket, []):
+            try:
+                _, st = fn_insertar(p, colonia_id)
+                if st == "nuevo":
+                    conteo[key_nuevo] += 1
+                else:
+                    conteo[key_dup] += 1
+            except Exception as e:
+                conteo["errores"].append({"tipo": bucket, "error": str(e)[:120]})
+
+    # Registrar actividad de autores
+    tipo_map = {
+        "negocios": "negocio", "mascotas": "mascota",
+        "noticias": "noticia", "alertas": "alerta", "empleos": "empleo",
+    }
+    for bucket, tipo_str in tipo_map.items():
+        for p in resultados.get(bucket, []):
+            autor_id_fb = p.get("autor_id")
+            if not autor_id_fb:
+                continue
+            try:
+                autor_db_id = upsert_autor_completo(autor_id_fb, p.get("autor", ""))
+                p["_autor_db_id"] = autor_db_id
+                registrar_actividad(autor_db_id, group_id, group_name,
+                                    tipo_str, p.get("fbid_post"), fecha)
+            except Exception:
+                pass
+
+    try:
+        actualizar_grupo_stats(group_id, len(estado.get("_posts_temp", [])))
+    except Exception:
+        pass
+
+    conteo["total_nuevos"] = (
+        conteo["negocios_nuevos"] + conteo["noticias_nuevas"] +
+        conteo["alertas_nuevas"] + conteo["mascotas_nuevas"] +
+        conteo["empleos_nuevos"]
+    )
+
+    return conteo
+
+
+
 def descargar(nombre: str):
     ruta = os.path.join("static", "resultados", nombre)
     if not os.path.exists(ruta):
