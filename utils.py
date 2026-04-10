@@ -748,7 +748,7 @@ def pre_clasificar_keywords(txt, autor="", grupo_tipo="vecinos"):
 # ═══════════════════════════════════════════════════════════════
 
 # Mínimo de palabras con contenido real para que un negocio sea publicable
-NEGOCIO_MIN_PALABRAS_CONTENIDO = 12
+NEGOCIO_MIN_PALABRAS_CONTENIDO = 15
 
 
 def paso_1_limpieza(posts, grupo_tipo="vecinos"):
