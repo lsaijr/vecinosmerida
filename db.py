@@ -1,7 +1,84 @@
 import os
+import re
+from datetime import date, timedelta
 from functools import lru_cache
 
 import mysql.connector
+
+
+# ─── PARSER DE FECHA FACEBOOK ────────────────────────────────
+_MESES = {
+    "enero": 1, "febrero": 2, "marzo": 3, "abril": 4,
+    "mayo": 5, "junio": 6, "julio": 7, "agosto": 8,
+    "septiembre": 9, "octubre": 10, "noviembre": 11, "diciembre": 12,
+}
+_DIAS_SEMANA = ["lunes", "martes", "miércoles", "jueves", "viernes", "sábado", "domingo"]
+
+def parsear_fecha_fb(fecha_post: str | None, fecha_captura: str) -> str:
+    """
+    Convierte texto de fecha de Facebook a YYYY-MM-DD.
+    fecha_captura viene del meta del JSON: "10-04-2026" (DD-MM-YYYY)
+    Siempre devuelve una fecha — fallback es fecha_captura.
+    """
+    try:
+        hoy = date(
+            int(fecha_captura[6:10]),
+            int(fecha_captura[3:5]),
+            int(fecha_captura[0:2]),
+        )
+    except Exception:
+        hoy = date.today()
+
+    if not fecha_post:
+        return str(hoy)
+
+    f = fecha_post.strip().lower()
+
+    # "32 min" / "2 h" / "13 h" → hoy
+    if re.match(r'^\d+\s*(min|h)$', f):
+        return str(hoy)
+
+    # "1 día" / "3 días" → restar días
+    m = re.match(r'^(\d+)\s*d[íi]as?$', f)
+    if m:
+        return str(hoy - timedelta(days=int(m.group(1))))
+
+    # "1 semana" / "2 semanas" → restar semanas
+    m = re.match(r'^(\d+)\s*semanas?$', f)
+    if m:
+        return str(hoy - timedelta(weeks=int(m.group(1))))
+
+    # "1 mes" / "3 meses" → restar ~30 días por mes
+    m = re.match(r'^(\d+)\s*meses?$', f)
+    if m:
+        return str(hoy - timedelta(days=int(m.group(1)) * 30))
+
+    # "ayer..." → ayer
+    if f.startswith("ayer"):
+        return str(hoy - timedelta(days=1))
+
+    # "lunes", "martes"... → día de semana más reciente
+    for i, dia in enumerate(_DIAS_SEMANA):
+        if f.startswith(dia):
+            dias_atras = (hoy.weekday() - i) % 7 or 7
+            return str(hoy - timedelta(days=dias_atras))
+
+    # "18 de noviembre de 2025" → fecha exacta con año
+    m = re.match(r'^(\d{1,2})\s+de\s+(\w+)\s+de\s+(\d{4})', f)
+    if m:
+        mes = _MESES.get(m.group(2))
+        if mes:
+            return f"{m.group(3)}-{mes:02d}-{int(m.group(1)):02d}"
+
+    # "30 de marzo..." / "9 de febrero" → año de captura
+    m = re.match(r'^(\d{1,2})\s+de\s+(\w+)', f)
+    if m:
+        mes = _MESES.get(m.group(2))
+        if mes:
+            return f"{hoy.year}-{mes:02d}-{int(m.group(1)):02d}"
+
+    # fallback
+    return str(hoy)
 
 
 def get_conn():
@@ -220,8 +297,8 @@ def insertar_negocio(p, colonia_id):
         INSERT INTO negocios
           (nombre, categoria_id, descripcion, telefono, whatsapp,
            facebook, colonia_id, fuente_autor, autor_id, fecha_captura,
-           activo, fbid_post)
-        VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,1,%s)
+           activo, fbid_post, fecha_post, fecha_post_dt)
+        VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,1,%s,%s,%s)
         """,
         (
             p.get("titulo") or p.get("nombre", "")[:100],
@@ -235,6 +312,8 @@ def insertar_negocio(p, colonia_id):
             p.get("_autor_db_id") or None,
             p.get("fecha_captura"),
             fbid_post,
+            (p.get("fecha_post") or "")[:60] or None,
+            parsear_fecha_fb(p.get("fecha_post"), p.get("fecha_captura", "")),
         ),
     )
     negocio_id = cursor.lastrowid
@@ -301,8 +380,9 @@ def insertar_noticia(p, colonia_id):
         """
         INSERT INTO noticias
           (titulo, texto, categoria_id, colonia_id, autor,
-           imagen_cloudinary, url_post, fbid_post, fecha_captura)
-        VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s)
+           imagen_cloudinary, url_post, fbid_post, fecha_captura,
+           fecha_post, fecha_post_dt)
+        VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
         """,
         (
             (p.get("titulo") or "")[:200],
@@ -314,6 +394,8 @@ def insertar_noticia(p, colonia_id):
             p.get("url_post") or None,
             fbid_post,
             p.get("fecha_captura"),
+            (p.get("fecha_post") or "")[:60] or None,
+            parsear_fecha_fb(p.get("fecha_post"), p.get("fecha_captura", "")),
         ),
     )
     nid = cursor.lastrowid
@@ -340,8 +422,9 @@ def insertar_alerta(p, colonia_id):
         """
         INSERT INTO alertas
           (texto_alerta, categoria_id, colonia_id, direccion_aprox,
-           autor, imagen_cloudinary, url_post, fbid_post, fecha_captura)
-        VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s)
+           autor, imagen_cloudinary, url_post, fbid_post, fecha_captura,
+           fecha_post, fecha_post_dt)
+        VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
         """,
         (
             p.get("texto_alerta", "")[:500],
@@ -353,6 +436,8 @@ def insertar_alerta(p, colonia_id):
             p.get("url_post") or None,
             fbid_post,
             p.get("fecha_captura"),
+            (p.get("fecha_post") or "")[:60] or None,
+            parsear_fecha_fb(p.get("fecha_post"), p.get("fecha_captura", "")),
         ),
     )
     aid = cursor.lastrowid
@@ -465,8 +550,9 @@ def insertar_empleo(p, colonia_id):
         INSERT INTO empleos
           (tipo, area_id, puesto, empresa, descripcion,
            horario, zona, telefono, imagen_url,
-           autor, autor_id, colonia_id, fbid_post, fecha_captura)
-        VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
+           autor, autor_id, colonia_id, fbid_post, fecha_captura,
+           fecha_post, fecha_post_dt)
+        VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
         """,
         (
             p.get("tipo_empleo", "oferta"),
@@ -483,6 +569,8 @@ def insertar_empleo(p, colonia_id):
             colonia_id,
             fbid_post,
             p.get("fecha_captura"),
+            (p.get("fecha_post") or "")[:60] or None,
+            parsear_fecha_fb(p.get("fecha_post"), p.get("fecha_captura", "")),
         ),
     )
     empleo_id = cursor.lastrowid
