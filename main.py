@@ -16,7 +16,7 @@ print(f"🚀 VecinosMérida Pipeline arrancando — versión {APP_VERSION}")
 app = FastAPI()
 
 
-@app.get("/version")
+@app.get("/api/version")
 def version():
     return {"version": APP_VERSION, "ok": True}
 
