@@ -8,7 +8,9 @@ from db import (
     obtener_categorias_negocios,
     obtener_categorias_noticias,
     upsert_autor,
+    upsert_autor_completo,
     registrar_actividad,
+    actualizar_ranking_autor,
 )
 from generar_html import generar_html_resultados
 from ia import clasificar_tipo, debe_usar_gemini, generar_titulo_negocio_ia, procesar_alerta, procesar_negocio, procesar_noticia, procesar_empleo, get_resumen_costo, reset_contadores, _titulo_pobre
@@ -397,7 +399,8 @@ def ejecutar_pipeline(posts, meta, config_grupo, estado):
             if not autor_id_fb:
                 continue
             try:
-                autor_db_id = upsert_autor(autor_id_fb, p.get("autor", ""))
+                autor_db_id = upsert_autor_completo(autor_id_fb, p.get("autor", ""))
+                p["_autor_db_id"] = autor_db_id  # guardar para las inserciones
                 registrar_actividad(
                     autor_db_id,
                     group_id_meta,
@@ -465,7 +468,9 @@ def ejecutar_pipeline(posts, meta, config_grupo, estado):
     ]
 
     _set_estado(estado, paso="Completado", progreso=100, actividad="Proceso completado", add_history=True)
-    estado["archivo_html"] = nombre_archivo
+    estado["archivo_html"]  = nombre_archivo
+    estado["_resultados"]   = resultados   # disponible para /guardar-db
+    estado["_config_temp"]  = config_grupo # disponible para /guardar-db
     estado["resumen"] = {
         "total_entrada": len(posts),
         "descartados_sin_ia": len(descartados),

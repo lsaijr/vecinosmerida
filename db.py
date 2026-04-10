@@ -219,9 +219,9 @@ def insertar_negocio(p, colonia_id):
         """
         INSERT INTO negocios
           (nombre, categoria_id, descripcion, telefono, whatsapp,
-           facebook, colonia_id, fuente_autor, fecha_captura,
+           facebook, colonia_id, fuente_autor, autor_id, fecha_captura,
            activo, fbid_post)
-        VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,1,%s)
+        VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,1,%s)
         """,
         (
             p.get("titulo") or p.get("nombre", "")[:100],
@@ -232,6 +232,7 @@ def insertar_negocio(p, colonia_id):
             p.get("url_post") or None,
             colonia_id,
             p.get("autor", "")[:200],
+            p.get("_autor_db_id") or None,
             p.get("fecha_captura"),
             fbid_post,
         ),
@@ -464,8 +465,8 @@ def insertar_empleo(p, colonia_id):
         INSERT INTO empleos
           (tipo, area_id, puesto, empresa, descripcion,
            horario, zona, telefono, imagen_url,
-           autor, colonia_id, fbid_post, fecha_captura)
-        VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
+           autor, autor_id, colonia_id, fbid_post, fecha_captura)
+        VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
         """,
         (
             p.get("tipo_empleo", "oferta"),
@@ -478,6 +479,7 @@ def insertar_empleo(p, colonia_id):
             telefono,
             img_url,
             (p.get("autor") or "")[:200],
+            p.get("_autor_db_id") or None,
             colonia_id,
             fbid_post,
             p.get("fecha_captura"),
@@ -574,3 +576,225 @@ def registrar_actividad(autor_db_id, group_id, group_name, tipo_post,
     conn.commit()
     cursor.close()
     conn.close()
+
+
+def detectar_tipo_nombre(nombre):
+    """
+    Detecta si un nombre de autor es empresa o persona.
+    Retorna: 'empresa', 'persona', o 'desconocido'
+    """
+    if not nombre:
+        return 'desconocido'
+
+    n = nombre.lower().strip()
+
+    EMPRESA_SIGNALS = [
+        'tacos', 'tortas', 'pizza', 'burger', 'taqueria', 'taquería',
+        'restaurante', 'restaurant', 'comida', 'cocina', 'fonda',
+        'servicio', 'servicios', 'taller', 'grupo ', 'empresa',
+        'comercial', 'distribuidora', 'ferreteria', 'ferrería',
+        'salon ', 'salón ', 'estetica', 'estética', 'clinica', 'clínica',
+        'farmacia', 'veterinaria', 'inmobiliaria', 'constructora',
+        'decoracion', 'decoración', 'tienda', 'boutique', 'spa',
+        'gym', 'gimnasio', 'academia', 'escuela', 'instituto',
+        'consultorio', 'laboratorio', 'transporte', 'mudanzas',
+        'papeleria', 'papelería', 'libreria', 'panaderia', 'reposteria',
+        'lavanderia', 'plomero', 'electricista', 'carpintero',
+        'herreria', 'herería', 'pintura', 's.a.', 'sas', 'sa de cv',
+        'mx ', 'mex ', 'merida', 'mérida', 'yucatan', 'yucatán',
+        'cargo', 'express', 'delivery', 'shop', 'store', 'market',
+        'studio', 'studios', 'design', 'digital', 'tech', 'soluciones',
+        'eventos', 'producciones', 'agencia', 'marketing', 'publicidad',
+        'seguros', 'credito', 'crédito', 'prestamos', 'préstamos',
+        'inmuebles', 'bienes raices', 'bienes raíces', 'renta ',
+        'fotografia', 'fotografía', 'foto ', 'masajes', 'belleza',
+        'uñas', 'cabello', 'cosmetica', 'cosmética',
+    ]
+
+    APELLIDOS_MX = [
+        'garcia', 'garcía', 'martinez', 'martínez', 'lopez', 'lópez',
+        'gonzalez', 'gonzález', 'rodriguez', 'rodríguez', 'hernandez',
+        'hernández', 'perez', 'pérez', 'sanchez', 'sánchez', 'ramirez',
+        'ramírez', 'flores', 'morales', 'jimenez', 'jiménez', 'diaz',
+        'díaz', 'reyes', 'vargas', 'cruz', 'torres', 'gutierrez',
+        'gutiérrez', 'ortiz', 'chavez', 'chávez', 'ramos', 'ruiz',
+        'acosta', 'medina', 'aguilar', 'castro', 'mendoza', 'silva',
+        # Yucatecos
+        'caamal', 'dzul', 'pech', 'poot', 'may', 'uc', 'balam',
+        'canul', 'chim', 'tun', 'cocom', 'pool', 'canche', 'cauich',
+        'cetz', 'chan', 'che', 'chi', 'chuc', 'cutz', 'dzib', 'dzul',
+        'euan', 'haas', 'keb', 'ku', 'mex', 'miss', 'nah', 'ox',
+        'pat', 'puc', 'push', 'take', 'tamay', 'tzuc', 'ucan', 'xool',
+        'yam', 'yeh',
+    ]
+
+    # Señal clara de empresa
+    if any(s in n for s in EMPRESA_SIGNALS):
+        return 'empresa'
+
+    # Posible nombre de persona: 2-3 palabras con apellido conocido
+    palabras = n.split()
+    if 2 <= len(palabras) <= 3:
+        if any(ap in palabras for ap in APELLIDOS_MX):
+            return 'persona'
+
+    return 'desconocido'
+
+
+def calcular_ranking_score(autor_db_id):
+    """
+    Calcula el ranking_score de un autor basado en su actividad.
+    Fórmula: (grupos distintos × 10) + (total posts) + (tiene teléfono × 5)
+             - (días inactivo / 7)  + (es_cliente × 50)
+    """
+    if not autor_db_id:
+        return 0
+
+    conn   = get_conn()
+    cursor = conn.cursor()
+
+    cursor.execute("""
+        SELECT
+            COUNT(DISTINCT aa.group_id)                      AS grupos,
+            COUNT(aa.id)                                     AS total_posts,
+            DATEDIFF(NOW(), MAX(aa.fecha))                   AS dias_inactivo,
+            (SELECT COUNT(*) FROM autor_telefonos
+             WHERE autor_id = %s LIMIT 1)                   AS tiene_tel,
+            a.es_cliente
+        FROM autores a
+        LEFT JOIN autor_actividad aa ON aa.autor_id = a.id
+        WHERE a.id = %s
+        GROUP BY a.id
+    """, (autor_db_id, autor_db_id))
+
+    row = cursor.fetchone()
+    cursor.close()
+    conn.close()
+
+    if not row:
+        return 0
+
+    grupos, total_posts, dias_inactivo, tiene_tel, es_cliente = row
+    dias_inactivo = dias_inactivo or 0
+
+    score = (
+        (grupos or 0) * 10
+        + (total_posts or 0)
+        + (5 if tiene_tel else 0)
+        - int(dias_inactivo / 7)
+        + (50 if es_cliente else 0)
+    )
+    return max(score, 0)
+
+
+def actualizar_ranking_autor(autor_db_id):
+    """
+    Recalcula el score y actualiza badge automático.
+    Badges: NULL → 'destacado' (≥20) → 'premium' (si es_cliente)
+    """
+    if not autor_db_id:
+        return
+
+    score = calcular_ranking_score(autor_db_id)
+
+    conn   = get_conn()
+    cursor = conn.cursor()
+
+    # Badge automático por score (no sobreescribe 'verificado' ni 'premium' manual)
+    cursor.execute(
+        "SELECT badge, es_cliente FROM autores WHERE id = %s LIMIT 1",
+        (autor_db_id,)
+    )
+    row = cursor.fetchone()
+    badge_actual = row[0] if row else None
+    es_cliente   = row[1] if row else 0
+
+    # Solo asignar badge automático si no tiene uno manual/pagado
+    nuevo_badge = badge_actual
+    if badge_actual not in ('verificado', 'premium'):
+        if es_cliente:
+            nuevo_badge = 'premium'
+        elif score >= 20:
+            nuevo_badge = 'destacado'
+        else:
+            nuevo_badge = None
+
+    cursor.execute(
+        """
+        UPDATE autores
+        SET ranking_score   = %s,
+            ranking_updated = CURDATE(),
+            badge           = %s
+        WHERE id = %s
+        """,
+        (score, nuevo_badge, autor_db_id)
+    )
+    conn.commit()
+    cursor.close()
+    conn.close()
+
+
+def upsert_autor_completo(autor_id_fb, nombre):
+    """
+    Versión mejorada de upsert_autor que además:
+    - Detecta tipo_nombre (empresa/persona)
+    - Recalcula ranking y badge
+    Retorna el id interno del autor.
+    """
+    if not autor_id_fb:
+        return None
+
+    conn   = get_conn()
+    cursor = conn.cursor()
+
+    tipo_nombre = detectar_tipo_nombre(nombre)
+
+    cursor.execute(
+        "SELECT id, nombre, tipo_nombre FROM autores WHERE autor_id_fb = %s LIMIT 1",
+        (str(autor_id_fb),)
+    )
+    row = cursor.fetchone()
+
+    if row:
+        autor_db_id   = row[0]
+        nombre_actual = row[1] or ''
+        tipo_actual   = row[2] or 'desconocido'
+        nombre_nuevo  = (nombre or '').strip()[:200]
+
+        updates = []
+        params  = []
+        if nombre_nuevo and nombre_nuevo != nombre_actual:
+            updates.append("nombre = %s")
+            params.append(nombre_nuevo)
+            # Re-detectar tipo si cambió el nombre
+            tipo_nombre = detectar_tipo_nombre(nombre_nuevo)
+
+        if tipo_actual == 'desconocido' and tipo_nombre != 'desconocido':
+            updates.append("tipo_nombre = %s")
+            params.append(tipo_nombre)
+
+        if updates:
+            params.append(autor_db_id)
+            cursor.execute(
+                f"UPDATE autores SET {', '.join(updates)} WHERE id = %s",
+                tuple(params)
+            )
+            conn.commit()
+    else:
+        cursor.execute(
+            """
+            INSERT INTO autores (autor_id_fb, nombre, tipo_nombre)
+            VALUES (%s, %s, %s)
+            """,
+            (str(autor_id_fb), (nombre or '').strip()[:200], tipo_nombre)
+        )
+        conn.commit()
+        autor_db_id = cursor.lastrowid
+
+    cursor.close()
+    conn.close()
+
+    # Actualizar ranking y badge
+    actualizar_ranking_autor(autor_db_id)
+
+    return autor_db_id
