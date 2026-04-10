@@ -7,7 +7,6 @@ from rapidfuzz import fuzz
 # from db import obtener_colonias
 
 NEWS_MIN_WORDS = 70
-UTILS_VERSION = "2026-04-10-v3"
 
 # ═══════════════════════════════════════════════════════════════
 # CONFIGURACIÓN POR TIPO DE GRUPO
@@ -829,11 +828,23 @@ def paso_1_limpieza(posts, grupo_tipo="vecinos"):
         if es_mascota_probable and palabras_total >= min_palabras_mascota:
             pass  # mascota válida aunque sea corta
         elif grupo_tipo == 'empleo':
-            # Empleo no requiere imagen ni teléfono — solo mínimo de palabras
-            if palabras_total < 8:
+            # Lógica de filtro para empleo:
+            # - Sin imagen: mínimo 8 palabras
+            # - Con imagen: mínimo 4 palabras
+            # - Con imagen + teléfono: mínimo 4 palabras, marcar para análisis IA profundo
+            if num_imgs > 0:
+                min_emp = 4
+            else:
+                min_emp = 8
+
+            if palabras_total < min_emp:
                 post['_descartado'] = 'empleo_muy_corto'
                 descartados.append(post)
                 continue
+
+            # Si tiene imagen Y teléfono → marcar para análisis IA profundo
+            if num_imgs > 0 and tiene_tel:
+                post['_empleo_verificar_ia'] = True
         elif not num_imgs and not tiene_tel and palabras_total < 70:
             post['_descartado'] = 'sin_img_tel_y_corto'
             descartados.append(post)
