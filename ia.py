@@ -546,11 +546,41 @@ def _titulo_pobre(titulo):
     return False
 
 
+def _debe_usar_gemini_titulo(texto):
+    """
+    Gemini para títulos cuando el texto es corto o tiene poca claridad.
+    Groq cuando hay contexto suficiente para entender el servicio.
+    """
+    palabras = contar_palabras(texto or '')
+
+    # Texto muy corto — poco contexto para Groq
+    if palabras < 20:
+        return True
+
+    # Texto con muchos errores tipográficos o palabras raras
+    # Detectar ratio de palabras "raras" (>12 chars sin ser URLs ni teléfonos)
+    t = (texto or '').lower()
+    tokens = [w for w in t.split() if not w.startswith('http') and not w.isdigit()]
+    palabras_largas_raras = sum(
+        1 for w in tokens
+        if len(w) > 12 and not any(c.isdigit() for c in w)
+    )
+    if tokens and palabras_largas_raras / max(len(tokens), 1) > 0.15:
+        return True
+
+    # Texto con muchas mayúsculas sueltas (stickers, decoración)
+    mayus_sueltas = sum(1 for w in (texto or '').split() if w.isupper() and len(w) <= 3)
+    if mayus_sueltas >= 4:
+        return True
+
+    return False
+
+
 def generar_titulo_negocio_ia(post, categoria_nombre='', prefer='groq'):
     """
-    Genera título con IA solo cuando el título rule-based es pobre.
-    prefer='groq'  → intenta Groq 70B primero, Gemini como respaldo
-    prefer='gemini' → intenta Gemini primero, Groq como respaldo
+    Genera título con IA.
+    - Texto corto o poco claro → Gemini primero (mejor inferencia)
+    - Texto normal → Groq primero (más rápido, sin rate limit)
     """
     texto = post.get('texto_limpio') or post.get('texto') or ''
     if es_post_consulta(texto) and not tiene_senal_comercial_fuerte(post, texto):
@@ -562,8 +592,12 @@ def generar_titulo_negocio_ia(post, categoria_nombre='', prefer='groq'):
     if cache_key in _CACHE_TITULOS:
         return _CACHE_TITULOS[cache_key]
 
+    # Decidir proveedor según claridad del texto
+    if prefer == 'groq' and _debe_usar_gemini_titulo(texto):
+        prefer = 'gemini'
+
     prompt = _prompt_titulo_negocio(texto, categoria_nombre=categoria_nombre)
-    proveedores = ['groq', 'gemini'] if prefer == 'groq' else ['gemini', 'groq']
+    proveedores = ['gemini', 'groq'] if prefer == 'gemini' else ['groq', 'gemini']
 
     for proveedor in proveedores:
         try:
