@@ -236,28 +236,31 @@ CATEGORÍA DETECTADA: {categoria_nombre or 'General'}
 
 REGLAS:
 1. Máximo 7 palabras. Máximo 65 caracteres.
-2. Describe QUÉ ofrece el negocio, no hables del post.
-3. No uses saludos, preguntas, emojis ni puntuación final.
-4. No inventes datos que no estén en el texto.
-5. Incluye la colonia o zona SI está mencionada en el texto.
-6. Si el post es una consulta o pregunta (no una oferta), responde exactamente: IGNORAR
+2. Describe QUÉ ofrece el negocio. Nunca copies frases del texto — extrae el servicio.
+3. El título debe tener sentido COMPLETO. Nunca termines con: el, la, los, las, un, una, de, en, a, con, por, para, que, y, o, su, tu, más, te, se.
+4. No uses saludos, preguntas, emojis ni puntuación final.
+5. No inventes datos ausentes en el texto.
+6. Incluye zona o colonia SOLO si está explícitamente mencionada en el texto.
+7. Si el post es una consulta o pregunta (no una oferta), responde exactamente: IGNORAR
 
 EJEMPLOS CORRECTOS:
 {{"titulo": "Plomería y fontanería en Mérida"}}
 {{"titulo": "Instalación de cámaras de seguridad"}}
 {{"titulo": "Clases de inglés en Francisco de Montejo"}}
 {{"titulo": "Fumigación y control de plagas"}}
-{{"titulo": "Baterías para auto Optima en Mérida"}}
-{{"titulo": "Fotografía de bodas y XV años"}}
 {{"titulo": "Repostería artesanal a domicilio"}}
 {{"titulo": "Renta de inflables para fiestas"}}
 {{"titulo": "Cerrajería 24 horas en Mérida"}}
-{{"titulo": "Diseño gráfico y logos"}}
+{{"titulo": "Apoyo educativo para niños"}}
+{{"titulo": "Venta de celulares a crédito"}}
+{{"titulo": "Impermeabilización de techos"}}
 
-EJEMPLOS INCORRECTOS (NO hagas esto):
+EJEMPLOS INCORRECTOS — NO hagas esto:
+{{"titulo": "Te Proporcionamos Un Espacio Que"}}  <- cortado, termina en pronombre
+{{"titulo": "Vive Una Experiencia Única Tus"}}  <- cortado, termina en pronombre
+{{"titulo": "Sabor Que Nos Caracteriza Contamos"}}  <- frase sin sentido
 {{"titulo": "Negocio local en Mérida"}}  <- demasiado genérico
 {{"titulo": "Servicio"}}  <- demasiado corto
-{{"titulo": "Este negocio ofrece servicios de calidad"}}  <- no describe nada
 
 Responde ÚNICAMENTE con JSON válido:
 {{"titulo": "..."}}"""
@@ -499,26 +502,47 @@ def _detectar_categoria_negocio_keywords(texto, categorias):
 # ═══════════════════════════════════════════════════════════════
 
 def _titulo_pobre(titulo):
-    """Detecta títulos genéricos o con artefactos que requieren reintento."""
+    """Detecta títulos genéricos, cortados o con artefactos."""
     if not titulo:
         return True
     t = limpiar_titulo(titulo or '', max_chars=60)
     if not t:
         return True
     tn = t.lower().strip()
+
     # Títulos genéricos conocidos
     if tn in {
         'negocio local', 'negocio local en merida', 'negocio en merida',
-        'negocio en merida', 'general', 'servicio', 'mascotas', 'alerta',
-        'ignorar', 'negocio local en mérida', 'negocio en mérida'
+        'general', 'servicio', 'mascotas', 'alerta', 'ignorar',
+        'negocio local en mérida', 'negocio en mérida', 'servicio domicilio',
     }:
         return True
-    # Artefactos markdown / JSON que se filtraron mal
+
+    # Artefactos markdown / JSON
     if '```' in tn or re.search(r'\bjson\b', tn):
         return True
+
     # Demasiado largo
     if len(t.split()) > 8:
         return True
+
+    # Título cortado: termina en palabra vacía (artículo, prep, pronombre, conjunción)
+    PALABRAS_VACIAS = {
+        'el', 'la', 'los', 'las', 'un', 'una', 'unos', 'unas',
+        'de', 'del', 'en', 'a', 'con', 'por', 'para', 'que', 'y',
+        'o', 'e', 'ni', 'su', 'sus', 'tu', 'tus', 'mi', 'mis',
+        'te', 'se', 'me', 'nos', 'le', 'les', 'más', 'mas',
+        'es', 'son', 'al', 'ante', 'bajo', 'sin', 'sobre',
+    }
+    ultima_palabra = tn.split()[-1].rstrip('.,;:') if tn.split() else ''
+    if ultima_palabra in PALABRAS_VACIAS:
+        return True
+
+    # Demasiado corto (1 sola palabra genérica)
+    palabras = t.split()
+    if len(palabras) == 1 and len(t) < 6:
+        return True
+
     return False
 
 

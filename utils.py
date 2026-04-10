@@ -1316,18 +1316,63 @@ def limpiar_titulo(txt, max_chars=72):
 
 def extraer_ubicacion_simple(txt):
     t = txt or ''
+
+    # Lista de zonas/colonias válidas de Mérida — evita tomar frases de contexto
+    ZONAS_VALIDAS = {
+        'altabrisa', 'caucel', 'chuburna', 'cholul', 'conkal', 'diaz ordaz',
+        'dzitya', 'francisco de montejo', 'garcia gineres', 'garcia ginerés',
+        'itzimna', 'jardines de mérida', 'miguel hidalgo', 'montecristo',
+        'montejo', 'nueva sambula', 'nueva sambulá', 'pensiones', 'pedregal',
+        'polígono 108', 'san antonio cinta', 'san bernardino', 'san damian',
+        'san francisco', 'san jose', 'san josé', 'san pedro', 'san sebastian',
+        'san sebastián', 'santa rosa', 'santa gertrudis', 'tanlum', 'vergel',
+        'vista alegre', 'xcumpich', 'yucalpeten', 'centro', 'centro histórico',
+        'dzibilchaltun', 'dzibilchaltún', 'residencial pensiones',
+        # Municipios cercanos
+        'merida', 'mérida', 'progreso', 'uman', 'umán', 'kanasin', 'kanasín',
+        'conkal', 'tekax', 'valladolid', 'tizimin', 'tizimín',
+    }
+
+    # Palabras que NO son zonas aunque aparezcan después de "en"
+    FALSOS_POSITIVOS = {
+        'venta', 'renta', 'domicilio', 'linea', 'línea', 'tienda', 'efectivo',
+        'credito', 'crédito', 'oferta', 'promocion', 'promoción', 'horario',
+        'facebook', 'whatsapp', 'instagram', 'internet', 'general', 'todo',
+        'almacenamiento', 'agua', 'luz', 'gas', 'servicio', 'obra', 'casa',
+        'departamento', 'local', 'oficina', 'el trabajo', 'la ciudad',
+        'toda la ciudad', 'tu hogar', 'tu negocio', 'el norte', 'el sur',
+    }
+
+    # Patrones con prioridad — los más específicos primero
     patrones = [
-        r'\b(?:ubicados en|ubicado en|en|de)\s+([A-Za-zÁÉÍÓÚÑáéíóúñ0-9\-\s]{4,50})',
+        r'\b(?:ubicados en|ubicado en|nos ubicamos en|estamos en)\s+([A-Za-zÁÉÍÓÚÑáéíóúñ0-9\-\s]{4,50})',
         r'\bcerca de\s+([A-Za-zÁÉÍÓÚÑáéíóúñ0-9\-\s]{4,50})',
+        r'\bcolonia\s+([A-Za-zÁÉÍÓÚÑáéíóúñ0-9\-\s]{4,40})',
+        r'\bfracc(?:ionamiento)?\s+([A-Za-zÁÉÍÓÚÑáéíóúñ0-9\-\s]{4,40})',
     ]
+
     for pat in patrones:
         m = re.search(pat, t, re.IGNORECASE)
         if m:
-            frag = re.split(r'[,.]|\s+y\s|\s+x\s', m.group(1))[0].strip()
+            frag = re.split(r'[,.]|\s+y\s|\s+x\s|\n', m.group(1))[0].strip()
             frag = re.sub(r'\s+', ' ', frag)
             frag = re.sub(r'(?i)^(la|el|los|las)\s+', '', frag)
-            if len(frag) >= 4:
+            frag_norm = frag.lower().strip()
+            if len(frag) < 4:
+                continue
+            # Rechazar falsos positivos
+            if any(fp in frag_norm for fp in FALSOS_POSITIVOS):
+                continue
+            # Validar contra zonas conocidas
+            if any(z in frag_norm for z in ZONAS_VALIDAS):
                 return frag[:40]
+
+    # Búsqueda directa de zona conocida en el texto completo
+    t_norm = t.lower()
+    for zona in sorted(ZONAS_VALIDAS, key=len, reverse=True):
+        if zona in t_norm and len(zona) >= 6:
+            return zona.title()
+
     return ''
 
 
