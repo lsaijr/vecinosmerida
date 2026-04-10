@@ -10,7 +10,15 @@ from pipeline import ejecutar_pipeline
 from utils import match_colonias, detectar_tipo_por_nombre
 from db import buscar_grupo, registrar_grupo, obtener_colonias
 
+APP_VERSION = "2026-04-10-v2"
+print(f"🚀 VecinosMérida Pipeline arrancando — versión {APP_VERSION}")
+
 app = FastAPI()
+
+
+@app.get("/version")
+def version():
+    return {"version": APP_VERSION, "ok": True}
 
 # ── Lock: garantiza un solo pipeline activo a la vez ─────────────────────────
 _pipeline_lock = threading.Lock()
