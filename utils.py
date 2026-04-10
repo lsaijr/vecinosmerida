@@ -759,7 +759,13 @@ def paso_1_limpieza(posts, grupo_tipo="vecinos"):
     min_palabras_noticia  = cfg.get("min_palabras_noticia", NEWS_MIN_WORDS)
     largo_es_negocio      = cfg.get("largo_es_negocio", False)
 
-    for post in posts:
+    for i, post in enumerate(posts):
+        # Generar fbid_post sintético si no existe — evita fallos en dedup y DB
+        if not post.get('fbid_post'):
+            autor = (post.get('autor') or 'x')[:8].replace(' ','')
+            texto_hash = abs(hash((post.get('texto') or '')[:50])) % 10**9
+            post['fbid_post'] = f"syn_{autor}_{texto_hash}_{i}"
+
         debe_descartar, razon = es_descartable(post)
         if debe_descartar:
             post['_descartado'] = razon
