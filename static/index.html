@@ -150,7 +150,7 @@ textarea{resize:vertical;min-height:70px;}
     </div>
     <div class="upload-body">
       <div class="drop-zone" id="dropZone">
-        <input type="file" id="fileInput" accept=".json" multiple onchange="archivoSeleccionado(this)">
+        <input type="file" id="fileInput" accept=".json" multiple>
         <div class="drop-icon">📂</div>
         <div class="drop-title">Arrastra hasta 4 JSONs aquí</div>
         <div class="drop-sub">o haz clic para seleccionar (máx. 4 grupos)</div>
@@ -223,6 +223,12 @@ var reportesHTML   = [];   // URLs de reportes generados
 
 // ── DROP ZONE ──────────────────────────────────────────────
 var dz = document.getElementById('dropZone');
+var fileInput = document.getElementById('fileInput');
+
+fileInput.addEventListener('change', function(){
+  if(this.files.length) setArchivos(Array.from(this.files));
+});
+
 dz.addEventListener('dragover', function(e){ e.preventDefault(); dz.classList.add('over'); });
 dz.addEventListener('dragleave', function(){ dz.classList.remove('over'); });
 dz.addEventListener('drop', function(e){
@@ -230,10 +236,6 @@ dz.addEventListener('drop', function(e){
   var files = Array.from(e.dataTransfer.files).filter(function(f){ return f.name.endsWith('.json'); });
   setArchivos(files);
 });
-
-function archivoSeleccionado(input){
-  if(input.files.length) setArchivos(Array.from(input.files));
-}
 
 function setArchivos(files){
   archivos = files.slice(0, 4);
