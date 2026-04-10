@@ -797,7 +797,8 @@ def paso_1_limpieza(posts, grupo_tipo="vecinos"):
             continue
 
         # ── Filtro de consulta sin señal comercial ────────────────
-        if es_post_consulta(txt_original) and not tiene_senal_comercial_fuerte(post, txt_original):
+        # Empleo: no aplicar este filtro — "busco trabajo" es consulta válida
+        if grupo_tipo != 'empleo' and es_post_consulta(txt_original) and not tiene_senal_comercial_fuerte(post, txt_original):
             post['_descartado'] = 'consulta_baja_prioridad'
             descartados.append(post)
             continue
@@ -820,6 +821,12 @@ def paso_1_limpieza(posts, grupo_tipo="vecinos"):
 
         if es_mascota_probable and palabras_total >= min_palabras_mascota:
             pass  # mascota válida aunque sea corta
+        elif grupo_tipo == 'empleo':
+            # Empleo no requiere imagen ni teléfono — solo mínimo de palabras
+            if palabras_total < 8:
+                post['_descartado'] = 'empleo_muy_corto'
+                descartados.append(post)
+                continue
         elif not num_imgs and not tiene_tel and palabras_total < 70:
             post['_descartado'] = 'sin_img_tel_y_corto'
             descartados.append(post)
