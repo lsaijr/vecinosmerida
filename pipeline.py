@@ -143,12 +143,13 @@ def ejecutar_pipeline(posts, meta, config_grupo, estado):
         # ── Detección directa de empleo (sin Groq) ───────────────
         if grupo_tipo == "empleo":
             tipo_emp = clasificar_tipo_empleo(p.get("texto_limpio", ""))
-            if tipo_emp:
-                p["tipo_detectado"]  = "empleo"
-                p["tipo_empleo"]     = tipo_emp
-                calls_ia_evitadas   += 1
-                clasificados.append(p)
-                continue
+            # Si no matchea keywords específicas, clasificar como oferta por defecto
+            # (en un grupo de empleo todo post válido es empleo)
+            p["tipo_detectado"] = "empleo"
+            p["tipo_empleo"]    = tipo_emp or "oferta"
+            calls_ia_evitadas  += 1
+            clasificados.append(p)
+            continue
 
         if pre_tipo != "ambiguo":
             p["tipo_detectado"] = pre_tipo
