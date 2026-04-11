@@ -269,8 +269,6 @@ def descargar(nombre: str):
     )
 
 
-app.mount("/static", StaticFiles(directory="static"), name="static")
-app.mount("/", StaticFiles(directory="static", html=True), name="root")
 # ─────────────────────────────────────────────────────────────────────────────
 # ENDPOINTS PARA JSON LIMPIO (pre-clasificado por Claude)
 # Agregar estos endpoints al main.py existente
@@ -324,12 +322,16 @@ async def analizar_limpio(file: UploadFile = File(...)):
 
     grupo_registrado = buscar_grupo(group_id)
     if grupo_registrado:
+        # Obtener colonias asociadas al grupo desde grupos_colonias
+        from db import obtener_colonias_de_grupo
+        colonias_grupo = obtener_colonias_de_grupo(group_id)
+        colonia_ids = [c["id"] for c in colonias_grupo]
         return {
             "conocido": True,
             "group_id": group_id,
             "group_name": group_name,
             "tipo": grupo_registrado["tipo"],
-            "colonia_ids": grupo_registrado.get("colonia_ids", []),
+            "colonia_ids": colonia_ids,
             "total_posts": len(posts),
         }
 
@@ -346,8 +348,8 @@ async def analizar_limpio(file: UploadFile = File(...)):
         "total_posts": len(posts),
         "tipo_sugerido": tipo_sugerido,
         "match_colonias": resultado_match,
-        "candidatas": candidatas,
-        "todas_colonias": todas_colonias,
+        "candidatas": [{"id": c["id"], "nombre": c["nombre"]} for c in (candidatas or [])],
+        "todas_colonias": [{"id": c["id"], "nombre": c["nombre"]} for c in (todas_colonias or [])],
     }
 
 
@@ -516,3 +518,7 @@ def status_limpio():
         "ocupado":     _lock_limpio.locked(),
         "elapsed":     elapsed,
     }
+
+# ── Static files — debe ir AL FINAL para no interceptar endpoints ──
+app.mount("/static", StaticFiles(directory="static"), name="static")
+app.mount("/", StaticFiles(directory="static", html=True), name="root")
