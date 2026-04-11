@@ -648,11 +648,8 @@ async def groq_limpiar(request: Request):
         return JSONResponse({"error": "Falta json_data"}, status_code=400)
 
     MODELOS_PERMITIDOS = [
-        "llama-3.3-70b-versatile",
-        "llama-3.1-8b-instant",
         "openai/gpt-oss-20b",
-        "openai/gpt-oss-120b",
-        "qwen/qwen3-32b",
+        "llama-3.3-70b-versatile",
     ]
     if model not in MODELOS_PERMITIDOS:
         return JSONResponse({"error": f"Modelo no permitido: {model}"}, status_code=400)
