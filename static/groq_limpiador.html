@@ -388,6 +388,44 @@
   .log .log-err { color: var(--error); }
   .log .log-info { color: var(--accent2); }
 
+  /* Model checkboxes */
+  .model-check {
+    cursor: pointer;
+    display: block;
+  }
+  .model-check input[type="checkbox"] {
+    display: none;
+  }
+  .mchk-card {
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: .75rem;
+    transition: all .2s;
+    opacity: .5;
+  }
+  .model-check input:checked + .mchk-card {
+    border-color: var(--mc);
+    opacity: 1;
+    background: color-mix(in srgb, var(--mc) 8%, var(--bg));
+  }
+  .mchk-badge {
+    font-size: .65rem;
+    font-family: 'Space Mono', monospace;
+    letter-spacing: .05em;
+    margin-bottom: .3rem;
+  }
+  .mchk-name {
+    font-size: .85rem;
+    font-weight: 600;
+    margin-bottom: .2rem;
+  }
+  .mchk-price {
+    font-size: .7rem;
+    color: var(--muted);
+    font-family: 'Space Mono', monospace;
+  }
+
   .hidden { display: none !important; }
 
   /* Spinner */
@@ -430,8 +468,69 @@
       </div>
     </div>
 
+    <div class="input-group" style="margin-top:1.25rem">
+      <label>Selecciona los modelos a probar</label>
+      <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:.5rem;margin-top:.5rem">
+
+        <label class="model-check" style="--mc:var(--model1)">
+          <input type="checkbox" class="mchk" value="1" checked>
+          <div class="mchk-card">
+            <div class="mchk-badge" style="color:var(--model1)">💳 PAGO</div>
+            <div class="mchk-name">Llama 3.3 70B</div>
+            <div class="mchk-price">$0.59/$0.79</div>
+          </div>
+        </label>
+
+        <label class="model-check" style="--mc:var(--model2)">
+          <input type="checkbox" class="mchk" value="2" checked>
+          <div class="mchk-card">
+            <div class="mchk-badge" style="color:var(--model2)">💳 PAGO</div>
+            <div class="mchk-name">Llama 3.1 8B</div>
+            <div class="mchk-price">$0.05/$0.08</div>
+          </div>
+        </label>
+
+        <label class="model-check" style="--mc:var(--model3)">
+          <input type="checkbox" class="mchk" value="3" checked>
+          <div class="mchk-card">
+            <div class="mchk-badge" style="color:var(--model3)">💳 PAGO</div>
+            <div class="mchk-name">GPT OSS 20B</div>
+            <div class="mchk-price">$0.075/$0.30</div>
+          </div>
+        </label>
+
+        <label class="model-check" style="--mc:#10b981">
+          <input type="checkbox" class="mchk" value="4">
+          <div class="mchk-card">
+            <div class="mchk-badge" style="color:#10b981">🆓 GRATIS</div>
+            <div class="mchk-name">Llama 70B Free</div>
+            <div class="mchk-price">chunk 10 · pausa 15s</div>
+          </div>
+        </label>
+
+        <label class="model-check" style="--mc:#10b981">
+          <input type="checkbox" class="mchk" value="5">
+          <div class="mchk-card">
+            <div class="mchk-badge" style="color:#10b981">🆓 GRATIS</div>
+            <div class="mchk-name">Llama 8B Free</div>
+            <div class="mchk-price">chunk 10 · pausa 15s</div>
+          </div>
+        </label>
+
+        <label class="model-check" style="--mc:#10b981">
+          <input type="checkbox" class="mchk" value="6">
+          <div class="mchk-card">
+            <div class="mchk-badge" style="color:#10b981">🆓 GRATIS</div>
+            <div class="mchk-name">Llama 4 Scout</div>
+            <div class="mchk-price">chunk 10 · pausa 15s</div>
+          </div>
+        </label>
+
+      </div>
+    </div>
+
     <button class="btn btn-primary" id="btnStart" disabled onclick="startBenchmark()">
-      Iniciar comparativa con 3 modelos →
+      Iniciar con modelos seleccionados →
     </button>
   </div>
 
@@ -844,6 +943,17 @@ async function processModel(modelObj) {
 }
 
 async function startBenchmark() {
+  // Obtener modelos seleccionados
+  const checkedIds = [...document.querySelectorAll('.mchk:checked')].map(c => parseInt(c.value));
+  if (checkedIds.length === 0) {
+    alert('Selecciona al menos un modelo.');
+    return;
+  }
+
+  const selectedPaid = PAID_MODELS.filter(m => checkedIds.includes(m.id));
+  const selectedFree = FREE_MODELS.filter(m => checkedIds.includes(m.id));
+  const totalSelected = selectedPaid.length + selectedFree.length;
+
   document.getElementById('btnStart').disabled = true;
   document.getElementById('cardConfig').classList.remove('active');
   document.getElementById('cardConfig').classList.add('done');
@@ -853,51 +963,57 @@ async function startBenchmark() {
   document.getElementById('cardModels').classList.remove('hidden');
   document.getElementById('cardModels').classList.add('active');
 
-  log('═══ Iniciando benchmark de 3 modelos ═══', 'info');
+  // Ocultar cards de modelos no seleccionados
+  MODELS.forEach(m => {
+    if (!checkedIds.includes(m.id)) {
+      const card = document.getElementById(`mc${m.id}`);
+      if (card) card.style.display = 'none';
+    }
+  });
+
+  log(`═══ Iniciando benchmark: ${totalSelected} modelo(s) seleccionado(s) ═══`, 'info');
   log(`📊 Posts en JSON crudo: ${rawData.posts?.length || 0}`, '');
 
-  // PAGO: procesar los 3 modelos de pago
-  log('── SECCIÓN PAGO ──────────────────────', 'info');
-  for (const model of PAID_MODELS) {
-    await processModel(model);
-    if (model.id < 3) {
-      log('⏸ Pausa 3s antes del siguiente modelo...', '');
-      await new Promise(r => setTimeout(r, 3000));
+  if (selectedPaid.length > 0) {
+    log('── SECCIÓN PAGO ──────────────────────', 'info');
+    for (let i = 0; i < selectedPaid.length; i++) {
+      await processModel(selectedPaid[i]);
+      if (i < selectedPaid.length - 1) {
+        log('⏸ Pausa 3s...', '');
+        await new Promise(r => setTimeout(r, 3000));
+      }
     }
   }
 
-  // GRATIS: procesar los 3 modelos gratuitos
-  log('── SECCIÓN GRATIS (puede tardar ~20 min) ──', 'info');
-  for (const model of FREE_MODELS) {
-    await processModel(model);
-    if (model.id < 6) {
-      log('⏸ Pausa 5s antes del siguiente modelo...', '');
-      await new Promise(r => setTimeout(r, 5000));
+  if (selectedFree.length > 0) {
+    log('── SECCIÓN GRATIS ──────────────────', 'info');
+    for (let i = 0; i < selectedFree.length; i++) {
+      await processModel(selectedFree[i]);
+      if (i < selectedFree.length - 1) {
+        log('⏸ Pausa 5s...', '');
+        await new Promise(r => setTimeout(r, 5000));
+      }
     }
   }
 
-  // Mostrar tabla comparativa
-  showComparison();
+  showComparison(checkedIds);
 }
 
-function showComparison() {
+function showComparison(checkedIds) {
   document.getElementById('cardCompare').classList.remove('hidden');
   const tbody = document.getElementById('compareBody');
   tbody.innerHTML = '';
 
   // Separar pagos vs gratis
   const addSection = (label, modelList, color) => {
+    const filtered = modelList.filter(m => checkedIds.includes(m.id));
+    if (filtered.length === 0) return;
     const trh = document.createElement('tr');
-    trh.innerHTML = `<td colspan="6" style="color:${color};font-size:.7rem;letter-spacing:.1em;padding-top:.75rem">${label}</td>`;
+    trh.innerHTML = `<td colspan="5" style="color:${color};font-size:.7rem;letter-spacing:.1em;padding-top:.75rem">${label}</td>`;
     tbody.appendChild(trh);
-    
-    let best = null;
-    modelList.forEach(m => {
+    filtered.forEach(m => {
       const r = results[m.id];
       const tr = document.createElement('tr');
-      // ganador por posts dentro del grupo
-      if (!best && r) best = m.id;
-      if (r && best && r.posts.length > (results[best]?.posts?.length || 0)) best = m.id;
       tr.innerHTML = `
         <td style="color:${color}">${m.label}</td>
         <td>${r ? r.posts.length : 'Error'}</td>
