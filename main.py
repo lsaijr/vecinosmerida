@@ -762,11 +762,8 @@ FORMATO DE SALIDA:
     else:
         return JSONResponse({"error": f"Falló después de 3 intentos: {last_error}"}, status_code=500)
 
-    if resp.status_code != 200:
-        return JSONResponse({"error": last_error}, status_code=500)
-
+    try:
         data = resp.json()
-        
         raw_content = data["choices"][0]["message"]["content"]
 
         # Guardar respuesta cruda para debug
@@ -781,21 +778,17 @@ FORMATO DE SALIDA:
         except Exception:
             pass
 
-        # Limpiar respuesta del modelo antes de enviar al cliente
+        # Limpiar respuesta
+        import re as _re2
         clean = raw_content.strip()
-        # Eliminar bloques <think>...</think> (Qwen3, DeepSeek R1, etc.)
-        clean = _re.sub(r'<think>[\s\S]*?</think>', '', clean, flags=_re.IGNORECASE).strip()
-        # Quitar markdown ```json ... ```
-        clean = _re.sub(r'^```(?:json)?\s*', '', clean, flags=_re.IGNORECASE)
-        clean = _re.sub(r'\s*```\s*$', '', clean).strip()
-        # Extraer desde el primer { hasta el último }
+        clean = _re2.sub(r'<think>[\s\S]*?</think>', '', clean, flags=_re2.IGNORECASE).strip()
+        clean = _re2.sub(r'^```(?:json)?\s*', '', clean, flags=_re2.IGNORECASE)
+        clean = _re2.sub(r'\s*```\s*$', '', clean).strip()
         first = clean.find('{')
         last = clean.rfind('}')
         if first >= 0 and last > first:
             clean = clean[first:last+1]
 
-        # Intentar parsear el JSON en el servidor y devolverlo como objeto
-        # Esto evita problemas de doble-encoding en el cliente
         try:
             parsed_obj = json.loads(clean)
             return JSONResponse({
@@ -804,7 +797,6 @@ FORMATO DE SALIDA:
                 "model": model
             })
         except Exception:
-            # Fallback: devolver como string para que el cliente intente parsear
             return JSONResponse({
                 "content": clean,
                 "usage": data.get("usage", {}),
