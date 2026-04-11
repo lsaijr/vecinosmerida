@@ -8,7 +8,7 @@ import time
 
 from pipeline import ejecutar_pipeline
 from utils import match_colonias, detectar_tipo_por_nombre
-from db import buscar_grupo, registrar_grupo, obtener_colonias
+from db import buscar_grupo, registrar_grupo, obtener_colonias, obtener_potenciales_clientes
 
 APP_VERSION = "2026-04-10-v3"
 print(f"🚀 VecinosMérida Pipeline arrancando — versión {APP_VERSION}")
@@ -234,8 +234,9 @@ async def guardar_db():
             if not autor_id_fb:
                 continue
             try:
-                autor_db_id = upsert_autor_completo(autor_id_fb, p.get("autor", ""))
+                autor_db_id, es_empresa = upsert_autor_completo(autor_id_fb, p.get("autor", ""))
                 p["_autor_db_id"] = autor_db_id
+                p["_es_empresa"]  = es_empresa
                 registrar_actividad(autor_db_id, group_id, group_name,
                                     tipo_str, p.get("fbid_post"), fecha)
             except Exception:
@@ -275,7 +276,7 @@ def descargar(nombre: str):
 # ─────────────────────────────────────────────────────────────────────────────
 # Imports adicionales necesarios (ya deben estar en main.py):
 # from fastapi import UploadFile, File, Request
-# from db import buscar_grupo, registrar_grupo, obtener_colonias,
+# from db import buscar_grupo, registrar_grupo, obtener_colonias, obtener_potenciales_clientes,
 #               insertar_negocio, insertar_alerta, upsert_autor_completo,
 #               registrar_actividad, actualizar_grupo_stats
 # from cloudinary_service import subir_imagen_cloudinary  (o el nombre correcto)
@@ -336,10 +337,17 @@ async def analizar_limpio(file: UploadFile = File(...)):
         }
 
     # Grupo nuevo: sugerir colonia y tipo
-    from utils import match_colonias, detectar_tipo_por_nombre
-    resultado_match, candidatas = match_colonias(group_name)
-    tipo_sugerido = detectar_tipo_por_nombre(group_name) or "mascotas"
-    todas_colonias = obtener_colonias()
+    try:
+        from utils import match_colonias, detectar_tipo_por_nombre
+        resultado_match, candidatas = match_colonias(group_name)
+        tipo_sugerido = detectar_tipo_por_nombre(group_name) or "mascotas"
+    except Exception:
+        resultado_match, candidatas, tipo_sugerido = [], [], "vecinos"
+
+    try:
+        todas_colonias = obtener_colonias()
+    except Exception:
+        todas_colonias = []
 
     return {
         "conocido": False,
@@ -446,8 +454,9 @@ async def procesar_limpio(request: Request):
                     # 3. Upsert autor
                     autor_id_fb = p.get("autor_id")
                     if autor_id_fb:
-                        autor_db_id = upsert_autor_completo(autor_id_fb, p.get("autor", ""))
+                        autor_db_id, es_empresa = upsert_autor_completo(autor_id_fb, p.get("autor", ""))
                         p["_autor_db_id"] = autor_db_id
+                        p["_es_empresa"]  = es_empresa
                     else:
                         autor_db_id = None
 
@@ -518,6 +527,25 @@ def status_limpio():
         "ocupado":     _lock_limpio.locked(),
         "elapsed":     elapsed,
     }
+
+
+@app.get("/potenciales-clientes")
+def potenciales_clientes(limite: int = 50, score_minimo: int = 5):
+    """
+    Retorna empresas con alto ranking_score que no son clientes aún.
+    Ordenadas por score desc — las que más postean primero.
+    """
+    try:
+        rows = obtener_potenciales_clientes(limite=limite, score_minimo=score_minimo)
+        # Serializar fechas
+        for r in rows:
+            for k, v in r.items():
+                if hasattr(v, 'isoformat'):
+                    r[k] = v.isoformat()
+        return {"total": len(rows), "clientes": rows}
+    except Exception as e:
+        return JSONResponse({"error": str(e)}, status_code=500)
+
 
 # ── Static files — debe ir AL FINAL para no interceptar endpoints ──
 app.mount("/static", StaticFiles(directory="static"), name="static")
