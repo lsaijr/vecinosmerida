@@ -321,17 +321,23 @@ async def analizar_limpio(file: UploadFile = File(...)):
     _estado_limpio["_meta_temp"] = meta
     _estado_limpio["listo"] = False
 
-    grupo_registrado = buscar_grupo(group_id)
+    try:
+        grupo_registrado = buscar_grupo(group_id)
+    except Exception:
+        grupo_registrado = None
+
     if grupo_registrado:
-        # Obtener colonias asociadas al grupo desde grupos_colonias
-        from db import obtener_colonias_de_grupo
-        colonias_grupo = obtener_colonias_de_grupo(group_id)
-        colonia_ids = [c["id"] for c in colonias_grupo]
+        try:
+            from db import obtener_colonias_de_grupo
+            colonias_grupo = obtener_colonias_de_grupo(group_id)
+            colonia_ids = [c["id"] for c in colonias_grupo]
+        except Exception:
+            colonia_ids = []
         return {
             "conocido": True,
             "group_id": group_id,
             "group_name": group_name,
-            "tipo": grupo_registrado["tipo"],
+            "tipo": grupo_registrado.get("tipo", "vecinos"),
             "colonia_ids": colonia_ids,
             "total_posts": len(posts),
         }
@@ -543,6 +549,107 @@ def potenciales_clientes(limite: int = 50, score_minimo: int = 5):
                 if hasattr(v, 'isoformat'):
                     r[k] = v.isoformat()
         return {"total": len(rows), "clientes": rows}
+    except Exception as e:
+        return JSONResponse({"error": str(e)}, status_code=500)
+
+
+@app.post("/groq-limpiar")
+async def groq_limpiar(request: Request):
+    """
+    Llama a Groq con el JSON crudo y un modelo específico.
+    La API key viene de la variable de entorno GROQ_API_KEY.
+    Body: { "model": "llama-3.3-70b-versatile", "json_data": {...} }
+    """
+    import httpx
+
+    groq_key = os.environ.get("GROQ_API_KEY", "")
+    if not groq_key:
+        return JSONResponse({"error": "GROQ_API_KEY no configurada en el servidor"}, status_code=500)
+
+    try:
+        body = await request.json()
+    except Exception:
+        return JSONResponse({"error": "Body inválido"}, status_code=400)
+
+    model = body.get("model", "llama-3.3-70b-versatile")
+    json_data = body.get("json_data")
+    if not json_data:
+        return JSONResponse({"error": "Falta json_data"}, status_code=400)
+
+    MODELOS_PERMITIDOS = [
+        "llama-3.3-70b-versatile",
+        "llama-3.1-8b-instant",
+        "mixtral-8x7b-32768",
+    ]
+    if model not in MODELOS_PERMITIDOS:
+        return JSONResponse({"error": f"Modelo no permitido: {model}"}, status_code=400)
+
+    SYSTEM_PROMPT = """Eres un asistente que limpia posts de Facebook para VecinosMérida.com (Mérida, Yucatán, México).
+
+INSTRUCCIÓN CRÍTICA: Devuelve ÚNICAMENTE el JSON válido. Sin texto antes ni después. Sin "..." en arrays.
+
+REGLAS DE DESCARTE — eliminar el post si:
+- num_imgs = 0 y imagenes vacío
+- palabra individual >28 chars mezclando letras y números
+- menos de 5 palabras útiles
+- actualización de cierre <35 palabras: "ya apareció", "ya está con sus dueños", "muchas gracias por compartir"
+- autor contiene "Indicador de estado online"
+
+MANEJO DE DUPLICADOS:
+- Mismo autor + mismos primeros 120 chars = duplicado
+- Conservar solo el primero, agregar campo "repeticiones" con el total
+- Eliminar las copias
+
+NORMALIZACIÓN DEL CAMPO "texto":
+- Mayúsculas SOLO en: inicio del texto, después de punto/!/?, nombres propios, siglas
+- NUNCA texto todo en MAYÚSCULAS → convertir a sentence case
+- Corregir: perdio→perdió, telefono→teléfono, ke→que, xfa→por favor, tmb→también
+- !!!! → ! y ???? → ?
+- NO modificar: teléfonos, precios, URLs, nombres de colonias, hashtags
+
+CAMPOS A AGREGAR a cada post válido:
+- fbid_post: extraer de url_post si tiene /posts/XXXXXXXXX/, si no: "syn_" + 18 chars únicos
+- repeticiones: número de veces publicado (mínimo 1)
+
+FORMATO DE SALIDA:
+- Mismo JSON de entrada, solo posts válidos, texto normalizado
+- Campos fbid_post y repeticiones agregados
+- meta.total_posts actualizado
+- NUNCA uses "..." en arrays de imagenes o videos — copia los arrays completos"""
+
+    payload = {
+        "model": model,
+        "messages": [
+            {"role": "system", "content": SYSTEM_PROMPT},
+            {"role": "user", "content": f"Aquí está el JSON de Facebook para limpiar:\n\n{json.dumps(json_data, ensure_ascii=False)}"}
+        ],
+        "temperature": 0.1,
+        "max_tokens": 32000,
+        "response_format": {"type": "json_object"}
+    }
+
+    try:
+        async with httpx.AsyncClient(timeout=120.0) as client:
+            resp = await client.post(
+                "https://api.groq.com/openai/v1/chat/completions",
+                headers={
+                    "Content-Type": "application/json",
+                    "Authorization": f"Bearer {groq_key}"
+                },
+                json=payload
+            )
+
+        if resp.status_code != 200:
+            err = resp.json()
+            return JSONResponse({"error": err.get("error", {}).get("message", f"HTTP {resp.status_code}")}, status_code=500)
+
+        data = resp.json()
+        return JSONResponse({
+            "content": data["choices"][0]["message"]["content"],
+            "usage": data.get("usage", {}),
+            "model": model
+        })
+
     except Exception as e:
         return JSONResponse({"error": str(e)}, status_code=500)
 
