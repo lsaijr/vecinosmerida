@@ -717,8 +717,24 @@ FORMATO DE SALIDA:
             return JSONResponse({"error": err.get("error", {}).get("message", f"HTTP {resp.status_code}")}, status_code=500)
 
         data = resp.json()
+        raw_content = data["choices"][0]["message"]["content"]
+
+        # Limpiar respuesta del modelo antes de enviar al cliente
+        import re as _re
+        clean = raw_content.strip()
+        # Eliminar bloques <think>...</think> (Qwen3, DeepSeek R1, etc.)
+        clean = _re.sub(r'<think>[\s\S]*?</think>', '', clean, flags=_re.IGNORECASE).strip()
+        # Quitar markdown ```json ... ```
+        clean = _re.sub(r'^```(?:json)?\s*', '', clean, flags=_re.IGNORECASE)
+        clean = _re.sub(r'\s*```\s*$', '', clean).strip()
+        # Extraer desde el primer { hasta el último }
+        first = clean.find('{')
+        last = clean.rfind('}')
+        if first >= 0 and last > first:
+            clean = clean[first:last+1]
+
         return JSONResponse({
-            "content": data["choices"][0]["message"]["content"],
+            "content": clean,
             "usage": data.get("usage", {}),
             "model": model
         })
