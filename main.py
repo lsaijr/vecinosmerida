@@ -553,6 +553,59 @@ def potenciales_clientes(limite: int = 50, score_minimo: int = 5):
         return JSONResponse({"error": str(e)}, status_code=500)
 
 
+@app.post("/bloque1-preview")
+async def bloque1_preview(request: Request):
+    """
+    Aplica el bloque 1 al JSON completo y retorna estadísticas.
+    Se llama al cargar el archivo, antes de seleccionar modelos.
+    """
+    try:
+        body = await request.json()
+        json_data = body.get("json_data", {})
+        posts_raw = json_data.get("posts", [])
+    except Exception:
+        return JSONResponse({"error": "Body inválido"}, status_code=400)
+
+    try:
+        from limpiar_json import limpiar_post, detectar_duplicados, es_token_basura
+
+        stats = {"sin_imagen": 0, "autor_fantasma": 0, "token_basura": 0,
+                 "texto_corto": 0, "duplicados": 0}
+
+        posts_limpios = []
+        for p in posts_raw:
+            autor = p.get("autor", "")
+            num_imgs = p.get("num_imgs", 0) or 0
+            imagenes = p.get("imagenes") or []
+            texto_raw = p.get("texto", "") or ""
+            palabras = [w for w in texto_raw.split() if len(w) > 2]
+
+            if "Indicador de estado online" in autor:
+                stats["autor_fantasma"] += 1; continue
+            if num_imgs == 0 and len(imagenes) == 0:
+                stats["sin_imagen"] += 1; continue
+            if es_token_basura(texto_raw):
+                stats["token_basura"] += 1; continue
+            if len(palabras) < 3:
+                stats["texto_corto"] += 1; continue
+
+            p_limpio = limpiar_post(p)
+            if p_limpio:
+                posts_limpios.append(p_limpio)
+
+        antes = len(posts_limpios)
+        posts_limpios = detectar_duplicados(posts_limpios)
+        stats["duplicados"] = antes - len(posts_limpios)
+
+        return JSONResponse({
+            "total_original": len(posts_raw),
+            "total_final": len(posts_limpios),
+            "stats": stats
+        })
+    except Exception as e:
+        return JSONResponse({"error": str(e)}, status_code=500)
+
+
 @app.post("/groq-limpiar")
 async def groq_limpiar(request: Request):
     """
@@ -618,6 +671,25 @@ FORMATO DE SALIDA:
 - Campos fbid_post y repeticiones agregados
 - meta.total_posts actualizado
 - NUNCA uses "..." en arrays de imagenes o videos — copia los arrays completos"""
+
+    # ── BLOQUE 1: limpieza determinista previa ────────────────────
+    # Corre el script de reglas fijas antes de mandar a Groq
+    # No modifica el prompt ni las instrucciones a Groq
+    try:
+        from limpiar_json import limpiar_post, detectar_duplicados
+        posts_raw = json_data.get("posts", [])
+        posts_pre = []
+        for p in posts_raw:
+            p_limpio = limpiar_post(p)
+            if p_limpio:
+                posts_pre.append(p_limpio)
+        posts_pre = detectar_duplicados(posts_pre)
+        json_data = {**json_data, "posts": posts_pre,
+                     "meta": {**json_data.get("meta", {}), "total_posts": len(posts_pre)}}
+    except Exception as e:
+        # Si falla el bloque 1, continuar con el JSON original
+        pass
+    # ─────────────────────────────────────────────────────────────
 
     payload = {
         "model": model,
