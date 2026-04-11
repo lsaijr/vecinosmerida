@@ -553,6 +553,23 @@ def potenciales_clientes(limite: int = 50, score_minimo: int = 5):
         return JSONResponse({"error": str(e)}, status_code=500)
 
 
+@app.get("/groq-debug/{model_slug}")
+async def groq_debug(model_slug: str):
+    """Lee el último debug guardado para un modelo."""
+    import glob
+    # Buscar el archivo más reciente
+    files = glob.glob(f"/tmp/groq_debug_{model_slug}*.txt")
+    if not files:
+        # Intentar buscar cualquier debug
+        files = glob.glob("/tmp/groq_debug_*.txt")
+    if not files:
+        return JSONResponse({"error": "No hay debug disponible"}, status_code=404)
+    latest = max(files, key=lambda f: __import__('os').path.getmtime(f))
+    with open(latest, encoding='utf-8') as f:
+        content_txt = f.read()
+    return JSONResponse({"file": latest, "content": content_txt[:5000]})
+
+
 @app.post("/bloque1-preview")
 async def bloque1_preview(request: Request):
     """
@@ -719,8 +736,19 @@ FORMATO DE SALIDA:
         data = resp.json()
         raw_content = data["choices"][0]["message"]["content"]
 
-        # Limpiar respuesta del modelo antes de enviar al cliente
+        # Guardar respuesta cruda para debug
         import re as _re
+        try:
+            debug_path = f"/tmp/groq_debug_{model.replace('/','_')}.txt"
+            with open(debug_path, 'w', encoding='utf-8') as _f:
+                _f.write(f"MODEL: {model}\n")
+                _f.write(f"USAGE: {data.get('usage',{})}\n")
+                _f.write(f"{'='*60}\n")
+                _f.write(raw_content)
+        except Exception:
+            pass
+
+        # Limpiar respuesta del modelo antes de enviar al cliente
         clean = raw_content.strip()
         # Eliminar bloques <think>...</think> (Qwen3, DeepSeek R1, etc.)
         clean = _re.sub(r'<think>[\s\S]*?</think>', '', clean, flags=_re.IGNORECASE).strip()
