@@ -481,26 +481,8 @@
       <label>Selecciona los modelos a probar</label>
       <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:.5rem;margin-top:.5rem">
 
-        <label class="model-check" style="--mc:var(--model1)">
-          <input type="checkbox" class="mchk" value="1" checked>
-          <div class="mchk-card">
-            <div class="mchk-badge" style="color:var(--model1)">💳 PAGO</div>
-            <div class="mchk-name">Llama 3.3 70B</div>
-            <div class="mchk-price">$0.59/$0.79</div>
-          </div>
-        </label>
-
-        <label class="model-check" style="--mc:var(--model2)">
-          <input type="checkbox" class="mchk" value="2" checked>
-          <div class="mchk-card">
-            <div class="mchk-badge" style="color:var(--model2)">💳 PAGO</div>
-            <div class="mchk-name">GPT OSS 120B</div>
-            <div class="mchk-price">$0.15/$0.60</div>
-          </div>
-        </label>
-
         <label class="model-check" style="--mc:var(--model3)">
-          <input type="checkbox" class="mchk" value="3" checked>
+          <input type="checkbox" class="mchk" value="1" checked>
           <div class="mchk-card">
             <div class="mchk-badge" style="color:var(--model3)">💳 PAGO</div>
             <div class="mchk-name">GPT OSS 20B</div>
@@ -508,35 +490,25 @@
           </div>
         </label>
 
-        <label class="model-check" style="--mc:#10b981">
-          <input type="checkbox" class="mchk" value="4">
+        <label class="model-check" style="--mc:var(--model1)">
+          <input type="checkbox" class="mchk" value="2" checked>
           <div class="mchk-card">
-            <div class="mchk-badge" style="color:#10b981">🆓 GRATIS</div>
-            <div class="mchk-name">Llama 70B Free</div>
-            <div class="mchk-price">chunk 10 · pausa 15s</div>
+            <div class="mchk-badge" style="color:var(--model1)">💳 PAGO</div>
+            <div class="mchk-name">Llama 70B PAGO</div>
+            <div class="mchk-price">$0.59/$0.79</div>
           </div>
         </label>
 
         <label class="model-check" style="--mc:#10b981">
-          <input type="checkbox" class="mchk" value="5">
+          <input type="checkbox" class="mchk" value="3">
           <div class="mchk-card">
             <div class="mchk-badge" style="color:#10b981">🆓 GRATIS</div>
-            <div class="mchk-name">Llama 8B Free</div>
-            <div class="mchk-price">chunk 10 · pausa 15s</div>
-          </div>
-        </label>
-
-        <label class="model-check" style="--mc:#10b981">
-          <input type="checkbox" class="mchk" value="6">
-          <div class="mchk-card">
-            <div class="mchk-badge" style="color:#10b981">🆓 GRATIS</div>
-            <div class="mchk-name">Qwen3 32B</div>
+            <div class="mchk-name">Llama 70B FREE</div>
             <div class="mchk-price">chunk 10 · pausa 15s</div>
           </div>
         </label>
 
       </div>
-    </div>
 
     <button class="btn btn-primary" id="btnStart" disabled onclick="startBenchmark()">
       Iniciar con modelos seleccionados →
@@ -552,10 +524,10 @@
 
     <div class="models-grid">
       <!-- Model 1 -->
-      <div class="model-card m1" id="mc1">
-        <div class="model-badge">MODELO 1</div>
-        <div class="model-name">llama-3.3-70b-versatile</div>
-        <div class="model-price">$0.59/$0.79 por M tokens</div>
+      <div class="model-card m3" id="mc1">
+        <div class="model-badge" style="--mc:var(--model3)">MODELO 1</div>
+        <div class="model-name">openai/gpt-oss-20b</div>
+        <div class="model-price">$0.075/$0.30 por M tokens</div>
         <div class="progress-wrap"><div class="progress-bar" id="pb1" style="--mc:var(--model1)"></div></div>
         <div style="display:flex;align-items:center">
           <span class="status-dot" id="sd1" style="--mc:var(--model1)"></span>
@@ -579,10 +551,10 @@
       </div>
 
       <!-- Model 2 -->
-      <div class="model-card m2" id="mc2">
-        <div class="model-badge" style="--mc:var(--model2)">MODELO 2</div>
-        <div class="model-name">openai/gpt-oss-120b</div>
-        <div class="model-price">$0.15/$0.60 por M tokens</div>
+      <div class="model-card m1" id="mc2">
+        <div class="model-badge" style="--mc:var(--model1)">MODELO 2</div>
+        <div class="model-name">llama-3.3-70b-versatile</div>
+        <div class="model-price">$0.59/$0.79 por M tokens</div>
         <div class="progress-wrap"><div class="progress-bar" id="pb2" style="--mc:var(--model2)"></div></div>
         <div style="display:flex;align-items:center">
           <span class="status-dot" id="sd2" style="--mc:var(--model2)"></span>
@@ -606,10 +578,10 @@
       </div>
 
       <!-- Model 3 -->
-      <div class="model-card m3" id="mc3">
-        <div class="model-badge" style="--mc:var(--model3)">MODELO 3</div>
-        <div class="model-name">openai/gpt-oss-20b</div>
-        <div class="model-price">$0.075/$0.30 por M tokens</div>
+      <div class="model-card m2" id="mc3" style="border-color:rgba(16,185,129,.3)">
+        <div class="model-badge" style="background:rgba(16,185,129,.15);color:#10b981;border-color:rgba(16,185,129,.4)">GRATIS</div>
+        <div class="model-name">llama-3.3-70b-versatile</div>
+        <div class="model-price" style="color:#10b981">FREE TIER · chunk 10 · pausa 15s</div>
         <div class="progress-wrap"><div class="progress-bar" id="pb3" style="--mc:var(--model3)"></div></div>
         <div style="display:flex;align-items:center">
           <span class="status-dot" id="sd3" style="--mc:var(--model3)"></span>
@@ -629,83 +601,6 @@
           <button class="btn btn-download" style="--mc:var(--model3);color:var(--model3);border-color:var(--model3)" onclick="downloadResult(3)">
             ⬇ Descargar JSON Mixtral
           </button>
-        </div>
-      </div>
-    </div>
-
-    <!-- Sección FREE -->
-    <div style="margin:1.5rem 0 .5rem">
-      <div style="display:flex;align-items:center;gap:.75rem;margin-bottom:.75rem">
-        <div style="height:1px;flex:1;background:var(--border)"></div>
-        <span style="font-size:.75rem;font-family:'Space Mono',monospace;color:var(--muted);letter-spacing:.1em">MODELOS GRATIS · CHUNK 10 · PAUSA 15s</span>
-        <div style="height:1px;flex:1;background:var(--border)"></div>
-      </div>
-    </div>
-
-    <div class="models-grid">
-      <!-- Model 4 -->
-      <div class="model-card m1" id="mc4">
-        <div class="model-badge" style="background:rgba(16,185,129,.15);color:#10b981;border-color:rgba(16,185,129,.4)">GRATIS 1</div>
-        <div class="model-name">llama-3.3-70b-versatile</div>
-        <div class="model-price" style="color:#10b981">FREE TIER · 10 posts/lote · 15s pausa</div>
-        <div class="progress-wrap"><div class="progress-bar" id="pb4" style="--mc:#10b981"></div></div>
-        <div style="display:flex;align-items:center">
-          <span class="status-dot" id="sd4" style="--mc:#10b981"></span>
-          <span class="status-text" id="st4">En espera...</span>
-        </div>
-        <div class="stats-grid hidden" id="stats4">
-          <div class="stat-item"><div class="stat-val" id="sv4p" style="--mc:#10b981">—</div><div class="stat-label">Posts</div></div>
-          <div class="stat-item"><div class="stat-val" id="sv4r" style="--mc:#10b981">—</div><div class="stat-label">Repetidos</div></div>
-          <div class="stat-item"><div class="stat-val" id="sv4t" style="--mc:#10b981">—</div><div class="stat-label">Tokens</div></div>
-          <div class="stat-item"><div class="stat-val" id="sv4c" style="--mc:#10b981">GRATIS</div><div class="stat-label">Costo</div></div>
-        </div>
-        <div class="sample-texts hidden" id="samples4"><div class="sample-title">Muestra</div><div id="sampleList4"></div></div>
-        <div class="download-row hidden" id="dl4">
-          <button class="btn btn-download" style="color:#10b981;border-color:#10b981" onclick="downloadResult(4)">⬇ Descargar JSON</button>
-        </div>
-      </div>
-
-      <!-- Model 5 -->
-      <div class="model-card m2" id="mc5">
-        <div class="model-badge" style="background:rgba(16,185,129,.15);color:#10b981;border-color:rgba(16,185,129,.4)">GRATIS 2</div>
-        <div class="model-name">llama-3.1-8b-instant</div>
-        <div class="model-price" style="color:#10b981">FREE TIER · 10 posts/lote · 15s pausa</div>
-        <div class="progress-wrap"><div class="progress-bar" id="pb5" style="--mc:#10b981"></div></div>
-        <div style="display:flex;align-items:center">
-          <span class="status-dot" id="sd5" style="--mc:#10b981"></span>
-          <span class="status-text" id="st5">En espera...</span>
-        </div>
-        <div class="stats-grid hidden" id="stats5">
-          <div class="stat-item"><div class="stat-val" id="sv5p" style="--mc:#10b981">—</div><div class="stat-label">Posts</div></div>
-          <div class="stat-item"><div class="stat-val" id="sv5r" style="--mc:#10b981">—</div><div class="stat-label">Repetidos</div></div>
-          <div class="stat-item"><div class="stat-val" id="sv5t" style="--mc:#10b981">—</div><div class="stat-label">Tokens</div></div>
-          <div class="stat-item"><div class="stat-val" id="sv5c" style="--mc:#10b981">GRATIS</div><div class="stat-label">Costo</div></div>
-        </div>
-        <div class="sample-texts hidden" id="samples5"><div class="sample-title">Muestra</div><div id="sampleList5"></div></div>
-        <div class="download-row hidden" id="dl5">
-          <button class="btn btn-download" style="color:#10b981;border-color:#10b981" onclick="downloadResult(5)">⬇ Descargar JSON</button>
-        </div>
-      </div>
-
-      <!-- Model 6 -->
-      <div class="model-card m3" id="mc6">
-        <div class="model-badge" style="background:rgba(16,185,129,.15);color:#10b981;border-color:rgba(16,185,129,.4)">GRATIS 3</div>
-        <div class="model-name">qwen/qwen3-32b</div>
-        <div class="model-price" style="color:#10b981">FREE TIER · 10 posts/lote · 15s pausa</div>
-        <div class="progress-wrap"><div class="progress-bar" id="pb6" style="--mc:#10b981"></div></div>
-        <div style="display:flex;align-items:center">
-          <span class="status-dot" id="sd6" style="--mc:#10b981"></span>
-          <span class="status-text" id="st6">En espera...</span>
-        </div>
-        <div class="stats-grid hidden" id="stats6">
-          <div class="stat-item"><div class="stat-val" id="sv6p" style="--mc:#10b981">—</div><div class="stat-label">Posts</div></div>
-          <div class="stat-item"><div class="stat-val" id="sv6r" style="--mc:#10b981">—</div><div class="stat-label">Repetidos</div></div>
-          <div class="stat-item"><div class="stat-val" id="sv6t" style="--mc:#10b981">—</div><div class="stat-label">Tokens</div></div>
-          <div class="stat-item"><div class="stat-val" id="sv6c" style="--mc:#10b981">GRATIS</div><div class="stat-label">Costo</div></div>
-        </div>
-        <div class="sample-texts hidden" id="samples6"><div class="sample-title">Muestra</div><div id="sampleList6"></div></div>
-        <div class="download-row hidden" id="dl6">
-          <button class="btn btn-download" style="color:#10b981;border-color:#10b981" onclick="downloadResult(6)">⬇ Descargar JSON</button>
         </div>
       </div>
     </div>
@@ -744,15 +639,12 @@
 
 <script>
 const PAID_MODELS = [
-  { id: 1, name: 'llama-3.3-70b-versatile',              label: 'Llama 3.3 70B',    priceIn: 0.59,  priceOut: 0.79,  chunk: 30, pause: 2000,  free: false },
-  { id: 2, name: 'openai/gpt-oss-120b',                  label: 'GPT OSS 120B',     priceIn: 0.15,  priceOut: 0.60,  chunk: 30, pause: 2000,  free: false },
-  { id: 3, name: 'openai/gpt-oss-20b',                   label: 'GPT OSS 20B',      priceIn: 0.075, priceOut: 0.30,  chunk: 30, pause: 2000,  free: false },
+  { id: 1, name: 'openai/gpt-oss-20b',          label: 'GPT OSS 20B',    priceIn: 0.075, priceOut: 0.30, chunk: 30, pause: 2000,  free: false },
+  { id: 2, name: 'llama-3.3-70b-versatile',     label: 'Llama 70B PAGO', priceIn: 0.59,  priceOut: 0.79, chunk: 30, pause: 2000,  free: false },
 ];
 
 const FREE_MODELS = [
-  { id: 4, name: 'llama-3.3-70b-versatile',              label: 'Llama 70B Free',   priceIn: 0,     priceOut: 0,     chunk: 10, pause: 15000, free: true },
-  { id: 5, name: 'llama-3.1-8b-instant',                 label: 'Llama 8B Free',    priceIn: 0,     priceOut: 0,     chunk: 10, pause: 15000, free: true },
-  { id: 6, name: 'qwen/qwen3-32b',                            label: 'Qwen3 32B',    priceIn: 0.29, priceOut: 0.59,  chunk: 10, pause: 2000,  free: false },
+  { id: 3, name: 'llama-3.3-70b-versatile',     label: 'Llama 70B FREE', priceIn: 0,     priceOut: 0,    chunk: 10, pause: 15000, free: true },
 ];
 
 // Todos los modelos juntos para referencia
