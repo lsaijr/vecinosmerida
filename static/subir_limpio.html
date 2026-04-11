@@ -195,9 +195,10 @@ body { font-family:'Outfit',sans-serif; background:var(--bg); color:var(--txt); 
 
     <div class="field">
       <label>Colonia / Zona</label>
-      <select id="selColonia">
-        <option value="">— Cargando colonias… —</option>
+      <select id="selColonia" multiple size="6" style="height:auto;padding:6px 0;">
+        <option value="" disabled>— Cargando colonias… —</option>
       </select>
+      <div style="font-size:.75rem;color:var(--muted);margin-top:5px;">Mantén Ctrl (o Cmd en Mac) para seleccionar varias colonias</div>
     </div>
 
     <div class="field">
@@ -343,9 +344,8 @@ function mostrarPaso2(d){
 
     // Llenar colonias
     var sel = document.getElementById('selColonia');
-    sel.innerHTML = '<option value="">— Selecciona colonia —</option>';
+    sel.innerHTML = '';
     var todas = d.todas_colonias || [];
-    // Candidatas primero
     var candidatasIds = (d.candidatas||[]).map(function(c){ return c.id; });
     if(d.candidatas && d.candidatas.length > 0){
       var og = document.createElement('optgroup');
@@ -353,6 +353,7 @@ function mostrarPaso2(d){
       d.candidatas.forEach(function(c){
         var o = document.createElement('option');
         o.value = c.id; o.textContent = c.nombre;
+        o.selected = true;  // pre-seleccionar sugeridas
         og.appendChild(o);
       });
       sel.appendChild(og);
@@ -367,7 +368,6 @@ function mostrarPaso2(d){
       }
     });
     sel.appendChild(og2);
-    if(d.candidatas && d.candidatas.length > 0) sel.value = d.candidatas[0].id;
   }
 
   document.getElementById('btnProcesar').disabled = false;
@@ -399,9 +399,10 @@ async function procesar(){
   } else {
     var selCol = document.getElementById('selColonia');
     var selTipo = document.getElementById('selTipo');
-    if(!selCol.value){ alert('Selecciona una colonia antes de continuar.'); return; }
-    colonia_ids = [parseInt(selCol.value)];
-    colonia_nombres = [selCol.options[selCol.selectedIndex].textContent];
+    var seleccionadas = Array.from(selCol.selectedOptions);
+    if(seleccionadas.length === 0){ alert('Selecciona al menos una colonia.'); return; }
+    colonia_ids = seleccionadas.map(function(o){ return parseInt(o.value); });
+    colonia_nombres = seleccionadas.map(function(o){ return o.textContent; });
     tipo = selTipo.value;
     guardar_grupo = document.getElementById('chkGuardar').checked;
   }
