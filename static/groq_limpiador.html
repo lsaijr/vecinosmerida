@@ -485,8 +485,8 @@
           <input type="checkbox" class="mchk" value="2" checked>
           <div class="mchk-card">
             <div class="mchk-badge" style="color:var(--model2)">💳 PAGO</div>
-            <div class="mchk-name">Llama 3.1 8B</div>
-            <div class="mchk-price">$0.05/$0.08</div>
+            <div class="mchk-name">GPT OSS 120B</div>
+            <div class="mchk-price">$0.15/$0.60</div>
           </div>
         </label>
 
@@ -572,8 +572,8 @@
       <!-- Model 2 -->
       <div class="model-card m2" id="mc2">
         <div class="model-badge" style="--mc:var(--model2)">MODELO 2</div>
-        <div class="model-name">llama-3.1-8b-instant</div>
-        <div class="model-price">$0.05/$0.08 por M tokens</div>
+        <div class="model-name">openai/gpt-oss-120b</div>
+        <div class="model-price">$0.15/$0.60 por M tokens</div>
         <div class="progress-wrap"><div class="progress-bar" id="pb2" style="--mc:var(--model2)"></div></div>
         <div style="display:flex;align-items:center">
           <span class="status-dot" id="sd2" style="--mc:var(--model2)"></span>
@@ -736,7 +736,7 @@
 <script>
 const PAID_MODELS = [
   { id: 1, name: 'llama-3.3-70b-versatile',              label: 'Llama 3.3 70B',    priceIn: 0.59,  priceOut: 0.79,  chunk: 30, pause: 2000,  free: false },
-  { id: 2, name: 'llama-3.1-8b-instant',                 label: 'Llama 3.1 8B',     priceIn: 0.05,  priceOut: 0.08,  chunk: 30, pause: 2000,  free: false },
+  { id: 2, name: 'openai/gpt-oss-120b',                  label: 'GPT OSS 120B',     priceIn: 0.15,  priceOut: 0.60,  chunk: 30, pause: 2000,  free: false },
   { id: 3, name: 'openai/gpt-oss-20b',                   label: 'GPT OSS 20B',      priceIn: 0.075, priceOut: 0.30,  chunk: 30, pause: 2000,  free: false },
 ];
 
