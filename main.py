@@ -581,7 +581,7 @@ async def groq_limpiar(request: Request):
         "llama-3.1-8b-instant",
         "openai/gpt-oss-20b",
         "openai/gpt-oss-120b",
-        "meta-llama/llama-4-scout-17b-16e-instruct",
+        "qwen/qwen3-32b",
     ]
     if model not in MODELOS_PERMITIDOS:
         return JSONResponse({"error": f"Modelo no permitido: {model}"}, status_code=400)
@@ -626,7 +626,7 @@ FORMATO DE SALIDA:
             {"role": "user", "content": f"Aquí está el JSON de Facebook para limpiar:\n\n{json.dumps(json_data, ensure_ascii=False)}"}
         ],
         "temperature": 0.1,
-        "max_tokens": 6000 if model.startswith("meta-llama/llama-4") else 32000
+        "max_tokens": 32000
     }
 
     try:
