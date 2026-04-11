@@ -1,0 +1,829 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Groq JSON Cleaner — VecinosMérida</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=Syne:wght@400;600;800&display=swap');
+
+  :root {
+    --bg: #0a0a0f;
+    --surface: #111118;
+    --border: #1e1e2e;
+    --accent: #7c3aed;
+    --accent2: #06b6d4;
+    --accent3: #f59e0b;
+    --text: #e2e8f0;
+    --muted: #64748b;
+    --success: #10b981;
+    --error: #ef4444;
+    --model1: #7c3aed;
+    --model2: #06b6d4;
+    --model3: #f59e0b;
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'Syne', sans-serif;
+    min-height: 100vh;
+    padding: 2rem 1rem;
+  }
+
+  /* Background grid */
+  body::before {
+    content: '';
+    position: fixed;
+    inset: 0;
+    background-image: 
+      linear-gradient(rgba(124,58,237,.03) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(124,58,237,.03) 1px, transparent 1px);
+    background-size: 40px 40px;
+    pointer-events: none;
+    z-index: 0;
+  }
+
+  .container {
+    max-width: 900px;
+    margin: 0 auto;
+    position: relative;
+    z-index: 1;
+  }
+
+  /* Header */
+  .header {
+    text-align: center;
+    margin-bottom: 3rem;
+  }
+  .badge {
+    display: inline-flex;
+    align-items: center;
+    gap: .4rem;
+    background: rgba(124,58,237,.15);
+    border: 1px solid rgba(124,58,237,.3);
+    border-radius: 99px;
+    padding: .3rem .9rem;
+    font-size: .75rem;
+    color: #a78bfa;
+    letter-spacing: .08em;
+    text-transform: uppercase;
+    margin-bottom: 1rem;
+  }
+  h1 {
+    font-size: clamp(2rem, 5vw, 3.5rem);
+    font-weight: 800;
+    line-height: 1;
+    margin-bottom: .5rem;
+  }
+  h1 span { color: var(--accent2); }
+  .subtitle {
+    color: var(--muted);
+    font-size: .9rem;
+    font-family: 'Space Mono', monospace;
+  }
+
+  /* Cards */
+  .card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 16px;
+    padding: 1.5rem;
+    margin-bottom: 1.5rem;
+    transition: border-color .3s;
+  }
+  .card.active { border-color: var(--accent); }
+  .card.done { border-color: var(--success); }
+
+  .card-header {
+    display: flex;
+    align-items: center;
+    gap: .75rem;
+    margin-bottom: 1.25rem;
+  }
+  .step-num {
+    width: 32px; height: 32px;
+    border-radius: 50%;
+    background: var(--accent);
+    display: flex; align-items: center; justify-content: center;
+    font-size: .85rem;
+    font-weight: 700;
+    flex-shrink: 0;
+  }
+  .step-num.done-num { background: var(--success); }
+  .card-title { font-size: 1.1rem; font-weight: 600; }
+
+  /* Inputs */
+  .input-group { margin-bottom: 1rem; }
+  label {
+    display: block;
+    font-size: .8rem;
+    color: var(--muted);
+    letter-spacing: .05em;
+    text-transform: uppercase;
+    margin-bottom: .4rem;
+    font-family: 'Space Mono', monospace;
+  }
+  input[type="text"], input[type="password"] {
+    width: 100%;
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: .75rem 1rem;
+    color: var(--text);
+    font-family: 'Space Mono', monospace;
+    font-size: .85rem;
+    outline: none;
+    transition: border-color .2s;
+  }
+  input:focus { border-color: var(--accent); }
+
+  .file-drop {
+    border: 2px dashed var(--border);
+    border-radius: 12px;
+    padding: 2rem;
+    text-align: center;
+    cursor: pointer;
+    transition: all .2s;
+    position: relative;
+  }
+  .file-drop:hover, .file-drop.dragover {
+    border-color: var(--accent);
+    background: rgba(124,58,237,.05);
+  }
+  .file-drop input[type="file"] {
+    position: absolute;
+    inset: 0;
+    opacity: 0;
+    cursor: pointer;
+    width: 100%;
+    height: 100%;
+  }
+  .file-icon { font-size: 2rem; margin-bottom: .5rem; }
+  .file-name {
+    font-family: 'Space Mono', monospace;
+    font-size: .8rem;
+    color: var(--accent2);
+    margin-top: .5rem;
+  }
+
+  /* Buttons */
+  .btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: .5rem;
+    padding: .85rem 1.75rem;
+    border-radius: 10px;
+    font-family: 'Syne', sans-serif;
+    font-size: .95rem;
+    font-weight: 600;
+    cursor: pointer;
+    border: none;
+    transition: all .2s;
+    width: 100%;
+  }
+  .btn-primary {
+    background: var(--accent);
+    color: white;
+  }
+  .btn-primary:hover { background: #6d28d9; transform: translateY(-1px); }
+  .btn-primary:disabled {
+    background: var(--border);
+    color: var(--muted);
+    cursor: not-allowed;
+    transform: none;
+  }
+  .btn-download {
+    background: transparent;
+    border: 1px solid;
+    font-size: .85rem;
+    padding: .6rem 1.2rem;
+    width: auto;
+  }
+
+  /* Model cards */
+  .models-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 1rem;
+    margin-bottom: 1.5rem;
+  }
+  @media(max-width: 640px) { .models-grid { grid-template-columns: 1fr; } }
+
+  .model-card {
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 1rem;
+    transition: all .3s;
+  }
+  .model-card.m1 { --mc: var(--model1); }
+  .model-card.m2 { --mc: var(--model2); }
+  .model-card.m3 { --mc: var(--model3); }
+  .model-card.processing { border-color: var(--mc); box-shadow: 0 0 20px rgba(var(--mc-rgb),.15); }
+  .model-card.done-card { border-color: var(--success); }
+
+  .model-badge {
+    display: inline-block;
+    background: color-mix(in srgb, var(--mc) 20%, transparent);
+    color: var(--mc);
+    border: 1px solid color-mix(in srgb, var(--mc) 40%, transparent);
+    border-radius: 6px;
+    padding: .2rem .6rem;
+    font-size: .7rem;
+    font-family: 'Space Mono', monospace;
+    font-weight: 700;
+    letter-spacing: .05em;
+    margin-bottom: .6rem;
+  }
+  .model-name {
+    font-size: .8rem;
+    font-family: 'Space Mono', monospace;
+    color: var(--muted);
+    margin-bottom: .4rem;
+    word-break: break-all;
+  }
+  .model-price {
+    font-size: .75rem;
+    color: var(--muted);
+  }
+
+  /* Progress */
+  .progress-wrap {
+    background: var(--border);
+    border-radius: 4px;
+    height: 4px;
+    overflow: hidden;
+    margin: .75rem 0;
+  }
+  .progress-bar {
+    height: 100%;
+    border-radius: 4px;
+    background: var(--mc, var(--accent));
+    width: 0%;
+    transition: width .5s ease;
+  }
+  @keyframes pulse-bar {
+    0%, 100% { opacity: 1; }
+    50% { opacity: .4; }
+  }
+  .progress-bar.running { animation: pulse-bar 1.5s infinite; width: 60%; }
+
+  /* Stats */
+  .stats-grid {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: .5rem;
+    margin: .75rem 0;
+  }
+  .stat-item {
+    background: var(--surface);
+    border-radius: 8px;
+    padding: .5rem .75rem;
+    text-align: center;
+  }
+  .stat-val {
+    font-size: 1.2rem;
+    font-weight: 700;
+    color: var(--mc, var(--text));
+    font-family: 'Space Mono', monospace;
+  }
+  .stat-label {
+    font-size: .65rem;
+    color: var(--muted);
+    text-transform: uppercase;
+    letter-spacing: .05em;
+  }
+
+  /* Sample texts */
+  .sample-texts {
+    margin-top: .75rem;
+  }
+  .sample-title {
+    font-size: .7rem;
+    color: var(--muted);
+    text-transform: uppercase;
+    letter-spacing: .05em;
+    font-family: 'Space Mono', monospace;
+    margin-bottom: .4rem;
+  }
+  .sample-text {
+    font-size: .72rem;
+    color: var(--text);
+    background: var(--border);
+    border-radius: 6px;
+    padding: .4rem .6rem;
+    margin-bottom: .3rem;
+    line-height: 1.4;
+    border-left: 2px solid var(--mc, var(--accent));
+  }
+
+  /* Status */
+  .status-dot {
+    display: inline-block;
+    width: 8px; height: 8px;
+    border-radius: 50%;
+    background: var(--muted);
+    margin-right: .4rem;
+  }
+  .status-dot.running { background: var(--mc); animation: pulse-bar 1s infinite; }
+  .status-dot.done-dot { background: var(--success); animation: none; }
+  .status-dot.error-dot { background: var(--error); }
+
+  .status-text {
+    font-size: .78rem;
+    font-family: 'Space Mono', monospace;
+    color: var(--muted);
+  }
+
+  /* Download button */
+  .download-row {
+    margin-top: .75rem;
+    display: flex;
+    gap: .5rem;
+    flex-wrap: wrap;
+  }
+
+  /* Cost comparison */
+  .cost-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-family: 'Space Mono', monospace;
+    font-size: .8rem;
+    margin-top: .75rem;
+  }
+  .cost-table th {
+    text-align: left;
+    color: var(--muted);
+    padding: .4rem .6rem;
+    border-bottom: 1px solid var(--border);
+    font-size: .7rem;
+    text-transform: uppercase;
+    letter-spacing: .05em;
+  }
+  .cost-table td {
+    padding: .5rem .6rem;
+    border-bottom: 1px solid rgba(30,30,46,.5);
+  }
+  .cost-table tr:last-child td { border-bottom: none; }
+  .winner-row td { color: var(--success); }
+
+  /* Log */
+  .log {
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: .75rem 1rem;
+    font-family: 'Space Mono', monospace;
+    font-size: .72rem;
+    color: var(--muted);
+    max-height: 120px;
+    overflow-y: auto;
+    line-height: 1.6;
+  }
+  .log .log-ok { color: var(--success); }
+  .log .log-err { color: var(--error); }
+  .log .log-info { color: var(--accent2); }
+
+  .hidden { display: none !important; }
+
+  /* Spinner */
+  @keyframes spin { to { transform: rotate(360deg); } }
+  .spinner {
+    display: inline-block;
+    width: 14px; height: 14px;
+    border: 2px solid rgba(255,255,255,.2);
+    border-top-color: white;
+    border-radius: 50%;
+    animation: spin .8s linear infinite;
+  }
+</style>
+</head>
+<body>
+
+<div class="container">
+
+  <!-- Header -->
+  <div class="header">
+    <div class="badge">🤖 VecinosMérida · Groq Benchmark</div>
+    <h1>Groq <span>JSON Cleaner</span></h1>
+    <p class="subtitle">Compara 3 modelos · Descarga cada resultado · Elige el mejor</p>
+  </div>
+
+  <!-- Step 1: Config -->
+  <div class="card active" id="cardConfig">
+    <div class="card-header">
+      <div class="step-num" id="num1">1</div>
+      <div class="card-title">Configuración</div>
+    </div>
+
+    <div class="input-group">
+      <label>JSON crudo de Facebook</label>
+      <div class="file-drop" id="fileDrop">
+        <input type="file" id="fileInput" accept=".json,.txt" />
+        <div class="file-icon">📂</div>
+        <div style="color:var(--muted);font-size:.85rem">Arrastra el archivo o haz clic</div>
+        <div class="file-name hidden" id="fileName"></div>
+      </div>
+    </div>
+
+    <button class="btn btn-primary" id="btnStart" disabled onclick="startBenchmark()">
+      Iniciar comparativa con 3 modelos →
+    </button>
+  </div>
+
+  <!-- Step 2: Models running -->
+  <div class="card hidden" id="cardModels">
+    <div class="card-header">
+      <div class="step-num" id="num2">2</div>
+      <div class="card-title">Procesando con Groq</div>
+    </div>
+
+    <div class="models-grid">
+      <!-- Model 1 -->
+      <div class="model-card m1" id="mc1">
+        <div class="model-badge">MODELO 1</div>
+        <div class="model-name">llama-3.3-70b-versatile</div>
+        <div class="model-price">$0.59/$0.79 por M tokens</div>
+        <div class="progress-wrap"><div class="progress-bar" id="pb1" style="--mc:var(--model1)"></div></div>
+        <div style="display:flex;align-items:center">
+          <span class="status-dot" id="sd1" style="--mc:var(--model1)"></span>
+          <span class="status-text" id="st1">En espera...</span>
+        </div>
+        <div class="stats-grid hidden" id="stats1">
+          <div class="stat-item"><div class="stat-val" id="sv1p" style="--mc:var(--model1)">—</div><div class="stat-label">Posts</div></div>
+          <div class="stat-item"><div class="stat-val" id="sv1r" style="--mc:var(--model1)">—</div><div class="stat-label">Repetidos</div></div>
+          <div class="stat-item"><div class="stat-val" id="sv1t" style="--mc:var(--model1)">—</div><div class="stat-label">Tokens</div></div>
+          <div class="stat-item"><div class="stat-val" id="sv1c" style="--mc:var(--model1)">—</div><div class="stat-label">Costo USD</div></div>
+        </div>
+        <div class="sample-texts hidden" id="samples1">
+          <div class="sample-title">Muestra de texto normalizado</div>
+          <div id="sampleList1"></div>
+        </div>
+        <div class="download-row hidden" id="dl1">
+          <button class="btn btn-download" style="--mc:var(--model1);color:var(--model1);border-color:var(--model1)" onclick="downloadResult(1)">
+            ⬇ Descargar JSON Llama 70B
+          </button>
+        </div>
+      </div>
+
+      <!-- Model 2 -->
+      <div class="model-card m2" id="mc2">
+        <div class="model-badge" style="--mc:var(--model2)">MODELO 2</div>
+        <div class="model-name">llama-3.1-8b-instant</div>
+        <div class="model-price">$0.05/$0.08 por M tokens</div>
+        <div class="progress-wrap"><div class="progress-bar" id="pb2" style="--mc:var(--model2)"></div></div>
+        <div style="display:flex;align-items:center">
+          <span class="status-dot" id="sd2" style="--mc:var(--model2)"></span>
+          <span class="status-text" id="st2">En espera...</span>
+        </div>
+        <div class="stats-grid hidden" id="stats2">
+          <div class="stat-item"><div class="stat-val" id="sv2p" style="--mc:var(--model2)">—</div><div class="stat-label">Posts</div></div>
+          <div class="stat-item"><div class="stat-val" id="sv2r" style="--mc:var(--model2)">—</div><div class="stat-label">Repetidos</div></div>
+          <div class="stat-item"><div class="stat-val" id="sv2t" style="--mc:var(--model2)">—</div><div class="stat-label">Tokens</div></div>
+          <div class="stat-item"><div class="stat-val" id="sv2c" style="--mc:var(--model2)">—</div><div class="stat-label">Costo USD</div></div>
+        </div>
+        <div class="sample-texts hidden" id="samples2">
+          <div class="sample-title">Muestra de texto normalizado</div>
+          <div id="sampleList2"></div>
+        </div>
+        <div class="download-row hidden" id="dl2">
+          <button class="btn btn-download" style="--mc:var(--model2);color:var(--model2);border-color:var(--model2)" onclick="downloadResult(2)">
+            ⬇ Descargar JSON Llama 8B
+          </button>
+        </div>
+      </div>
+
+      <!-- Model 3 -->
+      <div class="model-card m3" id="mc3">
+        <div class="model-badge" style="--mc:var(--model3)">MODELO 3</div>
+        <div class="model-name">mixtral-8x7b-32768</div>
+        <div class="model-price">$0.24/$0.24 por M tokens</div>
+        <div class="progress-wrap"><div class="progress-bar" id="pb3" style="--mc:var(--model3)"></div></div>
+        <div style="display:flex;align-items:center">
+          <span class="status-dot" id="sd3" style="--mc:var(--model3)"></span>
+          <span class="status-text" id="st3">En espera...</span>
+        </div>
+        <div class="stats-grid hidden" id="stats3">
+          <div class="stat-item"><div class="stat-val" id="sv3p" style="--mc:var(--model3)">—</div><div class="stat-label">Posts</div></div>
+          <div class="stat-item"><div class="stat-val" id="sv3r" style="--mc:var(--model3)">—</div><div class="stat-label">Repetidos</div></div>
+          <div class="stat-item"><div class="stat-val" id="sv3t" style="--mc:var(--model3)">—</div><div class="stat-label">Tokens</div></div>
+          <div class="stat-item"><div class="stat-val" id="sv3c" style="--mc:var(--model3)">—</div><div class="stat-label">Costo USD</div></div>
+        </div>
+        <div class="sample-texts hidden" id="samples3">
+          <div class="sample-title">Muestra de texto normalizado</div>
+          <div id="sampleList3"></div>
+        </div>
+        <div class="download-row hidden" id="dl3">
+          <button class="btn btn-download" style="--mc:var(--model3);color:var(--model3);border-color:var(--model3)" onclick="downloadResult(3)">
+            ⬇ Descargar JSON Mixtral
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Log -->
+    <div style="margin-bottom:.75rem">
+      <label>Log de proceso</label>
+      <div class="log" id="logBox">Esperando inicio...<br></div>
+    </div>
+  </div>
+
+  <!-- Step 3: Comparison -->
+  <div class="card hidden" id="cardCompare">
+    <div class="card-header">
+      <div class="step-num done-num">✓</div>
+      <div class="card-title">Comparativa final</div>
+    </div>
+    <table class="cost-table" id="compareTable">
+      <thead>
+        <tr>
+          <th>Modelo</th>
+          <th>Posts</th>
+          <th>Repetidos</th>
+          <th>Tokens totales</th>
+          <th>Costo USD</th>
+        </tr>
+      </thead>
+      <tbody id="compareBody"></tbody>
+    </table>
+    <div style="margin-top:1rem;font-size:.8rem;color:var(--muted);font-family:'Space Mono',monospace">
+      ✅ Los 3 JSON están listos para descargar y subir al comparador arriba.
+    </div>
+  </div>
+
+</div>
+
+<script>
+const MODELS = [
+  { id: 1, name: 'llama-3.3-70b-versatile', label: 'Llama 3.3 70B', priceIn: 0.59, priceOut: 0.79 },
+  { id: 2, name: 'llama-3.1-8b-instant',    label: 'Llama 3.1 8B',  priceIn: 0.05, priceOut: 0.08 },
+  { id: 3, name: 'mixtral-8x7b-32768',       label: 'Mixtral 8x7B', priceIn: 0.24, priceOut: 0.24 },
+];
+
+const SYSTEM_PROMPT = `Eres un asistente que limpia posts de Facebook para VecinosMérida.com (Mérida, Yucatán, México).
+
+INSTRUCCIÓN CRÍTICA: Devuelve ÚNICAMENTE el JSON válido. Sin texto antes ni después. Sin "..." en arrays.
+
+REGLAS DE DESCARTE — eliminar el post si:
+- num_imgs = 0 y imagenes vacío
+- palabra individual >28 chars mezclando letras y números
+- menos de 5 palabras útiles
+- actualización de cierre <35 palabras: "ya apareció", "ya está con sus dueños", "muchas gracias por compartir"
+- autor contiene "Indicador de estado online"
+
+MANEJO DE DUPLICADOS:
+- Mismo autor + mismos primeros 120 chars = duplicado
+- Conservar solo el primero, agregar campo "repeticiones" con el total
+- Eliminar las copias
+
+NORMALIZACIÓN DEL CAMPO "texto":
+- Mayúsculas SOLO en: inicio del texto, después de punto/!/?, nombres propios, siglas
+- NUNCA texto todo en MAYÚSCULAS → convertir a sentence case
+- Corregir: perdio→perdió, telefono→teléfono, ke→que, xfa→por favor, tmb→también
+- !!!! → !  y ???? → ?
+- NO modificar: teléfonos, precios, URLs, nombres de colonias, hashtags
+
+CAMPOS A AGREGAR a cada post válido:
+- fbid_post: extraer de url_post si tiene /posts/XXXXXXXXX/, si no: "syn_" + 18 chars aleatorios
+- repeticiones: número de veces publicado (mínimo 1)
+
+FORMATO DE SALIDA:
+- Mismo JSON de entrada
+- Solo posts válidos
+- Campo "texto" normalizado
+- Campos fbid_post y repeticiones agregados
+- meta.total_posts actualizado
+- NUNCA uses "..." en arrays de imagenes o videos — copia los arrays completos`;
+
+let rawData = null;
+let results = {};
+
+// File input
+document.getElementById('fileInput').addEventListener('change', function(e) {
+  const file = e.target.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = (ev) => {
+    try {
+      rawData = JSON.parse(ev.target.result);
+      document.getElementById('fileName').textContent = `✓ ${file.name} — ${rawData.posts?.length || 0} posts`;
+      document.getElementById('fileName').classList.remove('hidden');
+      checkReady();
+      log(`📂 Archivo cargado: ${file.name} (${rawData.posts?.length || 0} posts)`, 'info');
+    } catch(err) {
+      log(`❌ JSON inválido: ${err.message}`, 'err');
+    }
+  };
+  reader.readAsText(file);
+});
+
+document.getElementById('fileDrop').addEventListener('dragover', (e) => {
+  e.preventDefault();
+  e.currentTarget.classList.add('dragover');
+});
+document.getElementById('fileDrop').addEventListener('dragleave', (e) => {
+  e.currentTarget.classList.remove('dragover');
+});
+document.getElementById('fileDrop').addEventListener('drop', (e) => {
+  e.preventDefault();
+  e.currentTarget.classList.remove('dragover');
+  const file = e.dataTransfer.files[0];
+  if (file) {
+    document.getElementById('fileInput').files = e.dataTransfer.files;
+    document.getElementById('fileInput').dispatchEvent(new Event('change'));
+  }
+});
+
+
+
+function checkReady() {
+  document.getElementById('btnStart').disabled = !rawData;
+}
+
+function log(msg, type = '') {
+  const box = document.getElementById('logBox');
+  const line = document.createElement('div');
+  line.className = type ? `log-${type}` : '';
+  const time = new Date().toLocaleTimeString('es-MX', {hour:'2-digit', minute:'2-digit', second:'2-digit'});
+  line.textContent = `[${time}] ${msg}`;
+  box.appendChild(line);
+  box.scrollTop = box.scrollHeight;
+}
+
+function setStatus(n, state, msg) {
+  const dot = document.getElementById(`sd${n}`);
+  const txt = document.getElementById(`st${n}`);
+  dot.className = `status-dot ${state === 'run' ? 'running' : state === 'done' ? 'done-dot' : state === 'err' ? 'error-dot' : ''}`;
+  txt.textContent = msg;
+  if (state === 'run') {
+    document.getElementById(`pb${n}`).classList.add('running');
+  } else {
+    const pb = document.getElementById(`pb${n}`);
+    pb.classList.remove('running');
+    pb.style.width = state === 'done' ? '100%' : '0%';
+  }
+}
+
+async function callGroq(modelName, jsonData) {
+  const resp = await fetch('/groq-limpiar', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ model: modelName, json_data: jsonData })
+  });
+
+  if (!resp.ok) {
+    const err = await resp.json().catch(() => ({}));
+    throw new Error(err.error || `HTTP ${resp.status}`);
+  }
+
+  const data = await resp.json();
+  if (data.error) throw new Error(data.error);
+
+  return {
+    choices: [{ message: { content: data.content } }],
+    usage: data.usage || {}
+  };
+}
+
+function parseResult(responseJson) {
+  const content = responseJson.choices[0].message.content;
+  const usage = responseJson.usage || {};
+  let parsed;
+  try {
+    parsed = JSON.parse(content);
+  } catch(e) {
+    // intentar extraer JSON del texto
+    const match = content.match(/\{[\s\S]+\}/);
+    if (match) parsed = JSON.parse(match[0]);
+    else throw new Error('No se pudo parsear el JSON de respuesta');
+  }
+  return { data: parsed, usage };
+}
+
+function calcCost(usage, model) {
+  const tokIn = usage.prompt_tokens || 0;
+  const tokOut = usage.completion_tokens || 0;
+  const total = tokIn + tokOut;
+  const cost = (tokIn / 1_000_000 * model.priceIn) + (tokOut / 1_000_000 * model.priceOut);
+  return { tokIn, tokOut, total, cost };
+}
+
+function showStats(n, posts, tokInfo, modelObj) {
+  const repCount = posts.filter(p => (p.repeticiones || 1) > 1).length;
+  document.getElementById(`sv${n}p`).textContent = posts.length;
+  document.getElementById(`sv${n}r`).textContent = repCount;
+  document.getElementById(`sv${n}t`).textContent = tokInfo.total.toLocaleString();
+  document.getElementById(`sv${n}c`).textContent = `$${tokInfo.cost.toFixed(4)}`;
+  document.getElementById(`stats${n}`).classList.remove('hidden');
+
+  // Sample texts
+  const samples = posts.slice(0, 3).map(p => p.texto || '').filter(Boolean);
+  const listEl = document.getElementById(`sampleList${n}`);
+  listEl.innerHTML = '';
+  samples.forEach(t => {
+    const div = document.createElement('div');
+    div.className = 'sample-text';
+    div.textContent = t.slice(0, 120) + (t.length > 120 ? '…' : '');
+    listEl.appendChild(div);
+  });
+  document.getElementById(`samples${n}`).classList.remove('hidden');
+  document.getElementById(`dl${n}`).classList.remove('hidden');
+}
+
+async function processModel(modelObj) {
+  const n = modelObj.id;
+  setStatus(n, 'run', `Procesando con ${modelObj.label}...`);
+  log(`🚀 Iniciando ${modelObj.label} (${modelObj.name})`, 'info');
+
+  try {
+    const response = await callGroq(modelObj.name, rawData);
+    const { data, usage } = parseResult(response);
+    const posts = data.posts || [];
+    const tokInfo = calcCost(usage, modelObj);
+
+    results[n] = { data, posts, tokInfo, modelObj };
+    
+    setStatus(n, 'done', `✓ Completado — ${posts.length} posts`);
+    document.getElementById(`mc${n}`).classList.add('done-card');
+    showStats(n, posts, tokInfo, modelObj);
+    log(`✅ ${modelObj.label}: ${posts.length} posts, ${tokInfo.total.toLocaleString()} tokens, $${tokInfo.cost.toFixed(4)} USD`, 'ok');
+
+  } catch(err) {
+    setStatus(n, 'err', `Error: ${err.message}`);
+    document.getElementById(`mc${n}`).style.borderColor = 'var(--error)';
+    log(`❌ ${modelObj.label}: ${err.message}`, 'err');
+    results[n] = null;
+  }
+}
+
+async function startBenchmark() {
+  document.getElementById('btnStart').disabled = true;
+  document.getElementById('cardConfig').classList.remove('active');
+  document.getElementById('cardConfig').classList.add('done');
+  document.getElementById('num1').textContent = '✓';
+  document.getElementById('num1').classList.add('done-num');
+
+  document.getElementById('cardModels').classList.remove('hidden');
+  document.getElementById('cardModels').classList.add('active');
+
+  log('═══ Iniciando benchmark de 3 modelos ═══', 'info');
+  log(`📊 Posts en JSON crudo: ${rawData.posts?.length || 0}`, '');
+
+  // Procesar en secuencia (Groq puede tener rate limits)
+  for (const model of MODELS) {
+    await processModel(model);
+    // Pequeña pausa entre llamadas
+    if (model.id < 3) await new Promise(r => setTimeout(r, 1500));
+  }
+
+  // Mostrar tabla comparativa
+  showComparison();
+}
+
+function showComparison() {
+  document.getElementById('cardCompare').classList.remove('hidden');
+  const tbody = document.getElementById('compareBody');
+  tbody.innerHTML = '';
+
+  // Encontrar ganador (más posts + menor costo)
+  let scores = MODELS.map(m => {
+    const r = results[m.id];
+    if (!r) return { id: m.id, score: -1 };
+    return { id: m.id, score: r.posts.length / Math.max(r.tokInfo.cost, 0.0001) };
+  });
+  const winnerId = scores.sort((a,b) => b.score - a.score)[0].id;
+
+  MODELS.forEach(m => {
+    const r = results[m.id];
+    const tr = document.createElement('tr');
+    if (m.id === winnerId && r) tr.className = 'winner-row';
+    tr.innerHTML = `
+      <td>${m.id === winnerId ? '🏆 ' : ''}${m.label}</td>
+      <td>${r ? r.posts.length : 'Error'}</td>
+      <td>${r ? r.posts.filter(p=>(p.repeticiones||1)>1).length : '—'}</td>
+      <td>${r ? r.tokInfo.total.toLocaleString() : '—'}</td>
+      <td>${r ? '$' + r.tokInfo.cost.toFixed(4) : '—'}</td>
+    `;
+    tbody.appendChild(tr);
+  });
+
+  log('═══ Benchmark completado ═══', 'ok');
+  log(`🏆 Mejor relación costo/calidad: Modelo ${winnerId} (${MODELS[winnerId-1].label})`, 'ok');
+}
+
+function downloadResult(n) {
+  const r = results[n];
+  if (!r) return;
+  const blob = new Blob([JSON.stringify(r.data, null, 2)], { type: 'application/json' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = `groq_${MODELS[n-1].name.replace(/[^a-z0-9]/g,'-')}_${Date.now()}.json`;
+  a.click();
+}
+</script>
+</body>
+</html>
