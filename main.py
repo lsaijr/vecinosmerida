@@ -642,6 +642,7 @@ async def groq_limpiar(request: Request):
         return JSONResponse({"error": "Body inválido"}, status_code=400)
 
     model = body.get("model", "llama-3.3-70b-versatile")
+    model_label = body.get("model_label", model)  # etiqueta única para debug
     json_data = body.get("json_data")
     if not json_data:
         return JSONResponse({"error": "Falta json_data"}, status_code=400)
@@ -708,38 +709,70 @@ FORMATO DE SALIDA:
         pass
     # ─────────────────────────────────────────────────────────────
 
+    # Qwen3: agregar /no_think al mensaje para desactivar el modo de razonamiento
+    user_prefix = "/no_think\n" if "qwen" in model.lower() else ""
+
     payload = {
         "model": model,
         "messages": [
             {"role": "system", "content": SYSTEM_PROMPT},
-            {"role": "user", "content": f"Aquí está el JSON de Facebook para limpiar:\n\n{json.dumps(json_data, ensure_ascii=False)}"}
+            {"role": "user", "content": f"{user_prefix}Aquí está el JSON de Facebook para limpiar:\n\n{json.dumps(json_data, ensure_ascii=False)}"}
         ],
-        "temperature": 0.1,
+        "temperature": 0.6 if "qwen" in model.lower() else 0.1,
         "max_tokens": 32000
     }
 
-    try:
-        async with httpx.AsyncClient(timeout=120.0) as client:
-            resp = await client.post(
-                "https://api.groq.com/openai/v1/chat/completions",
-                headers={
-                    "Content-Type": "application/json",
-                    "Authorization": f"Bearer {groq_key}"
-                },
-                json=payload
-            )
+    # Reintentar hasta 3 veces si Groq devuelve error o respuesta vacía
+    import asyncio as _asyncio
+    last_error = "Sin respuesta"
+    for _intento in range(3):
+        try:
+            async with httpx.AsyncClient(timeout=120.0) as client:
+                resp = await client.post(
+                    "https://api.groq.com/openai/v1/chat/completions",
+                    headers={
+                        "Content-Type": "application/json",
+                        "Authorization": f"Bearer {groq_key}"
+                    },
+                    json=payload
+                )
 
-        if resp.status_code != 200:
-            err = resp.json()
-            return JSONResponse({"error": err.get("error", {}).get("message", f"HTTP {resp.status_code}")}, status_code=500)
+            if resp.status_code == 429:
+                # Rate limit — esperar más tiempo
+                await _asyncio.sleep(20)
+                continue
+
+            if resp.status_code != 200:
+                err = resp.json()
+                last_error = err.get("error", {}).get("message", f"HTTP {resp.status_code}")
+                await _asyncio.sleep(5)
+                continue
+
+            data = resp.json()
+            choices = data.get("choices", [])
+            if not choices or not choices[0].get("message", {}).get("content"):
+                last_error = f"Respuesta vacía (intento {_intento+1})"
+                await _asyncio.sleep(10)
+                continue
+
+            break  # Éxito — salir del loop
+        except Exception as _e:
+            last_error = str(_e)
+            await _asyncio.sleep(5)
+    else:
+        return JSONResponse({"error": f"Falló después de 3 intentos: {last_error}"}, status_code=500)
+
+    if resp.status_code != 200:
+        return JSONResponse({"error": last_error}, status_code=500)
 
         data = resp.json()
+        
         raw_content = data["choices"][0]["message"]["content"]
 
         # Guardar respuesta cruda para debug
         import re as _re
         try:
-            debug_path = f"/tmp/groq_debug_{model.replace('/','_')}.txt"
+            debug_path = f"/tmp/groq_debug_{model_label.replace('/','_').replace(' ','_')}.txt"
             with open(debug_path, 'w', encoding='utf-8') as _f:
                 _f.write(f"MODEL: {model}\n")
                 _f.write(f"USAGE: {data.get('usage',{})}\n")
@@ -761,11 +794,22 @@ FORMATO DE SALIDA:
         if first >= 0 and last > first:
             clean = clean[first:last+1]
 
-        return JSONResponse({
-            "content": clean,
-            "usage": data.get("usage", {}),
-            "model": model
-        })
+        # Intentar parsear el JSON en el servidor y devolverlo como objeto
+        # Esto evita problemas de doble-encoding en el cliente
+        try:
+            parsed_obj = json.loads(clean)
+            return JSONResponse({
+                "data": parsed_obj,
+                "usage": data.get("usage", {}),
+                "model": model
+            })
+        except Exception:
+            # Fallback: devolver como string para que el cliente intente parsear
+            return JSONResponse({
+                "content": clean,
+                "usage": data.get("usage", {}),
+                "model": model
+            })
 
     except Exception as e:
         return JSONResponse({"error": str(e)}, status_code=500)
