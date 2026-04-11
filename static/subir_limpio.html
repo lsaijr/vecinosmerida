@@ -1,0 +1,518 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1.0">
+<title>Subir JSON Limpio — VecinosMérida</title>
+<link href="https://fonts.googleapis.com/css2?family=Syne:wght@700;800&family=Outfit:wght@300;400;500;600&display=swap" rel="stylesheet">
+<style>
+:root {
+  --bg:     #0d1117;
+  --bg2:    #161b22;
+  --bg3:    #21262d;
+  --txt:    #e6edf3;
+  --muted:  #7d8590;
+  --borde:  #30363d;
+  --verde:  #3fb950;
+  --azul:   #58a6ff;
+  --rojo:   #f85149;
+  --ambar:  #d29922;
+  --acc:    #58a6ff;
+}
+* { margin:0; padding:0; box-sizing:border-box; }
+body { font-family:'Outfit',sans-serif; background:var(--bg); color:var(--txt); min-height:100vh; display:flex; flex-direction:column; align-items:center; padding:40px 16px 80px; }
+
+/* HEADER */
+.header { text-align:center; margin-bottom:40px; }
+.header-badge { display:inline-flex; align-items:center; gap:6px; background:rgba(88,166,255,.1); border:1px solid rgba(88,166,255,.25); color:var(--azul); font-size:.72rem; font-weight:600; letter-spacing:.1em; text-transform:uppercase; padding:5px 14px; border-radius:20px; margin-bottom:16px; }
+.header h1 { font-family:'Syne',sans-serif; font-size:clamp(1.6rem,4vw,2.4rem); font-weight:800; line-height:1.1; margin-bottom:8px; }
+.header h1 em { font-style:normal; color:var(--azul); }
+.header p { color:var(--muted); font-size:.9rem; font-weight:300; }
+
+/* CARD */
+.card { width:100%; max-width:560px; background:var(--bg2); border:1px solid var(--borde); border-radius:16px; padding:28px; margin-bottom:16px; }
+.card-title { font-family:'Syne',sans-serif; font-size:1rem; font-weight:700; margin-bottom:18px; display:flex; align-items:center; gap:8px; }
+.step-num { width:26px; height:26px; background:var(--azul); color:#000; border-radius:50%; font-size:.75rem; font-weight:700; display:flex; align-items:center; justify-content:center; flex-shrink:0; }
+.step-num.done { background:var(--verde); }
+.step-num.inactive { background:var(--bg3); color:var(--muted); }
+
+/* DROP ZONE */
+.drop-zone { border:2px dashed var(--borde); border-radius:12px; padding:36px 20px; text-align:center; cursor:pointer; transition:all .25s; position:relative; }
+.drop-zone:hover, .drop-zone.drag { border-color:var(--azul); background:rgba(88,166,255,.05); }
+.drop-zone input { position:absolute; inset:0; opacity:0; cursor:pointer; }
+.drop-icon { font-size:2.2rem; margin-bottom:10px; }
+.drop-label { font-size:.9rem; color:var(--muted); }
+.drop-label strong { color:var(--azul); }
+.drop-file { display:none; align-items:center; gap:10px; background:var(--bg3); border-radius:10px; padding:12px 16px; margin-top:12px; }
+.drop-file.show { display:flex; }
+.drop-file-name { font-size:.85rem; font-weight:500; flex:1; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.drop-remove { background:none; border:none; color:var(--muted); cursor:pointer; font-size:1.1rem; padding:2px; }
+.drop-remove:hover { color:var(--rojo); }
+
+/* GRUPO INFO */
+.grupo-info { display:none; }
+.grupo-info.show { display:block; }
+.info-row { display:flex; justify-content:space-between; align-items:center; padding:10px 0; border-bottom:1px solid var(--borde); font-size:.88rem; }
+.info-row:last-child { border-bottom:none; }
+.info-key { color:var(--muted); }
+.info-val { font-weight:500; }
+.badge-ok { background:rgba(63,185,80,.15); color:var(--verde); border:1px solid rgba(63,185,80,.3); font-size:.7rem; font-weight:700; letter-spacing:.08em; text-transform:uppercase; padding:3px 9px; border-radius:20px; }
+.badge-new { background:rgba(210,153,34,.15); color:var(--ambar); border:1px solid rgba(210,153,34,.3); font-size:.7rem; font-weight:700; letter-spacing:.08em; text-transform:uppercase; padding:3px 9px; border-radius:20px; }
+
+/* FORM FIELDS */
+.field { margin-bottom:16px; }
+.field label { display:block; font-size:.8rem; font-weight:600; color:var(--muted); letter-spacing:.06em; text-transform:uppercase; margin-bottom:6px; }
+.field select, .field input[type=text] { width:100%; padding:10px 14px; background:var(--bg3); border:1.5px solid var(--borde); border-radius:10px; color:var(--txt); font-family:'Outfit',sans-serif; font-size:.88rem; outline:none; transition:border-color .2s; }
+.field select:focus, .field input[type=text]:focus { border-color:var(--azul); }
+.field select option { background:var(--bg3); }
+
+/* CHECKBOX */
+.check-row { display:flex; align-items:center; gap:10px; cursor:pointer; font-size:.88rem; }
+.check-row input { width:18px; height:18px; accent-color:var(--azul); cursor:pointer; }
+
+/* BUTTONS */
+.btn { width:100%; padding:13px; border-radius:12px; border:none; font-family:'Syne',sans-serif; font-size:.95rem; font-weight:700; cursor:pointer; transition:all .2s; letter-spacing:.02em; }
+.btn-primary { background:var(--azul); color:#000; }
+.btn-primary:hover:not(:disabled) { background:#79bfff; transform:translateY(-1px); }
+.btn-primary:disabled { opacity:.4; cursor:not-allowed; transform:none; }
+.btn-success { background:var(--verde); color:#000; }
+.btn-success:hover:not(:disabled) { background:#56d364; transform:translateY(-1px); }
+.btn-success:disabled { opacity:.4; cursor:not-allowed; transform:none; }
+
+/* PROGRESS */
+.progress-wrap { display:none; }
+.progress-wrap.show { display:block; }
+.progress-bar-bg { background:var(--bg3); border-radius:999px; height:8px; overflow:hidden; margin-bottom:12px; }
+.progress-bar-fill { height:100%; background:var(--azul); border-radius:999px; transition:width .4s ease; width:0%; }
+.progress-bar-fill.done { background:var(--verde); }
+.progress-step { font-size:.85rem; color:var(--muted); margin-bottom:6px; }
+.progress-counts { display:flex; gap:16px; font-size:.82rem; flex-wrap:wrap; }
+.count-item { display:flex; align-items:center; gap:5px; }
+.count-dot { width:8px; height:8px; border-radius:50%; flex-shrink:0; }
+.timer { font-size:.78rem; color:var(--muted); margin-top:6px; }
+
+/* RESULT */
+.result { display:none; }
+.result.show { display:block; }
+.result-grid { display:grid; grid-template-columns:1fr 1fr; gap:12px; margin-bottom:16px; }
+.result-stat { background:var(--bg3); border-radius:12px; padding:16px; text-align:center; }
+.result-stat .n { font-family:'Syne',sans-serif; font-size:2rem; font-weight:700; line-height:1; }
+.result-stat .l { font-size:.68rem; color:var(--muted); letter-spacing:.08em; text-transform:uppercase; margin-top:4px; }
+.result-stat.green .n { color:var(--verde); }
+.result-stat.blue .n  { color:var(--azul); }
+.result-stat.amber .n { color:var(--ambar); }
+.result-stat.red .n   { color:var(--rojo); }
+
+/* ERRORS */
+.errores-list { margin-top:12px; }
+.error-item { background:rgba(248,81,73,.08); border:1px solid rgba(248,81,73,.2); border-radius:8px; padding:10px 12px; font-size:.78rem; margin-bottom:6px; }
+.error-item strong { color:var(--rojo); }
+
+/* DISABLED CARD */
+.card.disabled { opacity:.45; pointer-events:none; }
+
+@media(max-width:480px) {
+  .result-grid { grid-template-columns:1fr 1fr; }
+}
+</style>
+</head>
+<body>
+
+<div class="header">
+  <div class="header-badge">🐾 VecinosMérida</div>
+  <h1>Subir <em>JSON Limpio</em></h1>
+  <p>JSON pre-clasificado por Claude · Sin depuración IA · Directo a base de datos</p>
+</div>
+
+<!-- PASO 1: Subir archivo -->
+<div class="card" id="card1">
+  <div class="card-title">
+    <span class="step-num" id="sn1">1</span>
+    Seleccionar archivo JSON
+  </div>
+
+  <div class="drop-zone" id="dropZone">
+    <input type="file" id="fileInput" accept=".json">
+    <div class="drop-icon">📂</div>
+    <div class="drop-label">Arrastra el JSON aquí o <strong>haz clic para seleccionar</strong></div>
+  </div>
+  <div class="drop-file" id="dropFile">
+    <span>📄</span>
+    <span class="drop-file-name" id="fileName">—</span>
+    <button class="drop-remove" onclick="resetFile()" title="Quitar archivo">✕</button>
+  </div>
+
+  <br>
+  <button class="btn btn-primary" id="btnAnalizar" disabled onclick="analizar()">
+    Analizar grupo →
+  </button>
+</div>
+
+<!-- PASO 2: Configurar grupo -->
+<div class="card disabled" id="card2">
+  <div class="card-title">
+    <span class="step-num inactive" id="sn2">2</span>
+    Configuración del grupo
+  </div>
+
+  <!-- Grupo conocido -->
+  <div class="grupo-info" id="grupoConocido">
+    <div class="info-row">
+      <span class="info-key">Grupo</span>
+      <span class="info-val" id="infoNombre">—</span>
+    </div>
+    <div class="info-row">
+      <span class="info-key">Tipo</span>
+      <span class="info-val" id="infoTipo">—</span>
+    </div>
+    <div class="info-row">
+      <span class="info-key">Posts a procesar</span>
+      <span class="info-val" id="infoPosts">—</span>
+    </div>
+    <div class="info-row">
+      <span class="info-key">Estado</span>
+      <span class="badge-ok">✓ Grupo registrado</span>
+    </div>
+  </div>
+
+  <!-- Grupo nuevo -->
+  <div class="grupo-info" id="grupoNuevo">
+    <div class="info-row" style="margin-bottom:14px">
+      <span class="info-key">Grupo detectado</span>
+      <span class="badge-new">Nuevo</span>
+    </div>
+    <div id="infoNombreNuevo" style="font-weight:500;margin-bottom:18px;font-size:.9rem;color:var(--azul)">—</div>
+
+    <div class="field">
+      <label>Tipo de grupo</label>
+      <select id="selTipo">
+        <option value="mascotas">🐾 Mascotas</option>
+        <option value="vecinos">🏘️ Vecinos</option>
+        <option value="noticias">📰 Noticias</option>
+        <option value="negocios">💼 Negocios</option>
+      </select>
+    </div>
+
+    <div class="field">
+      <label>Colonia / Zona</label>
+      <select id="selColonia">
+        <option value="">— Cargando colonias… —</option>
+      </select>
+    </div>
+
+    <div class="field">
+      <label style="margin-bottom:8px">
+        <span class="check-row">
+          <input type="checkbox" id="chkGuardar" checked>
+          Guardar grupo para futuras cargas
+        </span>
+      </label>
+    </div>
+
+    <div class="info-row">
+      <span class="info-key">Posts a procesar</span>
+      <span class="info-val" id="infoPostsNuevo">—</span>
+    </div>
+  </div>
+
+  <br>
+  <button class="btn btn-primary" id="btnProcesar" disabled onclick="procesar()">
+    Iniciar procesamiento →
+  </button>
+</div>
+
+<!-- PASO 3: Progreso -->
+<div class="card disabled" id="card3">
+  <div class="card-title">
+    <span class="step-num inactive" id="sn3">3</span>
+    Procesamiento
+  </div>
+
+  <div class="progress-wrap" id="progressWrap">
+    <div class="progress-bar-bg">
+      <div class="progress-bar-fill" id="progressFill"></div>
+    </div>
+    <div class="progress-step" id="progressStep">Iniciando…</div>
+    <div class="progress-counts">
+      <div class="count-item"><div class="count-dot" style="background:var(--verde)"></div><span id="cntNuevos">0 nuevos</span></div>
+      <div class="count-item"><div class="count-dot" style="background:var(--muted)"></div><span id="cntDups">0 duplicados</span></div>
+      <div class="count-item"><div class="count-dot" style="background:var(--rojo)"></div><span id="cntErrs">0 errores</span></div>
+    </div>
+    <div class="timer" id="timerTxt">⏱ 0s</div>
+  </div>
+
+  <!-- Resultado final -->
+  <div class="result" id="resultFinal">
+    <div class="result-grid">
+      <div class="result-stat green"><div class="n" id="rNuevos">0</div><div class="l">Nuevos</div></div>
+      <div class="result-stat blue"><div class="n" id="rDups">0</div><div class="l">Duplicados</div></div>
+      <div class="result-stat amber"><div class="n" id="rTotal">0</div><div class="l">Procesados</div></div>
+      <div class="result-stat red"><div class="n" id="rErrs">0</div><div class="l">Errores</div></div>
+    </div>
+    <div class="errores-list" id="erroresList"></div>
+    <button class="btn btn-success" onclick="reiniciar()">✓ Procesar otro JSON</button>
+  </div>
+</div>
+
+<script>
+var _analisis = null;
+var _pollInterval = null;
+
+// ── DROP ZONE ──────────────────────────────────────────────
+var dz = document.getElementById('dropZone');
+dz.addEventListener('dragover', function(e){ e.preventDefault(); dz.classList.add('drag'); });
+dz.addEventListener('dragleave', function(){ dz.classList.remove('drag'); });
+dz.addEventListener('drop', function(e){
+  e.preventDefault(); dz.classList.remove('drag');
+  var f = e.dataTransfer.files[0];
+  if(f) setFile(f);
+});
+document.getElementById('fileInput').addEventListener('change', function(){
+  if(this.files[0]) setFile(this.files[0]);
+});
+
+function setFile(f){
+  if(!f.name.endsWith('.json')){ alert('Solo se aceptan archivos .json'); return; }
+  document.getElementById('fileName').textContent = f.name;
+  document.getElementById('dropFile').classList.add('show');
+  document.getElementById('dropZone').style.display = 'none';
+  document.getElementById('btnAnalizar').disabled = false;
+  document.getElementById('btnAnalizar')._file = f;
+}
+
+function resetFile(){
+  document.getElementById('fileInput').value = '';
+  document.getElementById('dropFile').classList.remove('show');
+  document.getElementById('dropZone').style.display = '';
+  document.getElementById('btnAnalizar').disabled = true;
+  document.getElementById('btnAnalizar')._file = null;
+  resetCard2();
+}
+
+// ── PASO 1: ANALIZAR ────────────────────────────────────────
+async function analizar(){
+  var f = document.getElementById('btnAnalizar')._file;
+  if(!f) return;
+
+  document.getElementById('btnAnalizar').disabled = true;
+  document.getElementById('btnAnalizar').textContent = 'Analizando…';
+
+  var fd = new FormData();
+  fd.append('file', f);
+
+  try {
+    var r = await fetch('/analizar-limpio', { method:'POST', body:fd });
+    var d = await r.json();
+    if(d.error){ alert('Error: ' + d.error); return; }
+    _analisis = d;
+    mostrarPaso2(d);
+  } catch(e){
+    alert('Error de conexión: ' + e.message);
+  } finally {
+    document.getElementById('btnAnalizar').textContent = 'Analizar grupo →';
+  }
+}
+
+function mostrarPaso2(d){
+  document.getElementById('sn1').classList.add('done');
+  document.getElementById('sn1').textContent = '✓';
+
+  var card2 = document.getElementById('card2');
+  card2.classList.remove('disabled');
+  document.getElementById('sn2').classList.remove('inactive');
+  document.getElementById('sn2').style.background = 'var(--azul)';
+  document.getElementById('sn2').style.color = '#000';
+
+  if(d.conocido){
+    document.getElementById('grupoConocido').classList.add('show');
+    document.getElementById('infoNombre').textContent = d.group_name;
+    document.getElementById('infoTipo').textContent = d.tipo;
+    document.getElementById('infoPosts').textContent = d.total_posts + ' posts';
+  } else {
+    document.getElementById('grupoNuevo').classList.add('show');
+    document.getElementById('infoNombreNuevo').textContent = d.group_name;
+    document.getElementById('infoPostsNuevo').textContent = d.total_posts + ' posts';
+
+    // Llenar selector de tipo sugerido
+    var selTipo = document.getElementById('selTipo');
+    for(var i=0; i<selTipo.options.length; i++){
+      if(selTipo.options[i].value === d.tipo_sugerido){
+        selTipo.selectedIndex = i; break;
+      }
+    }
+
+    // Llenar colonias
+    var sel = document.getElementById('selColonia');
+    sel.innerHTML = '<option value="">— Selecciona colonia —</option>';
+    var todas = d.todas_colonias || [];
+    // Candidatas primero
+    var candidatasIds = (d.candidatas||[]).map(function(c){ return c.id; });
+    if(d.candidatas && d.candidatas.length > 0){
+      var og = document.createElement('optgroup');
+      og.label = '⭐ Sugeridas';
+      d.candidatas.forEach(function(c){
+        var o = document.createElement('option');
+        o.value = c.id; o.textContent = c.nombre;
+        og.appendChild(o);
+      });
+      sel.appendChild(og);
+    }
+    var og2 = document.createElement('optgroup');
+    og2.label = 'Todas las colonias';
+    todas.forEach(function(c){
+      if(candidatasIds.indexOf(c.id) === -1){
+        var o = document.createElement('option');
+        o.value = c.id; o.textContent = c.nombre;
+        og2.appendChild(o);
+      }
+    });
+    sel.appendChild(og2);
+    if(d.candidatas && d.candidatas.length > 0) sel.value = d.candidatas[0].id;
+  }
+
+  document.getElementById('btnProcesar').disabled = false;
+}
+
+function resetCard2(){
+  document.getElementById('card2').classList.add('disabled');
+  document.getElementById('grupoConocido').classList.remove('show');
+  document.getElementById('grupoNuevo').classList.remove('show');
+  document.getElementById('btnProcesar').disabled = true;
+  document.getElementById('sn2').classList.add('inactive');
+  document.getElementById('sn2').style.background = '';
+  document.getElementById('sn2').style.color = '';
+  _analisis = null;
+}
+
+// ── PASO 2: PROCESAR ────────────────────────────────────────
+async function procesar(){
+  if(!_analisis) return;
+
+  var colonia_ids = [];
+  var colonia_nombres = ['General'];
+  var tipo = 'mascotas';
+  var guardar_grupo = false;
+
+  if(_analisis.conocido){
+    colonia_ids = _analisis.colonia_ids || [];
+    tipo = _analisis.tipo;
+  } else {
+    var selCol = document.getElementById('selColonia');
+    var selTipo = document.getElementById('selTipo');
+    if(!selCol.value){ alert('Selecciona una colonia antes de continuar.'); return; }
+    colonia_ids = [parseInt(selCol.value)];
+    colonia_nombres = [selCol.options[selCol.selectedIndex].textContent];
+    tipo = selTipo.value;
+    guardar_grupo = document.getElementById('chkGuardar').checked;
+  }
+
+  document.getElementById('btnProcesar').disabled = true;
+  document.getElementById('btnProcesar').textContent = 'Enviando…';
+
+  try {
+    var r = await fetch('/procesar-limpio', {
+      method: 'POST',
+      headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({ tipo, colonia_ids, colonia_nombres, guardar_grupo })
+    });
+    var d = await r.json();
+    if(d.error){ alert('Error: ' + d.error); document.getElementById('btnProcesar').disabled=false; return; }
+    mostrarPaso3();
+    iniciarPoll();
+  } catch(e){
+    alert('Error de conexión: ' + e.message);
+    document.getElementById('btnProcesar').disabled = false;
+  }
+}
+
+// ── PASO 3: PROGRESO ────────────────────────────────────────
+function mostrarPaso3(){
+  document.getElementById('sn2').classList.add('done');
+  document.getElementById('sn2').textContent = '✓';
+
+  var card3 = document.getElementById('card3');
+  card3.classList.remove('disabled');
+  document.getElementById('sn3').classList.remove('inactive');
+  document.getElementById('sn3').style.background = 'var(--azul)';
+  document.getElementById('sn3').style.color = '#000';
+
+  document.getElementById('progressWrap').classList.add('show');
+  document.getElementById('btnProcesar').textContent = 'Procesando…';
+}
+
+function iniciarPoll(){
+  _pollInterval = setInterval(async function(){
+    try {
+      var r = await fetch('/status-limpio');
+      var d = await r.json();
+      actualizarProgreso(d);
+      if(d.listo || d.error_fatal) {
+        clearInterval(_pollInterval);
+        mostrarResultado(d);
+      }
+    } catch(e){ /* silently ignore */ }
+  }, 800);
+}
+
+function actualizarProgreso(d){
+  var fill = document.getElementById('progressFill');
+  fill.style.width = d.progreso + '%';
+  if(d.progreso >= 100) fill.classList.add('done');
+
+  document.getElementById('progressStep').textContent =
+    d.paso + (d.total ? ' (' + d.procesados + '/' + d.total + ')' : '');
+  document.getElementById('cntNuevos').textContent = d.nuevos + ' nuevos';
+  document.getElementById('cntDups').textContent = d.duplicados + ' duplicados';
+  document.getElementById('cntErrs').textContent = (d.errores||[]).length + ' errores';
+  document.getElementById('timerTxt').textContent = '⏱ ' + d.elapsed + 's';
+}
+
+function mostrarResultado(d){
+  document.getElementById('progressWrap').classList.remove('show');
+  var res = document.getElementById('resultFinal');
+  res.classList.add('show');
+
+  document.getElementById('sn3').textContent = d.error_fatal ? '!' : '✓';
+  document.getElementById('sn3').style.background = d.error_fatal ? 'var(--rojo)' : 'var(--verde)';
+
+  document.getElementById('rNuevos').textContent = d.nuevos || 0;
+  document.getElementById('rDups').textContent = d.duplicados || 0;
+  document.getElementById('rTotal').textContent = d.procesados || 0;
+  document.getElementById('rErrs').textContent = (d.errores||[]).length;
+
+  if(d.error_fatal){
+    document.getElementById('erroresList').innerHTML =
+      '<div class="error-item"><strong>Error fatal:</strong> ' + d.error_fatal + '</div>';
+  } else if(d.errores && d.errores.length > 0){
+    var html = d.errores.slice(0,10).map(function(e){
+      return '<div class="error-item"><strong>' + (e.autor||'?') + ':</strong> ' + e.error + '</div>';
+    }).join('');
+    document.getElementById('erroresList').innerHTML = html;
+  }
+}
+
+function reiniciar(){
+  clearInterval(_pollInterval);
+  resetFile();
+  resetCard2();
+
+  // Reset paso 3
+  document.getElementById('card3').classList.add('disabled');
+  document.getElementById('sn3').classList.add('inactive');
+  document.getElementById('sn3').style.background = '';
+  document.getElementById('sn3').style.color = '';
+  document.getElementById('sn3').textContent = '3';
+  document.getElementById('progressWrap').classList.remove('show');
+  document.getElementById('resultFinal').classList.remove('show');
+  document.getElementById('progressFill').style.width = '0%';
+  document.getElementById('progressFill').classList.remove('done');
+
+  // Reset paso 1
+  document.getElementById('sn1').classList.remove('done');
+  document.getElementById('sn1').textContent = '1';
+  document.getElementById('btnAnalizar').textContent = 'Analizar grupo →';
+  document.getElementById('btnProcesar').textContent = 'Iniciar procesamiento →';
+}
+</script>
+</body>
+</html>
