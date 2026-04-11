@@ -579,7 +579,9 @@ async def groq_limpiar(request: Request):
     MODELOS_PERMITIDOS = [
         "llama-3.3-70b-versatile",
         "llama-3.1-8b-instant",
-        "mixtral-8x7b-32768",
+        "openai/gpt-oss-20b",
+        "openai/gpt-oss-120b",
+        "meta-llama/llama-4-scout-17b-16e-instruct",
     ]
     if model not in MODELOS_PERMITIDOS:
         return JSONResponse({"error": f"Modelo no permitido: {model}"}, status_code=400)
