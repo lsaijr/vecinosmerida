@@ -1,0 +1,9 @@
+[deploy]
+healthcheckPath = "/"
+healthcheckTimeout = 300
+
+[service]
+internalPort = 8080
+
+[[services.http]]
+timeout = 120

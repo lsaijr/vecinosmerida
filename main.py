@@ -712,6 +712,12 @@ FORMATO DE SALIDA:
     # Qwen3: agregar /no_think al mensaje para desactivar el modo de razonamiento
     user_prefix = "/no_think\n" if "qwen" in model.lower() else ""
 
+    # GPT OSS soporta hasta 65536 tokens de salida — usar más para no truncar
+    if "gpt-oss" in model.lower():
+        max_tokens = 60000
+    else:
+        max_tokens = 32000
+
     payload = {
         "model": model,
         "messages": [
@@ -719,7 +725,7 @@ FORMATO DE SALIDA:
             {"role": "user", "content": f"{user_prefix}Aquí está el JSON de Facebook para limpiar:\n\n{json.dumps(json_data, ensure_ascii=False)}"}
         ],
         "temperature": 0.6 if "qwen" in model.lower() else 0.1,
-        "max_tokens": 32000
+        "max_tokens": max_tokens
     }
 
     # Reintentar hasta 3 veces si Groq devuelve error o respuesta vacía
