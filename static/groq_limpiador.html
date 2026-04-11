@@ -888,17 +888,17 @@ function showStats(n, posts, tokInfo, modelObj) {
 async function processModel(modelObj) {
   const n = modelObj.id;
   const allPosts = rawData.posts || [];
-  const totalChunks = Math.ceil(allPosts.length / CHUNK_SIZE);
+  const totalChunks = Math.ceil(allPosts.length / (modelObj.chunk || 30));
   
   setStatus(n, 'run', `Lote 1/${totalChunks}...`);
-  log(`🚀 ${modelObj.label} — ${allPosts.length} posts en ${totalChunks} lotes de ${CHUNK_SIZE}`, 'info');
+  log(`🚀 ${modelObj.label} — ${allPosts.length} posts en ${totalChunks} lotes de ${modelObj.chunk || 30}`, 'info');
 
   let allProcessed = [];
   let totalUsage = { prompt_tokens: 0, completion_tokens: 0 };
 
   try {
     for (let i = 0; i < totalChunks; i++) {
-      const chunk = allPosts.slice(i * CHUNK_SIZE, (i + 1) * CHUNK_SIZE);
+      const chunk = allPosts.slice(i * (modelObj.chunk || 30), (i + 1) * (modelObj.chunk || 30));
       const chunkData = { ...rawData, posts: chunk, meta: { ...rawData.meta, total_posts: chunk.length } };
       
       setStatus(n, 'run', `Lote ${i+1}/${totalChunks}...`);
@@ -918,8 +918,8 @@ async function processModel(modelObj) {
 
       // Pausa entre lotes (excepto el último)
       if (i < totalChunks - 1) {
-        log(`  ⏸ Pausa ${PAUSE_MS/1000}s entre lotes...`, '');
-        await new Promise(r => setTimeout(r, PAUSE_MS));
+        log(`  ⏸ Pausa ${(modelObj.pause || 2000)/1000}s entre lotes...`, '');
+        await new Promise(r => setTimeout(r, modelObj.pause || 2000));
       }
     }
 
