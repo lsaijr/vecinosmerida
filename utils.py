@@ -259,20 +259,32 @@ def limpiar_texto_regex(txt):
     txt = _RE_SIGNOS_REP.sub(lambda m: m.group(1) if m.group(1) else '.', txt)
     txt = _RE_ESPACIOS.sub(' ', txt).strip()
 
-    letras = re.findall(r'[a-zA-ZÁÉÍÓÚÑáéíóúñ]', txt)
-    mayus = sum(1 for l in letras if l.isupper())
-    if letras and len(txt) > 15 and mayus / max(len(letras), 1) > 0.70:
-        def _sentence_case(s):
-            s = s.strip()
-            if not s:
-                return s
-            s = s[0].upper() + s[1:].lower()
-            s = re.sub(r'([.!?]\s+)([a-záéíóúñ])',
-                       lambda m: m.group(1) + m.group(2).upper(), s)
-            return s
-        partes = [_sentence_case(s) for s in re.split(r'(?<=[.!?])\s+|\n+', txt) if s.strip()]
-        txt = '\n'.join(partes)
+    def _normalizar_mayusculas(txt):
+        """
+        Normaliza mayúsculas a sentence case, oración por oración.
+        Aplica a cualquier oración/segmento con >35% de letras mayúsculas.
+        Texto normal (<=35%) no se toca.
+        """
+        def _sc(seg):
+            seg = seg.strip()
+            if not seg or len(seg) < 4:
+                return seg
+            lets = re.findall(r'[a-zA-ZÁÉÍÓÚÑáéíóúñ]', seg)
+            if not lets:
+                return seg
+            pct = sum(1 for l in lets if l.isupper()) / max(len(lets), 1)
+            if pct <= 0.35:
+                return seg
+            return seg[0].upper() + seg[1:].lower()
 
+        lineas = txt.split('\n')
+        resultado = []
+        for linea in lineas:
+            partes = re.split(r'(?<=[.!?¡])\s+', linea)
+            resultado.append(' '.join(_sc(p) for p in partes))
+        return '\n'.join(resultado)
+
+    txt = _normalizar_mayusculas(txt)
     return txt
 
 
@@ -1601,14 +1613,16 @@ def generar_titulo_mascota(post, categoria_id=11):
             return None  # demasiado vago para un título útil
         subtipo = 'reportada'
 
-    # Caso 7 — Concordancia de género: Mascota es femenino
-    if especie == 'Mascota':
-        _genero = {'perdida': 'Perdida', 'encontrada': 'Encontrada',
+    # Concordancia de género correcta por especie
+    _genero_fem = {'perdida': 'Perdida', 'encontrada': 'Encontrada',
                    'en adopción': 'en Adopción', 'reportada': 'Reportada'}
-        subtipo_display = _genero.get(subtipo, subtipo.capitalize())
+    _genero_mas = {'perdida': 'Perdido', 'encontrada': 'Encontrado',
+                   'en adopción': 'en Adopción', 'reportada': 'Reportado'}
+    if especie == 'Mascota':
+        subtipo_display = _genero_fem.get(subtipo, subtipo.capitalize())
     else:
-        # Perro/Gato: usar el género del subtipo tal cual
-        subtipo_display = subtipo.capitalize()
+        # Perro y Gato son masculinos
+        subtipo_display = _genero_mas.get(subtipo, subtipo.capitalize())
 
     ubic = extraer_ubicacion_simple(txt_raw)
     titulo = f"{especie} {subtipo_display}"

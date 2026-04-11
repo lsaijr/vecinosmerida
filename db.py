@@ -297,8 +297,8 @@ def insertar_negocio(p, colonia_id):
         INSERT INTO negocios
           (nombre, categoria_id, descripcion, telefono, whatsapp,
            facebook, colonia_id, fuente_autor, autor_id, fecha_captura,
-           activo, fbid_post, fecha_post, fecha_post_dt)
-        VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,1,%s,%s,%s)
+           activo, fbid_post, fecha_post, fecha_post_dt, repeticiones)
+        VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,1,%s,%s,%s,%s)
         """,
         (
             p.get("titulo") or p.get("nombre", "")[:100],
@@ -314,6 +314,7 @@ def insertar_negocio(p, colonia_id):
             fbid_post,
             (p.get("fecha_post") or "")[:60] or None,
             parsear_fecha_fb(p.get("fecha_post"), p.get("fecha_captura", "")),
+            int(p.get("repeticiones") or 1),
         ),
     )
     negocio_id = cursor.lastrowid
@@ -748,9 +749,11 @@ def calcular_ranking_score(autor_db_id):
             DATEDIFF(NOW(), MAX(aa.fecha))                   AS dias_inactivo,
             (SELECT COUNT(*) FROM autor_telefonos
              WHERE autor_id = %s LIMIT 1)                   AS tiene_tel,
-            a.es_cliente
+            a.es_cliente,
+            COALESCE(SUM(n.repeticiones), 0)                AS total_repeticiones
         FROM autores a
         LEFT JOIN autor_actividad aa ON aa.autor_id = a.id
+        LEFT JOIN negocios n ON n.autor_id = a.id AND n.repeticiones > 1
         WHERE a.id = %s
         GROUP BY a.id
     """, (autor_db_id, autor_db_id))
@@ -762,7 +765,7 @@ def calcular_ranking_score(autor_db_id):
     if not row:
         return 0
 
-    grupos, total_posts, dias_inactivo, tiene_tel, es_cliente = row
+    grupos, total_posts, dias_inactivo, tiene_tel, es_cliente, total_repeticiones = row
     dias_inactivo = dias_inactivo or 0
 
     score = (
@@ -771,6 +774,7 @@ def calcular_ranking_score(autor_db_id):
         + (5 if tiene_tel else 0)
         - int(dias_inactivo / 7)
         + (50 if es_cliente else 0)
+        + int(total_repeticiones or 0)   # repeticiones suman directamente al score
     )
     return max(score, 0)
 
@@ -825,41 +829,49 @@ def actualizar_ranking_autor(autor_db_id):
 def upsert_autor_completo(autor_id_fb, nombre):
     """
     Versión mejorada de upsert_autor que además:
-    - Detecta tipo_nombre (empresa/persona)
+    - Detecta tipo_nombre (empresa/persona) y tipo_perfil
     - Recalcula ranking y badge
-    Retorna el id interno del autor.
+    Retorna (autor_db_id, es_empresa) donde es_empresa es True/False.
     """
     if not autor_id_fb:
-        return None
+        return None, False
 
     conn   = get_conn()
     cursor = conn.cursor()
 
     tipo_nombre = detectar_tipo_nombre(nombre)
+    # tipo_perfil: 'empresa' si se detectó como empresa, 'persona' si persona, sino 'desconocido'
+    tipo_perfil = tipo_nombre if tipo_nombre in ('empresa', 'persona') else 'desconocido'
 
     cursor.execute(
-        "SELECT id, nombre, tipo_nombre FROM autores WHERE autor_id_fb = %s LIMIT 1",
+        "SELECT id, nombre, tipo_nombre, tipo_perfil FROM autores WHERE autor_id_fb = %s LIMIT 1",
         (str(autor_id_fb),)
     )
     row = cursor.fetchone()
 
     if row:
-        autor_db_id   = row[0]
-        nombre_actual = row[1] or ''
-        tipo_actual   = row[2] or 'desconocido'
-        nombre_nuevo  = (nombre or '').strip()[:200]
+        autor_db_id    = row[0]
+        nombre_actual  = row[1] or ''
+        tipo_actual    = row[2] or 'desconocido'
+        perfil_actual  = row[3] or 'desconocido'
+        nombre_nuevo   = (nombre or '').strip()[:200]
 
         updates = []
         params  = []
         if nombre_nuevo and nombre_nuevo != nombre_actual:
             updates.append("nombre = %s")
             params.append(nombre_nuevo)
-            # Re-detectar tipo si cambió el nombre
             tipo_nombre = detectar_tipo_nombre(nombre_nuevo)
+            tipo_perfil = tipo_nombre if tipo_nombre in ('empresa', 'persona') else 'desconocido'
 
         if tipo_actual == 'desconocido' and tipo_nombre != 'desconocido':
             updates.append("tipo_nombre = %s")
             params.append(tipo_nombre)
+
+        # Actualizar tipo_perfil si aún es desconocido
+        if perfil_actual == 'desconocido' and tipo_perfil != 'desconocido':
+            updates.append("tipo_perfil = %s")
+            params.append(tipo_perfil)
 
         if updates:
             params.append(autor_db_id)
@@ -868,13 +880,17 @@ def upsert_autor_completo(autor_id_fb, nombre):
                 tuple(params)
             )
             conn.commit()
+
+        # Usar el perfil más reciente disponible
+        tipo_perfil = tipo_perfil if tipo_perfil != 'desconocido' else perfil_actual
+        tipo_nombre = tipo_nombre if tipo_nombre != 'desconocido' else tipo_actual
     else:
         cursor.execute(
             """
-            INSERT INTO autores (autor_id_fb, nombre, tipo_nombre)
-            VALUES (%s, %s, %s)
+            INSERT INTO autores (autor_id_fb, nombre, tipo_nombre, tipo_perfil)
+            VALUES (%s, %s, %s, %s)
             """,
-            (str(autor_id_fb), (nombre or '').strip()[:200], tipo_nombre)
+            (str(autor_id_fb), (nombre or '').strip()[:200], tipo_nombre, tipo_perfil)
         )
         conn.commit()
         autor_db_id = cursor.lastrowid
@@ -885,4 +901,43 @@ def upsert_autor_completo(autor_id_fb, nombre):
     # Actualizar ranking y badge
     actualizar_ranking_autor(autor_db_id)
 
-    return autor_db_id
+    es_empresa = (tipo_nombre == 'empresa' or tipo_perfil == 'empresa')
+    return autor_db_id, es_empresa
+
+def obtener_potenciales_clientes(limite=50, score_minimo=5):
+    """
+    Retorna autores tipo 'empresa' con alto ranking_score que aún no son clientes.
+    Ordenados por ranking_score desc — los que más postean primero.
+    """
+    conn   = get_conn()
+    cursor = conn.cursor(dictionary=True)
+    cursor.execute("""
+        SELECT
+            a.id,
+            a.autor_id_fb,
+            a.nombre,
+            a.tipo_nombre,
+            a.tipo_perfil,
+            a.ranking_score,
+            a.badge,
+            a.creado_en,
+            COUNT(DISTINCT aa.group_id)  AS grupos_activos,
+            COUNT(aa.id)                 AS total_posts,
+            MAX(aa.fecha)                AS ultimo_post,
+            (SELECT t.telefono FROM autor_telefonos t
+             WHERE t.autor_id = a.id LIMIT 1) AS telefono
+        FROM autores a
+        LEFT JOIN autor_actividad aa ON aa.autor_id = a.id
+        WHERE a.es_cliente = 0
+          AND a.tipo_nombre = 'empresa'
+          AND a.ranking_score >= %s
+        GROUP BY a.id
+        ORDER BY a.ranking_score DESC
+        LIMIT %s
+    """, (score_minimo, limite))
+    rows = cursor.fetchall()
+    cursor.close()
+    conn.close()
+    return rows
+
+

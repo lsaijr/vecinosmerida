@@ -237,13 +237,7 @@ def ejecutar_pipeline(posts, meta, config_grupo, estado):
             p["categoria_id"] = _detectar_cat_mascota(p.get("texto_limpio", ""))
             p["nombre"] = p.get("autor", "")
             p["descripcion"] = p.get("texto_limpio", "")
-            titulo_mascota = generar_titulo_mascota(p, p.get("categoria_id", 11))
-            if not titulo_mascota:
-                # Post descartado: actualización de cierre o texto demasiado vago
-                p["_descartado"] = "mascota_sin_info_util"
-                descartados.append(p)
-                continue
-            p["titulo"] = titulo_mascota
+            p["titulo"] = generar_titulo_mascota(p, p.get("categoria_id", 11))
             resultados["mascotas"].append(p)
             aprobados.append(p)
             continue
@@ -419,8 +413,9 @@ def ejecutar_pipeline(posts, meta, config_grupo, estado):
             if not autor_id_fb:
                 continue
             try:
-                autor_db_id = upsert_autor_completo(autor_id_fb, p.get("autor", ""))
-                p["_autor_db_id"] = autor_db_id  # guardar para las inserciones
+                autor_db_id, es_empresa = upsert_autor_completo(autor_id_fb, p.get("autor", ""))
+                p["_autor_db_id"] = autor_db_id   # guardar para las inserciones
+                p["_es_empresa"]  = es_empresa     # True si el autor es empresa
                 registrar_actividad(
                     autor_db_id,
                     group_id_meta,
