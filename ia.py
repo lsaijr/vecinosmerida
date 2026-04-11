@@ -66,8 +66,8 @@ _TOKENS = {
 }
 
 # Precios Groq 70B (USD por millón de tokens)
-_PRECIO_GROQ_INPUT  = 0.59
-_PRECIO_GROQ_OUTPUT = 0.79
+_PRECIO_GROQ_INPUT  = 1.00   # moonshotai/kimi-k2-instruct-0905
+_PRECIO_GROQ_OUTPUT = 1.50
 # Precios Gemini 2.5 Flash (USD por millón de tokens)
 _PRECIO_GEMINI_INPUT  = 0.15
 _PRECIO_GEMINI_OUTPUT = 0.60
@@ -134,7 +134,7 @@ def _prompt_clasificar_tipo(texto, grupo_tipo="vecinos", grupo_nombre=""):
     contexto_grupo = {
         "vecinos": "grupo de vecinos de una colonia en Mérida, Yucatán. Mezcla de negocios, alertas, noticias locales y mascotas.",
         "noticias": "grupo de noticias locales de Mérida y Yucatán. La mayoría son noticias; pocos posts son negocios.",
-        "mascotas": "grupo dedicado a mascotas perdidas, encontradas y en adopción en Mérida. Casi todo es mascota.",
+        "mascotas": "grupo dedicado a mascotas perdidas, encontradas y en adopción en Mérida. La mayoría son mascotas, pero también hay denuncias de malos adoptantes o maltrato animal (clasifica como 'alerta'), solicitudes de donaciones para refugios (clasifica como 'ignorar' si no hay mascota específica), y ventas de accesorios para mascotas (clasifica como 'negocio').",
         "negocios": "grupo de compra-venta y negocios locales de Mérida. La gran mayoría son negocios.",
     }.get(grupo_tipo, "grupo de Facebook de vecinos en Mérida, Yucatán.")
 
@@ -148,15 +148,21 @@ TEXTO:
 CATEGORÍAS:
 - "negocio": venta de productos/servicios, ofertas, anuncios de negocios, precios
 - "noticia": eventos, accidentes, política, cultura, información general de interés
-- "alerta": incidentes locales inmediatos (bache, robo, sospechoso, fuga de agua, accidente en colonia)
-- "mascota": mascotas perdidas, encontradas o en adopción
-- "ignorar": spam, texto sin sentido, saludos solos, menos de 15 palabras útiles
+- "alerta": incidentes locales inmediatos (bache, robo, sospechoso, fuga de agua, accidente en colonia). También denuncias de malos adoptantes o maltrato animal.
+- "mascota": mascotas perdidas, encontradas o en adopción. Incluye posts cortos o truncados que contengan "se perdió", "se extravió" o "desapareció" junto con una fecha, nombre del animal o ubicación, aunque el texto esté incompleto.
+- "ignorar": spam, texto sin sentido, saludos solos, menos de 15 palabras útiles. También posts de actualización sin contexto propio como "ya apareció", "ya está con sus dueños", "gracias a todos por compartir", "ya fue encontrado".
 
 EJEMPLOS:
 - "Se vende sala, precio 3,500 pesos, llame al 999..." → negocio
 - "Incendio en la calle 64 moviliza a bomberos de Mérida" → noticia
 - "Cuidado, hay bache profundo en calle 20 cerca del Oxxo" → alerta
+- "MALA ADOPTANTE: entregué un gatito y lo perdió, tengan cuidado" → alerta
 - "Se perdió mi perrita labrador, responde al nombre Luna" → mascota
+- "Se perdió el 23 de enero en la Col. María Luisa, cualquier info al" → mascota (aunque esté truncado)
+- "Seguimos buscando hasta encontrarla, se ofrece recompensa" → mascota (perdida; 'encontrar' aquí es el objetivo, no el estado)
+- "Les pido ayuda para encontrar a mi perrito, se llama Blacki" → mascota (perdida; 'encontrar' es el objetivo)
+- "Ya está con sus dueños, gracias a todos 🙏" → ignorar (actualización sin contexto)
+- "Muchísimas gracias a todos los que me ayudaron a compartir" → ignorar (actualización de cierre)
 - "Buenos días a todos 😊" → ignorar
 
 Responde ÚNICAMENTE con una de estas palabras: negocio, noticia, alerta, mascota, ignorar"""
@@ -316,10 +322,14 @@ def _esperar_key(last_calls, key, intervalo):
 
 
 # ═══════════════════════════════════════════════════════════════
-# GROQ — Llama 3.3 70B para todo (modo evaluación de costo real)
+# GROQ — moonshotai/kimi-k2-instruct-0905 (mejor inteligencia en Groq)
+# Fallback: llama-3.3-70b-versatile
 # ═══════════════════════════════════════════════════════════════
+_GROQ_MODEL_DEFAULT = "moonshotai/kimi-k2-instruct-0905"
 
-def _llamar_groq(prompt, temperatura=0.3, modelo="llama-3.3-70b-versatile"):
+def _llamar_groq(prompt, temperatura=0.3, modelo=None):
+    if modelo is None:
+        modelo = _GROQ_MODEL_DEFAULT
     ultimo_error = None
     for intento in range(MAX_RETRIES):
         key = _next_groq_key()

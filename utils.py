@@ -262,8 +262,16 @@ def limpiar_texto_regex(txt):
     letras = re.findall(r'[a-zA-ZÁÉÍÓÚÑáéíóúñ]', txt)
     mayus = sum(1 for l in letras if l.isupper())
     if letras and len(txt) > 15 and mayus / max(len(letras), 1) > 0.70:
-        partes = [s.strip().capitalize() for s in re.split(r'(?<=[.!?])\s+|\n+', txt) if s.strip()]
-        txt = ' '.join(partes)
+        def _sentence_case(s):
+            s = s.strip()
+            if not s:
+                return s
+            s = s[0].upper() + s[1:].lower()
+            s = re.sub(r'([.!?]\s+)([a-záéíóúñ])',
+                       lambda m: m.group(1) + m.group(2).upper(), s)
+            return s
+        partes = [_sentence_case(s) for s in re.split(r'(?<=[.!?])\s+|\n+', txt) if s.strip()]
+        txt = '\n'.join(partes)
 
     return txt
 
@@ -1528,25 +1536,87 @@ def generar_titulo_negocio(post, categoria_nombre=''):
 def generar_titulo_mascota(post, categoria_id=11):
     txt_raw = post.get('texto_limpio') or post.get('texto') or ''
     txt = txt_raw.lower()
-    especie = 'Mascota'
-    if any(x in txt for x in ['perro', 'perrita', 'perrito', 'cachorro']):
-        especie = 'Perro'
-    elif any(x in txt for x in ['gata', 'gato', 'gatita']):
-        especie = 'Gato'
 
-    subtipo = {14: 'perdido', 15: 'encontrado', 16: 'en adopción'}.get(categoria_id, 'reportado')
-    if subtipo == 'reportado':
-        if any(x in txt for x in ['si la ves', 'si lo ves', 'si la ven', 'si lo ven', 'responde al nombre', 'avísame', 'avisame']):
-            subtipo = 'perdido'
-        elif any(x in txt for x in ['la entregamos', 'dar en adopción', 'dar en adopcion', 'busca familia', 'necesita hogar', 'vacunada', 'bañadita', 'banadita']):
-            subtipo = 'en adopción'
+    # Caso 8 — Actualización de cierre: descartar
+    _frases_cierre = [
+        'ya está con sus dueños', 'ya esta con sus dueños', 'ya apareció', 'ya aparecio',
+        'ya fue encontrado', 'ya fue encontrada', 'ya está en casa', 'ya esta en casa',
+        'gracias a todos', 'muchas gracias a todos', 'muchísimas gracias a todos',
+    ]
+    if any(f in txt for f in _frases_cierre) and len(txt.split()) < 40:
+        return None  # señal para descartar el post
+
+    # Caso 3 — Detectar especie correcta: priorizar la más mencionada
+    _conteo = {
+        'Perro': sum(txt.count(x) for x in ['perro', 'perrita', 'perrito', 'cachorro', 'can ']),
+        'Gato': sum(txt.count(x) for x in ['gato', 'gata', 'gatito', 'gatita', 'michi']),
+    }
+    if _conteo['Perro'] > 0 or _conteo['Gato'] > 0:
+        especie = max(_conteo, key=_conteo.get)
+    else:
+        especie = 'Mascota'
+
+    # Caso 2 — Detectar subtipo con señales explícitas antes de usar categoria_id
+    # Señales de PERDIDA (aunque aparezca la palabra "encontrar" como objetivo)
+    _senales_perdida = [
+        'se perdió', 'se perdio', 'se extravió', 'se extravio', 'desapareció', 'desaparecio',
+        'se busca', 'seguimos buscando', 'ayuda para encontrar', 'pido ayuda para encontrar',
+        'se ofrece recompensa', 'recompensa', 'no aparece', 'no ha aparecido',
+        'si la ves', 'si lo ves', 'si la ven', 'si lo ven', 'responde al nombre',
+        'avísame', 'avisame', 'por favor compartan',
+    ]
+    # Señales de ENCONTRADA (el animal ya está físicamente con alguien)
+    _senales_encontrada = [
+        'lo encontré', 'la encontré', 'lo encontre', 'la encontre',
+        'encontré este', 'encontré esta', 'encontre este', 'encontre esta',
+        'está aquí conmigo', 'esta aqui conmigo', 'lo tengo', 'la tengo',
+        'apareció en', 'aparecio en', 'se metió a mi casa', 'se metio a mi casa',
+        'anda en mi', 'está en mi casa', 'esta en mi casa',
+        'si alguien conoce al dueño', 'si alguien conoce a su dueño',
+        'si es de alguien', 'si es tuyo', 'si es tuya',
+    ]
+    # Señales de ADOPCIÓN
+    _senales_adopcion = [
+        'dar en adopción', 'dar en adopcion', 'en adopción', 'en adopcion',
+        'busca familia', 'busca hogar', 'necesita hogar', 'necesita familia',
+        'la entregamos', 'lo entregamos', 'vacunada', 'vacunado', 'esterilizada',
+        'bañadita', 'banadita',
+    ]
+
+    if any(s in txt for s in _senales_perdida):
+        subtipo = 'perdida'
+    elif any(s in txt for s in _senales_encontrada):
+        subtipo = 'encontrada'
+    elif any(s in txt for s in _senales_adopcion):
+        subtipo = 'en adopción'
+    else:
+        # Fallback a categoria_id
+        _map = {14: 'perdida', 15: 'encontrada', 16: 'en adopción'}
+        subtipo = _map.get(categoria_id, None)
+
+    # Caso 8 — Si no hay subtipo claro y el texto es muy vago, descartar
+    if not subtipo:
+        palabras_utiles = [w for w in txt.split() if len(w) > 3]
+        if len(palabras_utiles) < 12:
+            return None  # demasiado vago para un título útil
+        subtipo = 'reportada'
+
+    # Caso 7 — Concordancia de género: Mascota es femenino
+    if especie == 'Mascota':
+        _genero = {'perdida': 'Perdida', 'encontrada': 'Encontrada',
+                   'en adopción': 'en Adopción', 'reportada': 'Reportada'}
+        subtipo_display = _genero.get(subtipo, subtipo.capitalize())
+    else:
+        # Perro/Gato: usar el género del subtipo tal cual
+        subtipo_display = subtipo.capitalize()
+
     ubic = extraer_ubicacion_simple(txt_raw)
-    titulo = f"{especie} {subtipo}"
+    titulo = f"{especie} {subtipo_display}"
     if ubic:
         titulo += f" en {ubic}"
     elif subtipo == 'en adopción':
         titulo += ' en Mérida'
-    return limpiar_titulo(titulo, max_chars=62) or 'Mascota reportada'
+    return limpiar_titulo(titulo, max_chars=62) or None
 
 
 def generar_titulo_alerta(post, categoria_nombre='Alerta', cat_nombre=None):

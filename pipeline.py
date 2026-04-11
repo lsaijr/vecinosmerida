@@ -237,7 +237,13 @@ def ejecutar_pipeline(posts, meta, config_grupo, estado):
             p["categoria_id"] = _detectar_cat_mascota(p.get("texto_limpio", ""))
             p["nombre"] = p.get("autor", "")
             p["descripcion"] = p.get("texto_limpio", "")
-            p["titulo"] = generar_titulo_mascota(p, p.get("categoria_id", 11))
+            titulo_mascota = generar_titulo_mascota(p, p.get("categoria_id", 11))
+            if not titulo_mascota:
+                # Post descartado: actualización de cierre o texto demasiado vago
+                p["_descartado"] = "mascota_sin_info_util"
+                descartados.append(p)
+                continue
+            p["titulo"] = titulo_mascota
             resultados["mascotas"].append(p)
             aprobados.append(p)
             continue
