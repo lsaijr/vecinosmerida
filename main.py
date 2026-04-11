@@ -271,3 +271,248 @@ def descargar(nombre: str):
 
 app.mount("/static", StaticFiles(directory="static"), name="static")
 app.mount("/", StaticFiles(directory="static", html=True), name="root")
+# ─────────────────────────────────────────────────────────────────────────────
+# ENDPOINTS PARA JSON LIMPIO (pre-clasificado por Claude)
+# Agregar estos endpoints al main.py existente
+# ─────────────────────────────────────────────────────────────────────────────
+# Imports adicionales necesarios (ya deben estar en main.py):
+# from fastapi import UploadFile, File, Request
+# from db import buscar_grupo, registrar_grupo, obtener_colonias,
+#               insertar_negocio, insertar_alerta, upsert_autor_completo,
+#               registrar_actividad, actualizar_grupo_stats
+# from cloudinary_service import subir_imagen_cloudinary  (o el nombre correcto)
+
+_estado_limpio = {
+    "paso": "esperando",
+    "progreso": 0,
+    "total": 0,
+    "procesados": 0,
+    "nuevos": 0,
+    "duplicados": 0,
+    "errores": [],
+    "error_fatal": None,
+    "listo": False,
+}
+_lock_limpio = threading.Lock()
+
+
+@app.post("/analizar-limpio")
+async def analizar_limpio(file: UploadFile = File(...)):
+    """
+    Paso 1: Recibe el JSON limpio, identifica el grupo.
+    Si el grupo ya está registrado → retorna config guardada.
+    Si no → retorna sugerencias para que el usuario configure.
+    """
+    contenido = await file.read()
+    try:
+        data = json.loads(contenido)
+    except Exception:
+        return JSONResponse({"error": "JSON inválido"}, status_code=400)
+
+    meta = data.get("meta", {})
+    posts = data.get("posts", [])
+    group_id = meta.get("group_id", "")
+    group_name = meta.get("group_name", "Grupo sin nombre")
+
+    if not posts:
+        return JSONResponse({"error": "El JSON no contiene posts"}, status_code=400)
+
+    # Guardar en estado para uso posterior
+    _estado_limpio["_posts_temp"] = posts
+    _estado_limpio["_meta_temp"] = meta
+    _estado_limpio["listo"] = False
+
+    grupo_registrado = buscar_grupo(group_id)
+    if grupo_registrado:
+        return {
+            "conocido": True,
+            "group_id": group_id,
+            "group_name": group_name,
+            "tipo": grupo_registrado["tipo"],
+            "colonia_ids": grupo_registrado.get("colonia_ids", []),
+            "total_posts": len(posts),
+        }
+
+    # Grupo nuevo: sugerir colonia y tipo
+    from utils import match_colonias, detectar_tipo_por_nombre
+    resultado_match, candidatas = match_colonias(group_name)
+    tipo_sugerido = detectar_tipo_por_nombre(group_name) or "mascotas"
+    todas_colonias = obtener_colonias()
+
+    return {
+        "conocido": False,
+        "group_id": group_id,
+        "group_name": group_name,
+        "total_posts": len(posts),
+        "tipo_sugerido": tipo_sugerido,
+        "match_colonias": resultado_match,
+        "candidatas": candidatas,
+        "todas_colonias": todas_colonias,
+    }
+
+
+@app.post("/procesar-limpio")
+async def procesar_limpio(request: Request):
+    """
+    Paso 2: Procesa el JSON limpio.
+    - Registra grupo si es nuevo
+    - Sube imágenes a Cloudinary
+    - Inserta en DB directamente (sin IA, sin filtros)
+    """
+    global _estado_limpio
+
+    if _lock_limpio.locked():
+        return JSONResponse(
+            {"error": "Ya hay un proceso en curso."},
+            status_code=409
+        )
+
+    body = await request.json()
+    posts = _estado_limpio.get("_posts_temp", [])
+    meta  = _estado_limpio.get("_meta_temp", {})
+
+    if not posts:
+        return JSONResponse(
+            {"error": "No hay posts cargados. Sube el archivo primero."},
+            status_code=400
+        )
+
+    config_grupo = {
+        "tipo": body.get("tipo", "mascotas"),
+        "colonia_ids": body.get("colonia_ids", []),
+        "colonia_nombres": body.get("colonia_nombres", ["General"]),
+    }
+
+    # Registrar grupo si es nuevo o si el usuario pidió guardarlo
+    if body.get("guardar_grupo", False):
+        registrar_grupo(
+            group_id=meta.get("group_id"),
+            nombre=meta.get("group_name"),
+            tipo=config_grupo["tipo"],
+            colonia_ids=config_grupo["colonia_ids"],
+            notas=body.get("notas", ""),
+        )
+
+    _estado_limpio.update({
+        "paso": "Iniciando",
+        "progreso": 0,
+        "total": len(posts),
+        "procesados": 0,
+        "nuevos": 0,
+        "duplicados": 0,
+        "errores": [],
+        "error_fatal": None,
+        "listo": False,
+        "inicio_ts": time.time(),
+    })
+
+    def run():
+        global _estado_limpio
+        _lock_limpio.acquire()
+        try:
+            from cloudinary_service import subir_imagenes
+            from db import (
+                insertar_negocio, insertar_alerta,
+                upsert_autor_completo, registrar_actividad,
+                actualizar_grupo_stats,
+            )
+
+            colonia_id  = (config_grupo["colonia_ids"] or [None])[0]
+            group_id    = meta.get("group_id", "")
+            group_name  = meta.get("group_name", "")
+            fecha       = meta.get("fecha_captura")
+            total       = len(posts)
+
+            for i, p in enumerate(posts):
+                _estado_limpio["paso"] = f"Procesando post {i+1} de {total}"
+                _estado_limpio["progreso"] = int((i / total) * 90)
+                _estado_limpio["procesados"] = i + 1
+
+                try:
+                    # 1. Subir imágenes a Cloudinary
+                    res_imgs, ok, fail = subir_imagenes(p, meta=meta, config_grupo=config_grupo)
+                    if res_imgs:
+                        p["imagenes_cloudinary"] = res_imgs
+
+                    # 2. Campos requeridos para inserción
+                    p["fecha_captura"]  = fecha
+                    p["tipo"]           = p.get("tipo", "mascota")
+                    p["categoria_id"]   = p.get("categoria_id", 11)
+                    p["descripcion"]    = p.get("texto", "")
+                    p["nombre"]         = p.get("autor", "")
+
+                    # 3. Upsert autor
+                    autor_id_fb = p.get("autor_id")
+                    if autor_id_fb:
+                        autor_db_id = upsert_autor_completo(autor_id_fb, p.get("autor", ""))
+                        p["_autor_db_id"] = autor_db_id
+                    else:
+                        autor_db_id = None
+
+                    # 4. Insertar en DB según tipo
+                    tipo = p.get("tipo", "mascota")
+                    if tipo in ("mascota", "negocio"):
+                        _, st = insertar_negocio(p, colonia_id)
+                    elif tipo == "alerta":
+                        _, st = insertar_alerta(p, colonia_id)
+                    else:
+                        _, st = insertar_negocio(p, colonia_id)  # fallback
+
+                    if st == "nuevo":
+                        _estado_limpio["nuevos"] += 1
+                    else:
+                        _estado_limpio["duplicados"] += 1
+
+                    # 5. Registrar actividad del autor
+                    if autor_id_fb and autor_db_id:
+                        try:
+                            registrar_actividad(
+                                autor_db_id, group_id, group_name,
+                                tipo, p.get("fbid_post"), fecha
+                            )
+                        except Exception:
+                            pass
+
+                except Exception as e:
+                    _estado_limpio["errores"].append({
+                        "autor": p.get("autor", ""),
+                        "error": str(e)[:150],
+                    })
+
+            # Actualizar stats del grupo
+            try:
+                actualizar_grupo_stats(group_id, total)
+            except Exception:
+                pass
+
+            _estado_limpio["paso"] = "Completado"
+            _estado_limpio["progreso"] = 100
+            _estado_limpio["listo"] = True
+
+        except Exception as e:
+            _estado_limpio["paso"] = "Error"
+            _estado_limpio["error_fatal"] = str(e)
+        finally:
+            _lock_limpio.release()
+
+    threading.Thread(target=run, daemon=True).start()
+    return {"status": "procesando"}
+
+
+@app.get("/status-limpio")
+def status_limpio():
+    inicio_ts = _estado_limpio.get("inicio_ts")
+    elapsed = int(time.time() - inicio_ts) if inicio_ts else 0
+    return {
+        "paso":        _estado_limpio.get("paso"),
+        "progreso":    _estado_limpio.get("progreso", 0),
+        "total":       _estado_limpio.get("total", 0),
+        "procesados":  _estado_limpio.get("procesados", 0),
+        "nuevos":      _estado_limpio.get("nuevos", 0),
+        "duplicados":  _estado_limpio.get("duplicados", 0),
+        "errores":     _estado_limpio.get("errores", []),
+        "error_fatal": _estado_limpio.get("error_fatal"),
+        "listo":       _estado_limpio.get("listo", False),
+        "ocupado":     _lock_limpio.locked(),
+        "elapsed":     elapsed,
+    }
