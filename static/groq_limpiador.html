@@ -468,6 +468,15 @@
       </div>
     </div>
 
+    <!-- Stats Bloque 1 -->
+    <div id="b1stats" class="hidden" style="margin:1rem 0;background:var(--bg);border:1px solid var(--border);border-radius:10px;padding:1rem">
+      <div style="font-size:.75rem;color:var(--muted);font-family:'Space Mono',monospace;letter-spacing:.05em;margin-bottom:.75rem">
+        🧹 BLOQUE 1 — FILTRO PREVIO APLICADO
+      </div>
+      <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:.5rem;margin-bottom:.75rem" id="b1grid"></div>
+      <div id="b1msg" style="font-size:.78rem;color:var(--success);font-family:'Space Mono',monospace"></div>
+    </div>
+
     <div class="input-group" style="margin-top:1.25rem">
       <label>Selecciona los modelos a probar</label>
       <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:.5rem;margin-top:.5rem">
@@ -765,6 +774,8 @@ document.getElementById('fileInput').addEventListener('change', function(e) {
       document.getElementById('fileName').classList.remove('hidden');
       checkReady();
       log(`📂 Archivo cargado: ${file.name} (${rawData.posts?.length || 0} posts)`, 'info');
+      // Correr bloque 1 preview
+      runBloque1Preview();
     } catch(err) {
       log(`❌ JSON inválido: ${err.message}`, 'err');
     }
@@ -790,6 +801,48 @@ document.getElementById('fileDrop').addEventListener('drop', (e) => {
 });
 
 
+
+async function runBloque1Preview() {
+  const b1 = document.getElementById('b1stats');
+  const grid = document.getElementById('b1grid');
+  const msg = document.getElementById('b1msg');
+  b1.classList.remove('hidden');
+  grid.innerHTML = '<div style="color:var(--muted);font-size:.8rem;font-family:Space Mono,monospace">Analizando...</div>';
+
+  try {
+    const resp = await fetch('/bloque1-preview', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({json_data: rawData})
+    });
+    const data = await resp.json();
+    if (data.error) throw new Error(data.error);
+
+    const s = data.stats;
+    const items = [
+      {label: 'Sin imagen',    val: s.sin_imagen,     color: 'var(--error)'},
+      {label: 'Autor fantasma',val: s.autor_fantasma,  color: 'var(--error)'},
+      {label: 'Token basura',  val: s.token_basura,    color: 'var(--error)'},
+      {label: 'Texto corto',   val: s.texto_corto,     color: 'var(--muted)'},
+      {label: 'Duplicados',    val: s.duplicados,      color: 'var(--accent3)'},
+      {label: 'Posts finales', val: data.total_final,  color: 'var(--success)'},
+    ];
+
+    grid.innerHTML = items.map(i => `
+      <div style="background:var(--surface);border-radius:8px;padding:.5rem .75rem;text-align:center">
+        <div style="font-size:1.1rem;font-weight:700;color:${i.color};font-family:'Space Mono',monospace">${i.val}</div>
+        <div style="font-size:.65rem;color:var(--muted);text-transform:uppercase;letter-spacing:.05em">${i.label}</div>
+      </div>`).join('');
+
+    const reduccion = data.total_original - data.total_final;
+    msg.textContent = `✓ ${data.total_original} → ${data.total_final} posts (${reduccion} eliminados antes de enviar a Groq)`;
+    log(`🧹 Bloque 1: ${data.total_original}→${data.total_final} posts (${reduccion} eliminados)`, 'ok');
+
+  } catch(e) {
+    grid.innerHTML = '';
+    msg.textContent = `⚠ Bloque 1 no disponible: ${e.message}`;
+  }
+}
 
 function checkReady() {
   document.getElementById('btnStart').disabled = !rawData;
@@ -844,13 +897,29 @@ function parseResult(responseJson) {
   const content = responseJson.choices[0].message.content;
   const usage = responseJson.usage || {};
   let parsed;
+  let clean = content.trim();
+
+  // Quitar bloques markdown ```json ... ``` o ``` ... ```
+  clean = clean.replace(/^```(?:json)?\s*/i, '').replace(/\s*```\s*$/i, '').trim();
+
+  // Quitar texto antes del primer { o [
+  const firstBrace = clean.indexOf('{');
+  const firstBracket = clean.indexOf('[');
+  let start = -1;
+  if (firstBrace >= 0 && (firstBracket < 0 || firstBrace < firstBracket)) start = firstBrace;
+  else if (firstBracket >= 0) start = firstBracket;
+  if (start > 0) clean = clean.slice(start);
+
+  // Quitar texto después del último } o ]
+  const lastBrace = clean.lastIndexOf('}');
+  const lastBracket = clean.lastIndexOf(']');
+  const end = Math.max(lastBrace, lastBracket);
+  if (end >= 0 && end < clean.length - 1) clean = clean.slice(0, end + 1);
+
   try {
-    parsed = JSON.parse(content);
+    parsed = JSON.parse(clean);
   } catch(e) {
-    // intentar extraer JSON del texto
-    const match = content.match(/\{[\s\S]+\}/);
-    if (match) parsed = JSON.parse(match[0]);
-    else throw new Error('No se pudo parsear el JSON de respuesta');
+    throw new Error('No se pudo parsear el JSON de respuesta');
   }
   return { data: parsed, usage };
 }
