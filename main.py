@@ -626,7 +626,7 @@ FORMATO DE SALIDA:
             {"role": "user", "content": f"Aquí está el JSON de Facebook para limpiar:\n\n{json.dumps(json_data, ensure_ascii=False)}"}
         ],
         "temperature": 0.1,
-        "max_tokens": 8000 if model.startswith("meta-llama/llama-4") else 32000
+        "max_tokens": 6000 if model.startswith("meta-llama/llama-4") else 32000
     }
 
     try:
