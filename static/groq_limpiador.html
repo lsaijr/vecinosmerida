@@ -597,9 +597,16 @@ CAMPOS A AGREGAR a cada post válido:
 - fbid_post: extraer de url_post si tiene /posts/XXXXXXXXX/, si no: "syn_" + 18 chars únicos
 - repeticiones: número de veces publicado (mínimo 1)
 
+CAMPOS A PRESERVAR — si el post ya tiene estos campos, conservarlos exactamente:
+- pre_tipo: clasificación sugerida por keywords (negocio/noticia/alerta/mascota/ambiguo)
+- pre_score: nivel de certeza (1, 2 o 3)
+- noticia_permitida: true/false según longitud del texto
+- tipos_validos: array de tipos que puede tomar este post
+
 FORMATO DE SALIDA:
 - Mismo JSON de entrada, solo posts válidos, texto normalizado
 - Campos fbid_post y repeticiones agregados
+- Campos pre_tipo, pre_score, noticia_permitida, tipos_validos preservados si existen
 - meta.total_posts actualizado
 - NUNCA uses "..." en arrays de imagenes o videos — copia los arrays completos`;
 
