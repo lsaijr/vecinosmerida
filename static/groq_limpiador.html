@@ -692,6 +692,94 @@
     </div>
   </div>
 
+  </div><!-- /tab-cleaner -->
+
+  <!-- Tab 2: Clasificador -->
+  <div id="tab-classifier" class="tab-pane">
+
+    <div class="card active" id="cardClassConfig">
+      <div class="card-header">
+        <div class="step-num">1</div>
+        <div class="card-title">Configuración</div>
+      </div>
+
+      <div class="input-group">
+        <label>Groq API Key</label>
+        <input type="password" id="classApiKey" placeholder="gsk_..." />
+      </div>
+
+      <div class="input-group" style="margin-top:1rem">
+        <label>JSON limpio (output del Limpiador)</label>
+        <div class="file-drop" id="classFileDrop">
+          <input type="file" id="classFileInput" accept=".json" style="position:absolute;inset:0;opacity:0;cursor:pointer" />
+          <div class="file-icon">📂</div>
+          <div style="color:var(--muted);font-size:.85rem">Arrastra el JSON limpio del paso 1</div>
+          <div class="file-name hidden" id="classFileName"></div>
+        </div>
+      </div>
+
+      <div class="input-group" style="margin-top:1.25rem">
+        <label>Modelos a comparar</label>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:.5rem;margin-top:.5rem">
+
+          <label class="model-check" style="--mc:var(--model3)">
+            <input type="checkbox" class="cmchk" value="gpt20b" checked>
+            <div class="mchk-card">
+              <div class="mchk-badge" style="color:var(--model3)">💳 PAGO</div>
+              <div class="mchk-name">GPT OSS 20B</div>
+              <div class="mchk-price">$0.075/$0.30</div>
+            </div>
+          </label>
+
+          <label class="model-check" style="--mc:var(--model1)">
+            <input type="checkbox" class="cmchk" value="llama70b_pago" checked>
+            <div class="mchk-card">
+              <div class="mchk-badge" style="color:var(--model1)">💳 PAGO</div>
+              <div class="mchk-name">Llama 70B PAGO</div>
+              <div class="mchk-price">$0.59/$0.79</div>
+            </div>
+          </label>
+
+          <label class="model-check" style="--mc:#10b981">
+            <input type="checkbox" class="cmchk" value="llama70b_free">
+            <div class="mchk-card">
+              <div class="mchk-badge" style="color:#10b981">🆓 GRATIS</div>
+              <div class="mchk-name">Llama 70B FREE</div>
+              <div class="mchk-price">chunk 20 · pausa 15s</div>
+            </div>
+          </label>
+
+          <label class="model-check" style="--mc:var(--model2)">
+            <input type="checkbox" class="cmchk" value="llama8b">
+            <div class="mchk-card">
+              <div class="mchk-badge" style="color:var(--model2)">⚡ RÁPIDO</div>
+              <div class="mchk-name">Llama 3.1 8B</div>
+              <div class="mchk-price">$0.05/$0.08</div>
+            </div>
+          </label>
+
+        </div>
+      </div>
+
+      <button class="btn btn-primary" id="btnClassStart" disabled onclick="startClassifier()">
+        Clasificar con modelos seleccionados →
+      </button>
+    </div>
+
+    <div class="card hidden" id="cardClassResults">
+      <div class="card-header">
+        <div class="step-num">2</div>
+        <div class="card-title">Clasificando posts</div>
+      </div>
+      <div id="classModelCards" style="display:grid;grid-template-columns:1fr 1fr;gap:1rem;margin-bottom:1rem"></div>
+      <div>
+        <label>Log</label>
+        <div class="log" id="classLogBox">Esperando inicio...<br></div>
+      </div>
+    </div>
+
+  </div><!-- /tab-classifier -->
+
 </div>
 
 <script>
@@ -1114,8 +1202,6 @@ function downloadResult(n) {
 }
 </script>
 
-<!-- ═══════════════════ TAB 2: CLASIFICADOR ═══════════════════ -->
-<script>
 // ─── Tab switching ───────────────────────────────────────────
 function switchTab(tab) {
   document.querySelectorAll('.tab-btn').forEach((b,i) => {
