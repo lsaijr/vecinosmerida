@@ -604,7 +604,7 @@ FORMATO DE SALIDA:
 - NUNCA uses "..." en arrays de imagenes o videos — copia los arrays completos`;
 
 const PAID_MODELS = [
-  { id: 1, name: 'openai/gpt-oss-20b', label: 'GPT OSS 20B', priceIn: 0.075, priceOut: 0.30, chunk: 15, pause: 2000, free: false },
+  { id: 1, name: 'openai/gpt-oss-20b', label: 'GPT OSS 20B', priceIn: 0.075, priceOut: 0.30, chunk: 5, pause: 2000, free: false },
 ];
 
 const FREE_MODELS = [];
@@ -737,7 +737,7 @@ async function callGroq(modelName, jsonData, modelLabel) {
   const apiKey = document.getElementById('apiKey')?.value?.trim() || '';
 
   // Llamar directamente a Groq desde el browser — evita timeout de Cloudflare
-  const userPrefix = modelName.includes('qwen') ? '/no_think\n' : '';
+  const userPrefix = (modelName.includes('qwen') || modelName.includes('gpt-oss')) ? '/no_think\n' : '';
 
   const resp = await fetch('https://api.groq.com/openai/v1/chat/completions', {
     method: 'POST',
