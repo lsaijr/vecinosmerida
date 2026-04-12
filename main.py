@@ -691,16 +691,26 @@ FORMATO DE SALIDA:
     # Corre el script de reglas fijas antes de mandar a Groq
     # No modifica el prompt ni las instrucciones a Groq
     try:
-        from limpiar_json import limpiar_post, detectar_duplicados
+        from limpiar_json import limpiar_post, detectar_duplicados, pre_clasificar, puede_ser_noticia
+        TIPOS_CON_NOTICIA = ['negocio', 'noticia', 'alerta', 'mascota', 'ignorar']
+        TIPOS_BASE        = ['negocio', 'alerta', 'mascota', 'ignorar']
         posts_raw = json_data.get("posts", [])
         posts_pre = []
         for p in posts_raw:
             p_limpio = limpiar_post(p)
             if p_limpio:
+                texto = p_limpio.get('texto', '')
+                pre_tipo, pre_score = pre_clasificar(texto)
+                noticia_ok = puede_ser_noticia(texto)
+                p_limpio['pre_tipo']          = pre_tipo
+                p_limpio['pre_score']         = pre_score
+                p_limpio['noticia_permitida'] = noticia_ok
+                p_limpio['tipos_validos']     = TIPOS_CON_NOTICIA if noticia_ok else TIPOS_BASE
                 posts_pre.append(p_limpio)
         posts_pre = detectar_duplicados(posts_pre)
         json_data = {**json_data, "posts": posts_pre,
-                     "meta": {**json_data.get("meta", {}), "total_posts": len(posts_pre)}}
+                     "meta": {**json_data.get("meta", {}), "total_posts": len(posts_pre),
+                              "procesado_bloque1": True}}
     except Exception as e:
         # Si falla el bloque 1, continuar con el JSON original
         pass
