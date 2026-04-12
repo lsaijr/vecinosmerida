@@ -1200,9 +1200,7 @@ function downloadResult(n) {
   a.download = `groq_${MODELS[n-1].name.replace(/[^a-z0-9]/g,'-')}_${Date.now()}.json`;
   a.click();
 }
-</script>
 
-<script>
 // ─── Tab switching ───────────────────────────────────────────
 function switchTab(tab) {
   document.querySelectorAll('.tab-btn').forEach((b,i) => {
@@ -1211,6 +1209,9 @@ function switchTab(tab) {
   document.querySelectorAll('.tab-pane').forEach(p => p.classList.remove('active'));
   document.getElementById('tab-' + tab).classList.add('active');
 }
+</script>
+
+<script>
 
 // ─── Classifier models ───────────────────────────────────────
 const CLASS_MODELS = [
