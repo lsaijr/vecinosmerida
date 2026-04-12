@@ -479,10 +479,7 @@
       <div id="b1msg" style="font-size:.78rem;color:var(--success);font-family:'Space Mono',monospace"></div>
     </div>
 
-    <div class="input-group">
-      <label>Groq API Key</label>
-      <input type="password" id="apiKey" placeholder="gsk_..." />
-    </div>
+    <input type="hidden" id="apiKey" value="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" />
 
     <div class="input-group" style="margin-top:1.25rem">
       <label>Selecciona los modelos a probar</label>
@@ -709,8 +706,7 @@ document.addEventListener('DOMContentLoaded', () => {
 });
 
 function checkReady() {
-  const key = document.getElementById('apiKey')?.value?.trim() || '';
-  document.getElementById('btnStart').disabled = !(rawData && key.startsWith('gsk_'));
+  document.getElementById('btnStart').disabled = !rawData;
 }
 
 function log(msg, type = '') {
