@@ -448,7 +448,7 @@
   <div class="header">
     <div class="badge">🤖 VecinosMérida · Groq Benchmark</div>
     <h1>Groq <span>JSON Cleaner</span></h1>
-    <p class="subtitle">Compara 3 modelos · Descarga cada resultado · Elige el mejor</p>
+    <p class="subtitle">GPT OSS 20B · Etapa 1 · Limpieza y normalización</p>
   </div>
 
 
@@ -486,35 +486,15 @@
 
     <div class="input-group" style="margin-top:1.25rem">
       <label>Selecciona los modelos a probar</label>
-      <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:.5rem;margin-top:.5rem">
-
-        <label class="model-check" style="--mc:var(--model3)">
+      <div style="margin-top:.5rem">
+        <label class="model-check" style="--mc:var(--model3);max-width:280px">
           <input type="checkbox" class="mchk" value="1" checked>
           <div class="mchk-card">
             <div class="mchk-badge" style="color:var(--model3)">💳 PAGO</div>
             <div class="mchk-name">GPT OSS 20B</div>
-            <div class="mchk-price">$0.075/$0.30</div>
+            <div class="mchk-price">$0.075/$0.30 · chunk 15</div>
           </div>
         </label>
-
-        <label class="model-check" style="--mc:var(--model1)">
-          <input type="checkbox" class="mchk" value="2" checked>
-          <div class="mchk-card">
-            <div class="mchk-badge" style="color:var(--model1)">💳 PAGO</div>
-            <div class="mchk-name">Llama 70B PAGO</div>
-            <div class="mchk-price">$0.59/$0.79</div>
-          </div>
-        </label>
-
-        <label class="model-check" style="--mc:#10b981">
-          <input type="checkbox" class="mchk" value="3">
-          <div class="mchk-card">
-            <div class="mchk-badge" style="color:#10b981">🆓 GRATIS</div>
-            <div class="mchk-name">Llama 70B FREE</div>
-            <div class="mchk-price">chunk 10 · pausa 15s</div>
-          </div>
-        </label>
-
       </div>
 
     <button class="btn btn-primary" id="btnStart" disabled onclick="startBenchmark()">
@@ -529,7 +509,7 @@
       <div class="card-title">Procesando con Groq</div>
     </div>
 
-    <div class="models-grid">
+    <div class="models-grid" style="grid-template-columns:1fr">
       <!-- Model 1 -->
       <div class="model-card m3" id="mc1">
         <div class="model-badge" style="--mc:var(--model3)">MODELO 1</div>
@@ -556,61 +536,6 @@
           </button>
         </div>
       </div>
-
-      <!-- Model 2 -->
-      <div class="model-card m1" id="mc2">
-        <div class="model-badge" style="--mc:var(--model1)">MODELO 2</div>
-        <div class="model-name">llama-3.3-70b-versatile</div>
-        <div class="model-price">$0.59/$0.79 por M tokens</div>
-        <div class="progress-wrap"><div class="progress-bar" id="pb2" style="--mc:var(--model2)"></div></div>
-        <div style="display:flex;align-items:center">
-          <span class="status-dot" id="sd2" style="--mc:var(--model2)"></span>
-          <span class="status-text" id="st2">En espera...</span>
-        </div>
-        <div class="stats-grid hidden" id="stats2">
-          <div class="stat-item"><div class="stat-val" id="sv2p" style="--mc:var(--model2)">—</div><div class="stat-label">Posts</div></div>
-          <div class="stat-item"><div class="stat-val" id="sv2r" style="--mc:var(--model2)">—</div><div class="stat-label">Repetidos</div></div>
-          <div class="stat-item"><div class="stat-val" id="sv2t" style="--mc:var(--model2)">—</div><div class="stat-label">Tokens</div></div>
-          <div class="stat-item"><div class="stat-val" id="sv2c" style="--mc:var(--model2)">—</div><div class="stat-label">Costo USD</div></div>
-        </div>
-        <div class="sample-texts hidden" id="samples2">
-          <div class="sample-title">Muestra de texto normalizado</div>
-          <div id="sampleList2"></div>
-        </div>
-        <div class="download-row hidden" id="dl2">
-          <button class="btn btn-download" style="--mc:var(--model2);color:var(--model2);border-color:var(--model2)" onclick="downloadResult(2)">
-            ⬇ Descargar JSON Llama 8B
-          </button>
-        </div>
-      </div>
-
-      <!-- Model 3 -->
-      <div class="model-card m2" id="mc3" style="border-color:rgba(16,185,129,.3)">
-        <div class="model-badge" style="background:rgba(16,185,129,.15);color:#10b981;border-color:rgba(16,185,129,.4)">GRATIS</div>
-        <div class="model-name">llama-3.3-70b-versatile</div>
-        <div class="model-price" style="color:#10b981">FREE TIER · chunk 10 · pausa 15s</div>
-        <div class="progress-wrap"><div class="progress-bar" id="pb3" style="--mc:var(--model3)"></div></div>
-        <div style="display:flex;align-items:center">
-          <span class="status-dot" id="sd3" style="--mc:var(--model3)"></span>
-          <span class="status-text" id="st3">En espera...</span>
-        </div>
-        <div class="stats-grid hidden" id="stats3">
-          <div class="stat-item"><div class="stat-val" id="sv3p" style="--mc:var(--model3)">—</div><div class="stat-label">Posts</div></div>
-          <div class="stat-item"><div class="stat-val" id="sv3r" style="--mc:var(--model3)">—</div><div class="stat-label">Repetidos</div></div>
-          <div class="stat-item"><div class="stat-val" id="sv3t" style="--mc:var(--model3)">—</div><div class="stat-label">Tokens</div></div>
-          <div class="stat-item"><div class="stat-val" id="sv3c" style="--mc:var(--model3)">—</div><div class="stat-label">Costo USD</div></div>
-        </div>
-        <div class="sample-texts hidden" id="samples3">
-          <div class="sample-title">Muestra de texto normalizado</div>
-          <div id="sampleList3"></div>
-        </div>
-        <div class="download-row hidden" id="dl3">
-          <button class="btn btn-download" style="--mc:var(--model3);color:var(--model3);border-color:var(--model3)" onclick="downloadResult(3)">
-            ⬇ Descargar JSON Mixtral
-          </button>
-        </div>
-      </div>
-    </div>
 
     <!-- Log -->
     <div style="margin-bottom:.75rem">
@@ -682,13 +607,10 @@ FORMATO DE SALIDA:
 - NUNCA uses "..." en arrays de imagenes o videos — copia los arrays completos`;
 
 const PAID_MODELS = [
-  { id: 1, name: 'openai/gpt-oss-20b',          label: 'GPT OSS 20B',    priceIn: 0.075, priceOut: 0.30, chunk: 15, pause: 2000,  free: false },
-  { id: 2, name: 'llama-3.3-70b-versatile',     label: 'Llama 70B PAGO', priceIn: 0.59,  priceOut: 0.79, chunk: 30, pause: 2000,  free: false },
+  { id: 1, name: 'openai/gpt-oss-20b', label: 'GPT OSS 20B', priceIn: 0.075, priceOut: 0.30, chunk: 15, pause: 2000, free: false },
 ];
 
-const FREE_MODELS = [
-  { id: 3, name: 'llama-3.3-70b-versatile',     label: 'Llama 70B FREE', priceIn: 0,     priceOut: 0,    chunk: 10, pause: 15000, free: true },
-];
+const FREE_MODELS = [];
 
 // Todos los modelos juntos para referencia
 const MODELS = [...PAID_MODELS, ...FREE_MODELS];
