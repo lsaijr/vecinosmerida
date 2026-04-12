@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Groq JSON Cleaner — VecinosMérida</title>
+<title>Groq Tools — VecinosMérida</title>
 <style>
   @import url('https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=Syne:wght@400;600;800&display=swap');
 
@@ -426,6 +426,49 @@
     font-family: 'Space Mono', monospace;
   }
 
+  /* Tabs */
+  .tabs {
+    display: flex;
+    gap: .5rem;
+    margin-bottom: 2rem;
+    border-bottom: 1px solid var(--border);
+    padding-bottom: 0;
+  }
+  .tab-btn {
+    background: none;
+    border: none;
+    border-bottom: 2px solid transparent;
+    color: var(--muted);
+    font-family: 'Syne', sans-serif;
+    font-size: .9rem;
+    font-weight: 600;
+    padding: .6rem 1.25rem;
+    cursor: pointer;
+    transition: all .2s;
+    margin-bottom: -1px;
+  }
+  .tab-btn:hover { color: var(--text); }
+  .tab-btn.active { color: var(--accent); border-bottom-color: var(--accent); }
+  .tab-pane { display: none; }
+  .tab-pane.active { display: block; }
+
+  /* Tipo badges */
+  .tipo-badge {
+    display: inline-block;
+    border-radius: 4px;
+    padding: .15rem .5rem;
+    font-size: .7rem;
+    font-family: 'Space Mono', monospace;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: .05em;
+  }
+  .tipo-negocio  { background: rgba(124,58,237,.2);  color: #a78bfa; }
+  .tipo-noticia  { background: rgba(6,182,212,.2);   color: #67e8f9; }
+  .tipo-alerta   { background: rgba(245,158,11,.2);  color: #fcd34d; }
+  .tipo-mascota  { background: rgba(16,185,129,.2);  color: #6ee7b7; }
+  .tipo-ignorar  { background: rgba(100,116,139,.2); color: #94a3b8; }
+
   .hidden { display: none !important; }
 
   /* Spinner */
@@ -446,10 +489,19 @@
 
   <!-- Header -->
   <div class="header">
-    <div class="badge">🤖 VecinosMérida · Groq Benchmark</div>
-    <h1>Groq <span>JSON Cleaner</span></h1>
-    <p class="subtitle">Compara 3 modelos · Descarga cada resultado · Elige el mejor</p>
+    <div class="badge">🤖 VecinosMérida · Groq Tools</div>
+    <h1>Groq <span>Tools</span></h1>
+    <p class="subtitle">Pipeline de limpieza y clasificación con IA</p>
   </div>
+
+  <!-- Tabs -->
+  <div class="tabs">
+    <button class="tab-btn active" onclick="switchTab('cleaner')">🧹 Limpiador</button>
+    <button class="tab-btn" onclick="switchTab('classifier')">🏷️ Clasificador</button>
+  </div>
+
+  <!-- Tab 1: Limpiador -->
+  <div id="tab-cleaner" class="tab-pane active">
 
   <!-- Step 1: Config -->
   <div class="card active" id="cardConfig">
@@ -1058,6 +1110,227 @@ function downloadResult(n) {
   const a = document.createElement('a');
   a.href = URL.createObjectURL(blob);
   a.download = `groq_${MODELS[n-1].name.replace(/[^a-z0-9]/g,'-')}_${Date.now()}.json`;
+  a.click();
+}
+</script>
+
+<!-- ═══════════════════ TAB 2: CLASIFICADOR ═══════════════════ -->
+<script>
+// ─── Tab switching ───────────────────────────────────────────
+function switchTab(tab) {
+  document.querySelectorAll('.tab-btn').forEach((b,i) => {
+    b.classList.toggle('active', (i===0 && tab==='cleaner') || (i===1 && tab==='classifier'));
+  });
+  document.querySelectorAll('.tab-pane').forEach(p => p.classList.remove('active'));
+  document.getElementById('tab-' + tab).classList.add('active');
+}
+
+// ─── Classifier models ───────────────────────────────────────
+const CLASS_MODELS = [
+  { id: 'gpt20b',       name: 'openai/gpt-oss-20b',        label: 'GPT OSS 20B',    chunk: 40, pause: 1000, maxTokens: 4000 },
+  { id: 'llama70b_pago',name: 'llama-3.3-70b-versatile',   label: 'Llama 70B PAGO', chunk: 40, pause: 1000, maxTokens: 4000 },
+  { id: 'llama70b_free',name: 'llama-3.3-70b-versatile',   label: 'Llama 70B FREE', chunk: 20, pause: 15000, maxTokens: 4000 },
+  { id: 'llama8b',      name: 'llama-3.1-8b-instant',      label: 'Llama 3.1 8B',   chunk: 40, pause: 1000, maxTokens: 4000 },
+];
+
+const CLASS_PROMPT = `Eres un clasificador de posts de Facebook para VecinosMérida.com (Mérida, Yucatán).
+
+Para cada post del array devuelve ÚNICAMENTE un JSON con este formato:
+{"posts": [{"fbid_post": "...", "tipo": "..."}]}
+
+TIPOS VÁLIDOS:
+- "negocio": venta de productos/servicios, ofertas, anuncios, precios, entregas
+- "noticia": eventos, política, cultura, información general (requiere texto extenso)
+- "alerta": incidentes locales, robos, baches, fugas, accidentes, denuncias
+- "mascota": mascotas perdidas, encontradas, en adopción
+- "ignorar": spam, contenido sin valor, posts vacíos, saludos sin información
+
+REGLAS:
+- Si el texto tiene menos de 70 palabras, NO puede ser "noticia"
+- Devuelve SOLO el JSON, sin texto adicional
+- Incluye TODOS los posts del input, uno por uno`;
+
+let classData = null;
+let classResults = {};
+
+// File input
+document.getElementById('classFileInput').addEventListener('change', function(e) {
+  const file = e.target.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = (ev) => {
+    try {
+      classData = JSON.parse(ev.target.result);
+      document.getElementById('classFileName').textContent = `✓ ${file.name} — ${classData.posts?.length || 0} posts`;
+      document.getElementById('classFileName').classList.remove('hidden');
+      checkClassReady();
+      classLog(`📂 ${file.name} cargado — ${classData.posts?.length || 0} posts`, 'info');
+    } catch(e) {
+      classLog(`❌ JSON inválido: ${e.message}`, 'err');
+    }
+  };
+  reader.readAsText(file);
+});
+
+document.getElementById('classFileDrop').addEventListener('dragover', e => { e.preventDefault(); e.currentTarget.classList.add('dragover'); });
+document.getElementById('classFileDrop').addEventListener('dragleave', e => e.currentTarget.classList.remove('dragover'));
+document.getElementById('classFileDrop').addEventListener('drop', e => {
+  e.preventDefault(); e.currentTarget.classList.remove('dragover');
+  const file = e.dataTransfer.files[0];
+  if (file) { document.getElementById('classFileInput').files = e.dataTransfer.files; document.getElementById('classFileInput').dispatchEvent(new Event('change')); }
+});
+
+document.getElementById('classApiKey').addEventListener('input', checkClassReady);
+
+function checkClassReady() {
+  const key = document.getElementById('classApiKey').value.trim();
+  document.getElementById('btnClassStart').disabled = !(classData && key.startsWith('gsk_'));
+}
+
+function classLog(msg, type='') {
+  const box = document.getElementById('classLogBox');
+  const line = document.createElement('div');
+  line.className = type ? `log-${type}` : '';
+  const t = new Date().toLocaleTimeString('es-MX', {hour:'2-digit',minute:'2-digit',second:'2-digit'});
+  line.textContent = `[${t}] ${msg}`;
+  box.appendChild(line);
+  box.scrollTop = box.scrollHeight;
+}
+
+async function callClassifier(modelName, posts, apiKey, maxTokens) {
+  const resp = await fetch('https://api.groq.com/openai/v1/chat/completions', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${apiKey}` },
+    body: JSON.stringify({
+      model: modelName,
+      messages: [
+        { role: 'system', content: CLASS_PROMPT },
+        { role: 'user', content: `Clasifica estos posts:\n${JSON.stringify(posts.map(p => ({fbid_post: p.fbid_post, texto: p.texto || ''})))}` }
+      ],
+      temperature: 0.1,
+      max_tokens: maxTokens
+    })
+  });
+  if (!resp.ok) { const e = await resp.json().catch(()=>{}); throw new Error(e?.error?.message || `HTTP ${resp.status}`); }
+  const data = await resp.json();
+  let content = data.choices[0].message.content.trim();
+  content = content.replace(/^```(?:json)?\s*/i,'').replace(/\s*```\s*$/i,'').trim();
+  const first = content.indexOf('{'); const last = content.lastIndexOf('}');
+  if (first >= 0 && last > first) content = content.slice(first, last+1);
+  return { parsed: JSON.parse(content), usage: data.usage || {} };
+}
+
+async function processClassModel(modelObj, apiKey) {
+  const cardId = 'cmc_' + modelObj.id;
+  const card = document.getElementById(cardId);
+  const allPosts = classData.posts || [];
+  const totalChunks = Math.ceil(allPosts.length / modelObj.chunk);
+  
+  card.querySelector('.status-text').textContent = `Lote 1/${totalChunks}...`;
+  card.querySelector('.status-dot').className = 'status-dot running';
+  classLog(`🚀 ${modelObj.label} — ${allPosts.length} posts en ${totalChunks} lotes`, 'info');
+
+  let allClassified = {};
+  let totalUsage = { prompt_tokens: 0, completion_tokens: 0 };
+
+  try {
+    for (let i = 0; i < totalChunks; i++) {
+      const chunk = allPosts.slice(i * modelObj.chunk, (i+1) * modelObj.chunk);
+      card.querySelector('.status-text').textContent = `Lote ${i+1}/${totalChunks}...`;
+      classLog(`  📦 ${modelObj.label} lote ${i+1}/${totalChunks} (${chunk.length} posts)`, '');
+
+      const { parsed, usage } = await callClassifier(modelObj.name, chunk, apiKey, modelObj.maxTokens);
+      const classified = parsed.posts || [];
+      classified.forEach(p => { allClassified[p.fbid_post] = p.tipo; });
+      totalUsage.prompt_tokens += usage.prompt_tokens || 0;
+      totalUsage.completion_tokens += usage.completion_tokens || 0;
+
+      if (i < totalChunks - 1) {
+        classLog(`  ⏸ Pausa ${modelObj.pause/1000}s...`, '');
+        await new Promise(r => setTimeout(r, modelObj.pause));
+      }
+    }
+
+    // Construir JSON final con campo "tipo"
+    const finalPosts = allPosts.map(p => ({ ...p, tipo: allClassified[p.fbid_post] || 'ignorar' }));
+    const finalData = { ...classData, posts: finalPosts };
+
+    classResults[modelObj.id] = { data: finalData, usage: totalUsage };
+
+    // Contar tipos
+    const tipos = {};
+    finalPosts.forEach(p => { tipos[p.tipo] = (tipos[p.tipo]||0)+1; });
+
+    // Actualizar card
+    const tiposHtml = Object.entries(tipos).sort((a,b)=>b[1]-a[1])
+      .map(([t,n]) => `<span class="tipo-badge tipo-${t}">${t}: ${n}</span>`).join(' ');
+
+    const cost = ((totalUsage.prompt_tokens/1e6 * 0.075) + (totalUsage.completion_tokens/1e6 * 0.30)).toFixed(4);
+    card.querySelector('.card-body').innerHTML = `
+      <div style="margin:.5rem 0">${tiposHtml}</div>
+      <div style="font-size:.75rem;color:var(--muted);font-family:'Space Mono',monospace">
+        ${totalUsage.prompt_tokens + totalUsage.completion_tokens} tokens · $${cost} USD
+      </div>
+      <div class="download-row" style="margin-top:.75rem">
+        <button class="btn btn-download" style="color:var(--success);border-color:var(--success)" 
+          onclick="downloadClassResult('${modelObj.id}', '${modelObj.label}')">
+          ⬇ Descargar JSON ${modelObj.label}
+        </button>
+      </div>`;
+    card.querySelector('.status-dot').className = 'status-dot done-dot';
+    card.querySelector('.status-text').textContent = `✓ Completado`;
+    card.style.borderColor = 'var(--success)';
+    classLog(`✅ ${modelObj.label}: ${finalPosts.length} posts clasificados · $${cost}`, 'ok');
+
+  } catch(err) {
+    card.querySelector('.status-dot').className = 'status-dot error-dot';
+    card.querySelector('.status-text').textContent = `Error: ${err.message}`;
+    card.style.borderColor = 'var(--error)';
+    classLog(`❌ ${modelObj.label}: ${err.message}`, 'err');
+  }
+}
+
+async function startClassifier() {
+  const apiKey = document.getElementById('classApiKey').value.trim();
+  const checkedIds = [...document.querySelectorAll('.cmchk:checked')].map(c => c.value);
+  if (!checkedIds.length) { alert('Selecciona al menos un modelo'); return; }
+
+  const selectedModels = CLASS_MODELS.filter(m => checkedIds.includes(m.id));
+
+  document.getElementById('btnClassStart').disabled = true;
+  document.getElementById('cardClassConfig').classList.remove('active');
+  document.getElementById('cardClassResults').classList.remove('hidden');
+  document.getElementById('cardClassResults').classList.add('active');
+
+  // Crear cards dinámicamente
+  const container = document.getElementById('classModelCards');
+  container.innerHTML = selectedModels.map(m => `
+    <div class="model-card" id="cmc_${m.id}" style="--mc:var(--accent)">
+      <div class="model-badge" style="--mc:var(--accent)">${m.label}</div>
+      <div class="model-name">${m.name}</div>
+      <div style="display:flex;align-items:center;margin:.5rem 0">
+        <span class="status-dot" style="--mc:var(--accent)"></span>
+        <span class="status-text" style="font-size:.78rem;font-family:'Space Mono',monospace;color:var(--muted)">En espera...</span>
+      </div>
+      <div class="card-body"></div>
+    </div>`).join('');
+
+  classLog(`═══ Clasificando ${classData.posts?.length} posts con ${selectedModels.length} modelo(s) ═══`, 'info');
+
+  for (let i = 0; i < selectedModels.length; i++) {
+    await processClassModel(selectedModels[i], apiKey);
+    if (i < selectedModels.length - 1) await new Promise(r => setTimeout(r, 2000));
+  }
+  classLog('═══ Clasificación completada ═══', 'ok');
+}
+
+function downloadClassResult(modelId, label) {
+  const r = classResults[modelId];
+  if (!r) return;
+  const blob = new Blob([JSON.stringify(r.data, null, 2)], { type: 'application/json' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = `clasificado_${label.replace(/[^a-z0-9]/gi,'-')}_${Date.now()}.json`;
   a.click();
 }
 </script>
