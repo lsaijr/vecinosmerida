@@ -1,0 +1,577 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Groq Etapa 2 — Clasificador · VecinosMérida</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=Syne:wght@400;600;800&display=swap');
+
+  :root {
+    --bg: #0a0a0f;
+    --surface: #111118;
+    --border: #1e1e2e;
+    --accent: #7c3aed;
+    --accent2: #06b6d4;
+    --accent3: #f59e0b;
+    --text: #e2e8f0;
+    --muted: #64748b;
+    --success: #10b981;
+    --error: #ef4444;
+    --m1: #7c3aed;
+    --m2: #06b6d4;
+    --m3: #f59e0b;
+    --m4: #10b981;
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'Syne', sans-serif;
+    min-height: 100vh;
+    padding: 2rem 1rem;
+  }
+
+  body::before {
+    content: '';
+    position: fixed;
+    inset: 0;
+    background-image:
+      linear-gradient(rgba(124,58,237,.03) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(124,58,237,.03) 1px, transparent 1px);
+    background-size: 40px 40px;
+    pointer-events: none;
+    z-index: 0;
+  }
+
+  .container { max-width: 960px; margin: 0 auto; position: relative; z-index: 1; }
+
+  .header { text-align: center; margin-bottom: 2.5rem; }
+  .badge {
+    display: inline-block;
+    background: rgba(124,58,237,.15);
+    border: 1px solid rgba(124,58,237,.3);
+    border-radius: 100px;
+    padding: .3rem 1rem;
+    font-size: .75rem;
+    font-family: 'Space Mono', monospace;
+    color: var(--accent);
+    letter-spacing: .08em;
+    text-transform: uppercase;
+    margin-bottom: 1rem;
+  }
+  h1 { font-size: 2.5rem; font-weight: 800; margin-bottom: .5rem; }
+  h1 span { color: var(--accent2); }
+  .subtitle { color: var(--muted); font-family: 'Space Mono', monospace; font-size: .85rem; }
+
+  .card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 16px;
+    padding: 1.5rem;
+    margin-bottom: 1.5rem;
+    transition: border-color .3s;
+  }
+  .card.active { border-color: var(--accent); }
+
+  .card-header { display: flex; align-items: center; gap: .75rem; margin-bottom: 1.25rem; }
+  .step-num {
+    width: 32px; height: 32px;
+    border-radius: 50%;
+    background: var(--accent);
+    display: flex; align-items: center; justify-content: center;
+    font-size: .85rem; font-weight: 700; flex-shrink: 0;
+  }
+  .card-title { font-size: 1.1rem; font-weight: 600; }
+
+  .input-group { margin-bottom: 1rem; }
+  label {
+    display: block;
+    font-size: .8rem;
+    color: var(--muted);
+    letter-spacing: .05em;
+    text-transform: uppercase;
+    margin-bottom: .4rem;
+    font-family: 'Space Mono', monospace;
+  }
+  input[type="text"], input[type="password"] {
+    width: 100%;
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: .6rem .9rem;
+    color: var(--text);
+    font-family: 'Space Mono', monospace;
+    font-size: .85rem;
+    outline: none;
+    transition: border-color .2s;
+  }
+  input[type="text"]:focus, input[type="password"]:focus { border-color: var(--accent); }
+
+  .file-drop {
+    border: 2px dashed var(--border);
+    border-radius: 12px;
+    padding: 2rem;
+    text-align: center;
+    cursor: pointer;
+    transition: all .2s;
+    position: relative;
+  }
+  .file-drop:hover, .file-drop.dragover { border-color: var(--accent); background: rgba(124,58,237,.05); }
+  .file-drop input[type="file"] {
+    position: absolute; inset: 0; opacity: 0; cursor: pointer; width: 100%; height: 100%;
+  }
+  .file-icon { font-size: 2rem; margin-bottom: .5rem; }
+  .file-name { font-size: .8rem; color: var(--success); margin-top: .5rem; font-family: 'Space Mono', monospace; }
+
+  /* Model checkboxes */
+  .model-check { cursor: pointer; display: block; }
+  .model-check input[type="checkbox"] { display: none; }
+  .mchk-card {
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: .75rem;
+    transition: all .2s;
+  }
+  .model-check input:checked + .mchk-card {
+    border-color: var(--mc, var(--accent));
+    background: rgba(124,58,237,.05);
+  }
+  .mchk-badge {
+    font-size: .65rem; font-family: 'Space Mono', monospace;
+    font-weight: 700; text-transform: uppercase;
+    letter-spacing: .08em; margin-bottom: .3rem;
+  }
+  .mchk-name { font-size: .9rem; font-weight: 600; margin-bottom: .2rem; }
+  .mchk-price { font-size: .7rem; color: var(--muted); font-family: 'Space Mono', monospace; }
+
+  .btn {
+    width: 100%;
+    padding: .85rem;
+    border-radius: 10px;
+    border: none;
+    font-family: 'Syne', sans-serif;
+    font-size: .95rem;
+    font-weight: 700;
+    cursor: pointer;
+    transition: all .2s;
+    margin-top: .75rem;
+  }
+  .btn:disabled { opacity: .4; cursor: not-allowed; }
+  .btn-primary { background: var(--accent); color: #fff; }
+  .btn-primary:hover:not(:disabled) { background: #6d28d9; }
+
+  /* Results grid */
+  .results-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 1rem;
+    margin-bottom: 1.5rem;
+  }
+
+  .model-card {
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 1rem;
+    transition: border-color .3s;
+  }
+  .model-badge {
+    display: inline-block;
+    background: rgba(124,58,237,.15);
+    border: 1px solid rgba(124,58,237,.3);
+    border-radius: 6px;
+    padding: .2rem .6rem;
+    font-size: .65rem;
+    font-family: 'Space Mono', monospace;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: .06em;
+    margin-bottom: .4rem;
+  }
+  .model-name { font-size: .85rem; font-family: 'Space Mono', monospace; color: var(--muted); margin-bottom: .75rem; }
+
+  /* Status dot */
+  .status-row { display: flex; align-items: center; gap: .5rem; margin-bottom: .75rem; }
+  .dot {
+    width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0;
+  }
+  .dot-waiting { background: var(--muted); }
+  .dot-running { background: var(--accent3); animation: pulse 1s infinite; }
+  .dot-done    { background: var(--success); }
+  .dot-error   { background: var(--error); }
+  @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.4} }
+  .status-text { font-size: .78rem; font-family: 'Space Mono', monospace; color: var(--muted); }
+
+  /* Tipo badges */
+  .tipos-row { display: flex; flex-wrap: wrap; gap: .3rem; margin: .5rem 0; }
+  .tipo {
+    display: inline-block; border-radius: 4px; padding: .15rem .5rem;
+    font-size: .68rem; font-family: 'Space Mono', monospace;
+    font-weight: 700; text-transform: uppercase; letter-spacing: .05em;
+  }
+  .tipo-negocio { background: rgba(124,58,237,.2);  color: #a78bfa; }
+  .tipo-noticia { background: rgba(6,182,212,.2);   color: #67e8f9; }
+  .tipo-alerta  { background: rgba(245,158,11,.2);  color: #fcd34d; }
+  .tipo-mascota { background: rgba(16,185,129,.2);  color: #6ee7b7; }
+  .tipo-ignorar { background: rgba(100,116,139,.2); color: #94a3b8; }
+
+  .token-info { font-size: .72rem; color: var(--muted); font-family: 'Space Mono', monospace; margin-bottom: .5rem; }
+
+  .btn-download {
+    width: 100%;
+    padding: .6rem;
+    border-radius: 8px;
+    border: 1px solid var(--success);
+    background: rgba(16,185,129,.08);
+    color: var(--success);
+    font-family: 'Syne', sans-serif;
+    font-size: .82rem;
+    font-weight: 700;
+    cursor: pointer;
+    transition: all .2s;
+    margin-top: .5rem;
+  }
+  .btn-download:hover { background: rgba(16,185,129,.18); }
+
+  /* Log */
+  .log {
+    background: #070710;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: .75rem 1rem;
+    font-family: 'Space Mono', monospace;
+    font-size: .72rem;
+    height: 180px;
+    overflow-y: auto;
+    line-height: 1.6;
+  }
+  .log-ok  { color: var(--success); }
+  .log-err { color: var(--error); }
+  .log-info{ color: var(--accent2); }
+
+  .hidden { display: none !important; }
+</style>
+</head>
+<body>
+<div class="container">
+
+  <div class="header">
+    <div class="badge">🏷️ VecinosMérida · Etapa 2</div>
+    <h1>Groq <span>Clasificador</span></h1>
+    <p class="subtitle">Asigna tipo a cada post · negocio · noticia · alerta · mascota · ignorar</p>
+  </div>
+
+  <!-- Config -->
+  <div class="card active" id="cardConfig">
+    <div class="card-header">
+      <div class="step-num">1</div>
+      <div class="card-title">Configuración</div>
+    </div>
+
+    <div class="input-group">
+      <label>Groq API Key</label>
+      <input type="password" id="apiKey" placeholder="gsk_..." />
+    </div>
+
+    <div class="input-group">
+      <label>JSON limpio (output del Limpiador — Etapa 1)</label>
+      <div class="file-drop" id="fileDrop">
+        <input type="file" id="fileInput" accept=".json" />
+        <div class="file-icon">📂</div>
+        <div style="color:var(--muted);font-size:.85rem">Arrastra o haz clic para seleccionar</div>
+        <div class="file-name hidden" id="fileName"></div>
+      </div>
+    </div>
+
+    <div class="input-group" style="margin-top:1.25rem">
+      <label>Modelos a comparar</label>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:.5rem;margin-top:.5rem">
+
+        <label class="model-check" style="--mc:var(--m3)">
+          <input type="checkbox" class="mchk" value="gpt20b" checked>
+          <div class="mchk-card">
+            <div class="mchk-badge" style="color:var(--m3)">💳 PAGO</div>
+            <div class="mchk-name">GPT OSS 20B</div>
+            <div class="mchk-price">$0.075/$0.30 · chunk 40</div>
+          </div>
+        </label>
+
+        <label class="model-check" style="--mc:var(--m1)">
+          <input type="checkbox" class="mchk" value="llama70p" checked>
+          <div class="mchk-card">
+            <div class="mchk-badge" style="color:var(--m1)">💳 PAGO</div>
+            <div class="mchk-name">Llama 70B PAGO</div>
+            <div class="mchk-price">$0.59/$0.79 · chunk 40</div>
+          </div>
+        </label>
+
+        <label class="model-check" style="--mc:var(--m4)">
+          <input type="checkbox" class="mchk" value="llama70f">
+          <div class="mchk-card">
+            <div class="mchk-badge" style="color:var(--m4)">🆓 GRATIS</div>
+            <div class="mchk-name">Llama 70B FREE</div>
+            <div class="mchk-price">chunk 20 · pausa 15s</div>
+          </div>
+        </label>
+
+        <label class="model-check" style="--mc:var(--m2)">
+          <input type="checkbox" class="mchk" value="llama8b">
+          <div class="mchk-card">
+            <div class="mchk-badge" style="color:var(--m2)">⚡ RÁPIDO</div>
+            <div class="mchk-name">Llama 3.1 8B</div>
+            <div class="mchk-price">$0.05/$0.08 · chunk 40</div>
+          </div>
+        </label>
+
+      </div>
+    </div>
+
+    <button class="btn btn-primary" id="btnStart" disabled onclick="startClassifier()">
+      Clasificar con modelos seleccionados →
+    </button>
+  </div>
+
+  <!-- Results -->
+  <div class="card hidden" id="cardResults">
+    <div class="card-header">
+      <div class="step-num">2</div>
+      <div class="card-title">Resultados</div>
+    </div>
+    <div class="results-grid" id="modelCards"></div>
+    <div>
+      <label>Log de proceso</label>
+      <div class="log" id="logBox">Iniciando...<br></div>
+    </div>
+  </div>
+
+</div>
+
+<script>
+const MODELS = {
+  gpt20b:  { name: 'openai/gpt-oss-20b',       label: 'GPT OSS 20B',    chunk: 40, pause: 1000,  maxTokens: 4000, color: 'var(--m3)' },
+  llama70p:{ name: 'llama-3.3-70b-versatile',   label: 'Llama 70B PAGO', chunk: 40, pause: 1000,  maxTokens: 4000, color: 'var(--m1)' },
+  llama70f:{ name: 'llama-3.3-70b-versatile',   label: 'Llama 70B FREE', chunk: 20, pause: 15000, maxTokens: 4000, color: 'var(--m4)' },
+  llama8b: { name: 'llama-3.1-8b-instant',      label: 'Llama 3.1 8B',   chunk: 40, pause: 1000,  maxTokens: 4000, color: 'var(--m2)' },
+};
+
+const PROMPT = `Eres un clasificador de posts de Facebook para VecinosMérida.com (Mérida, Yucatán).
+
+Devuelve ÚNICAMENTE este JSON, sin texto adicional:
+{"posts": [{"fbid_post": "...", "tipo": "..."}]}
+
+TIPOS:
+- "negocio": venta de productos/servicios, ofertas, anuncios, precios, entregas a domicilio
+- "noticia": eventos, política, cultura, información general (SOLO si texto tiene 70+ palabras)
+- "alerta": incidentes locales, robos, baches, fugas, accidentes, denuncias, sospechosos
+- "mascota": mascotas perdidas, encontradas o en adopción
+- "ignorar": spam, saludos sin info, posts vacíos, contenido sin valor local
+
+REGLAS IMPORTANTES:
+- texto < 70 palabras → NUNCA puede ser "noticia"
+- Clasifica TODOS los posts del input
+- Devuelve solo el JSON, sin markdown ni explicaciones`;
+
+let rawData = null;
+let results = {};
+
+// ─── File input ───
+document.getElementById('fileInput').addEventListener('change', function(e) {
+  const file = e.target.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = ev => {
+    try {
+      rawData = JSON.parse(ev.target.result);
+      const n = rawData.posts?.length || 0;
+      document.getElementById('fileName').textContent = `✓ ${file.name} — ${n} posts`;
+      document.getElementById('fileName').classList.remove('hidden');
+      checkReady();
+      log(`📂 Cargado: ${file.name} — ${n} posts`, 'info');
+    } catch(e) {
+      log(`❌ JSON inválido: ${e.message}`, 'err');
+    }
+  };
+  reader.readAsText(file);
+});
+
+document.getElementById('fileDrop').addEventListener('dragover', e => { e.preventDefault(); e.currentTarget.classList.add('dragover'); });
+document.getElementById('fileDrop').addEventListener('dragleave', e => e.currentTarget.classList.remove('dragover'));
+document.getElementById('fileDrop').addEventListener('drop', e => {
+  e.preventDefault();
+  e.currentTarget.classList.remove('dragover');
+  const file = e.dataTransfer.files[0];
+  if (file) {
+    document.getElementById('fileInput').files = e.dataTransfer.files;
+    document.getElementById('fileInput').dispatchEvent(new Event('change'));
+  }
+});
+
+document.getElementById('apiKey').addEventListener('input', checkReady);
+
+function checkReady() {
+  const key = document.getElementById('apiKey').value.trim();
+  document.getElementById('btnStart').disabled = !(rawData && key.startsWith('gsk_'));
+}
+
+// ─── Log ───
+function log(msg, type = '') {
+  const box = document.getElementById('logBox');
+  const div = document.createElement('div');
+  div.className = type ? `log-${type}` : '';
+  const t = new Date().toLocaleTimeString('es-MX', { hour:'2-digit', minute:'2-digit', second:'2-digit' });
+  div.textContent = `[${t}] ${msg}`;
+  box.appendChild(div);
+  box.scrollTop = box.scrollHeight;
+}
+
+// ─── API call ───
+async function callGroq(modelName, posts, apiKey) {
+  const payload = posts.map(p => ({ fbid_post: p.fbid_post, texto: (p.texto || '').slice(0, 500) }));
+  const resp = await fetch('https://api.groq.com/openai/v1/chat/completions', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${apiKey}` },
+    body: JSON.stringify({
+      model: modelName,
+      messages: [
+        { role: 'system', content: PROMPT },
+        { role: 'user', content: `Clasifica estos posts:\n${JSON.stringify(payload)}` }
+      ],
+      temperature: 0.1,
+      max_tokens: 4000
+    })
+  });
+
+  if (!resp.ok) {
+    const err = await resp.json().catch(() => ({}));
+    throw new Error(err.error?.message || `HTTP ${resp.status}`);
+  }
+
+  const data = await resp.json();
+  let content = data.choices[0].message.content.trim();
+  content = content.replace(/^```(?:json)?\s*/i, '').replace(/\s*```\s*$/i, '').trim();
+  const first = content.indexOf('{');
+  const last = content.lastIndexOf('}');
+  if (first >= 0 && last > first) content = content.slice(first, last + 1);
+  return { parsed: JSON.parse(content), usage: data.usage || {} };
+}
+
+// ─── Process one model ───
+async function processModel(modelId) {
+  const m = MODELS[modelId];
+  const cardEl = document.getElementById(`mc_${modelId}`);
+  const dot = cardEl.querySelector('.dot');
+  const statusText = cardEl.querySelector('.status-text');
+  const apiKey = document.getElementById('apiKey').value.trim();
+  const allPosts = rawData.posts || [];
+  const chunks = Math.ceil(allPosts.length / m.chunk);
+
+  dot.className = 'dot dot-running';
+  statusText.textContent = `Lote 1/${chunks}...`;
+  log(`🚀 ${m.label} — ${allPosts.length} posts en ${chunks} lotes`, 'info');
+
+  const classified = {};
+  let usage = { prompt_tokens: 0, completion_tokens: 0 };
+
+  try {
+    for (let i = 0; i < chunks; i++) {
+      const chunk = allPosts.slice(i * m.chunk, (i + 1) * m.chunk);
+      statusText.textContent = `Lote ${i+1}/${chunks}...`;
+      log(`  📦 ${m.label} lote ${i+1}/${chunks} (${chunk.length} posts)`);
+
+      const { parsed, usage: u } = await callGroq(m.name, chunk, apiKey);
+      (parsed.posts || []).forEach(p => { classified[p.fbid_post] = p.tipo; });
+      usage.prompt_tokens += u.prompt_tokens || 0;
+      usage.completion_tokens += u.completion_tokens || 0;
+
+      if (i < chunks - 1) {
+        log(`  ⏸ Pausa ${m.pause / 1000}s...`);
+        await new Promise(r => setTimeout(r, m.pause));
+      }
+    }
+
+    // Build final JSON
+    const finalPosts = allPosts.map(p => ({ ...p, tipo: classified[p.fbid_post] || 'ignorar' }));
+    results[modelId] = { ...rawData, posts: finalPosts };
+
+    // Count tipos
+    const counts = {};
+    finalPosts.forEach(p => { counts[p.tipo] = (counts[p.tipo] || 0) + 1; });
+    const tiposHtml = Object.entries(counts)
+      .sort((a, b) => b[1] - a[1])
+      .map(([t, n]) => `<span class="tipo tipo-${t}">${t}: ${n}</span>`)
+      .join('');
+
+    const totalTokens = usage.prompt_tokens + usage.completion_tokens;
+    const cost = ((usage.prompt_tokens / 1e6 * 0.075) + (usage.completion_tokens / 1e6 * 0.30)).toFixed(4);
+
+    cardEl.querySelector('.card-body').innerHTML = `
+      <div class="tipos-row">${tiposHtml}</div>
+      <div class="token-info">${totalTokens.toLocaleString()} tokens · $${cost} USD</div>
+      <button class="btn-download" onclick="download('${modelId}', '${m.label}')">⬇ Descargar JSON ${m.label}</button>
+    `;
+    dot.className = 'dot dot-done';
+    statusText.textContent = `✓ Completado — ${finalPosts.length} posts`;
+    cardEl.style.borderColor = 'var(--success)';
+    log(`✅ ${m.label}: ${finalPosts.length} posts clasificados · $${cost}`, 'ok');
+
+  } catch (err) {
+    dot.className = 'dot dot-error';
+    statusText.textContent = `Error: ${err.message.slice(0, 60)}`;
+    cardEl.style.borderColor = 'var(--error)';
+    log(`❌ ${m.label}: ${err.message}`, 'err');
+  }
+}
+
+// ─── Start ───
+async function startClassifier() {
+  const selected = [...document.querySelectorAll('.mchk:checked')].map(c => c.value);
+  if (!selected.length) { alert('Selecciona al menos un modelo'); return; }
+
+  document.getElementById('btnStart').disabled = true;
+  document.getElementById('cardConfig').classList.remove('active');
+  document.getElementById('cardResults').classList.remove('hidden');
+  document.getElementById('cardResults').classList.add('active');
+
+  // Build model cards
+  const grid = document.getElementById('modelCards');
+  grid.innerHTML = selected.map(id => {
+    const m = MODELS[id];
+    return `
+    <div class="model-card" id="mc_${id}" style="--mc:${m.color}">
+      <div class="model-badge" style="color:${m.color}">${m.label}</div>
+      <div class="model-name">${m.name}</div>
+      <div class="status-row">
+        <span class="dot dot-waiting"></span>
+        <span class="status-text">En espera...</span>
+      </div>
+      <div class="card-body"></div>
+    </div>`;
+  }).join('');
+
+  log(`═══ Clasificando ${rawData.posts?.length} posts con ${selected.length} modelo(s) ═══`, 'info');
+
+  for (let i = 0; i < selected.length; i++) {
+    await processModel(selected[i]);
+    if (i < selected.length - 1) await new Promise(r => setTimeout(r, 2000));
+  }
+
+  log('═══ Clasificación completada ═══', 'ok');
+}
+
+// ─── Download ───
+function download(modelId, label) {
+  const data = results[modelId];
+  if (!data) return;
+  const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = `clasificado_${label.replace(/[^a-z0-9]/gi, '-')}_${Date.now()}.json`;
+  a.click();
+}
+</script>
+</body>
+</html>
