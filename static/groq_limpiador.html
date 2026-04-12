@@ -448,7 +448,7 @@
   <div class="header">
     <div class="badge">🤖 VecinosMérida · Groq Benchmark</div>
     <h1>Groq <span>JSON Cleaner</span></h1>
-    <p class="subtitle">GPT OSS 20B · Etapa 1 · Limpieza y normalización</p>
+    <p class="subtitle">Llama 70B · Etapa 1 · Limpieza y normalización</p>
   </div>
 
 
@@ -487,9 +487,9 @@
         <label class="model-check" style="--mc:var(--model3);max-width:280px">
           <input type="checkbox" class="mchk" value="1" checked>
           <div class="mchk-card">
-            <div class="mchk-badge" style="color:var(--model3)">💳 PAGO</div>
-            <div class="mchk-name">GPT OSS 20B</div>
-            <div class="mchk-price">$0.075/$0.30 · chunk 15</div>
+            <div class="mchk-badge" style="color:#10b981">🆓 GRATIS</div>
+            <div class="mchk-name">Llama 70B</div>
+            <div class="mchk-price">chunk 10 · pausa 15s</div>
           </div>
         </label>
       </div>
@@ -604,7 +604,7 @@ FORMATO DE SALIDA:
 - NUNCA uses "..." en arrays de imagenes o videos — copia los arrays completos`;
 
 const PAID_MODELS = [
-  { id: 1, name: 'openai/gpt-oss-20b', label: 'GPT OSS 20B', priceIn: 0.075, priceOut: 0.30, chunk: 5, pause: 2000, free: false },
+  { id: 1, name: 'llama-3.3-70b-versatile', label: 'Llama 70B', priceIn: 0, priceOut: 0, chunk: 10, pause: 15000, free: true },
 ];
 
 const FREE_MODELS = [];
