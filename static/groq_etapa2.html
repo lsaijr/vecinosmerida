@@ -384,8 +384,33 @@
       </div>
     </div>
 
+    <!-- Mode selector -->
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:.5rem;margin-bottom:.75rem">
+      <button id="btnModeBenchmark"
+        onclick="setMode('benchmark')"
+        style="padding:.6rem;border-radius:8px;border:1px solid var(--accent);
+               background:var(--accent);color:#fff;font-family:'Syne',sans-serif;
+               font-size:.8rem;font-weight:600;cursor:pointer">
+        📊 Benchmark
+      </button>
+      <button id="btnModeChain"
+        onclick="setMode('chain')"
+        style="padding:.6rem;border-radius:8px;border:1px solid var(--border);
+               background:transparent;color:var(--muted);font-family:'Syne',sans-serif;
+               font-size:.8rem;font-weight:600;cursor:pointer">
+        🔗 Cadena
+      </button>
+    </div>
+    <div id="chainInfo" class="hidden"
+         style="font-size:.75rem;color:var(--accent2);font-family:'Space Mono',monospace;
+                background:rgba(6,182,212,.08);border:1px solid rgba(6,182,212,.2);
+                border-radius:8px;padding:.6rem .9rem;margin-bottom:.75rem;line-height:1.6">
+      Los modelos corren en orden peor→mejor. Cada uno recibe el resultado del anterior y puede corregirlo.
+      <br>Orden: Groq 70B → Gemini 2.5 → SN·GPT120 → SN·Llama70 → SN·DeepSeek → SN·Llama4
+    </div>
+
     <button class="btn btn-primary" id="btnStart" disabled onclick="startClassifier()">
-      Clasificar con modelos seleccionados →
+      📊 Clasificar con modelos seleccionados →
     </button>
   </div>
 
@@ -399,6 +424,27 @@
     <div>
       <label>Log de proceso</label>
       <div class="log" id="logBox">Iniciando...<br></div>
+    </div>
+  </div>
+
+  <!-- Chain Results card -->
+  <div class="card hidden" id="cardChain">
+    <div class="card-header">
+      <div class="step-num" style="background:var(--accent2)">🔗</div>
+      <div class="card-title">Resultado Cadena</div>
+    </div>
+    <div style="font-size:.78rem;color:var(--muted);font-family:'Space Mono',monospace;margin-bottom:1rem" id="chainSummary"></div>
+    <div style="overflow-x:auto">
+      <table id="chainTable" style="width:100%;border-collapse:collapse;font-family:'Space Mono',monospace;font-size:.72rem">
+        <thead id="chainHead"></thead>
+        <tbody id="chainBody"></tbody>
+      </table>
+    </div>
+    <div style="margin-top:1rem;display:flex;gap:.5rem;flex-wrap:wrap">
+      <button class="btn btn-primary" onclick="downloadChain()"
+        style="background:var(--accent2);width:auto;padding:.7rem 1.5rem;font-size:.85rem">
+        ⬇ Descargar JSON Cadena
+      </button>
     </div>
   </div>
 
@@ -813,7 +859,335 @@ async function processModel(modelId) {
 }
 
 // ─── Start ───
+// ─── Mode management ───
+let currentMode = 'benchmark';
+
+function setMode(mode) {
+  currentMode = mode;
+  const isBenchmark = mode === 'benchmark';
+  document.getElementById('btnModeBenchmark').style.background    = isBenchmark ? 'var(--accent)' : 'transparent';
+  document.getElementById('btnModeBenchmark').style.color         = isBenchmark ? '#fff' : 'var(--muted)';
+  document.getElementById('btnModeBenchmark').style.borderColor   = isBenchmark ? 'var(--accent)' : 'var(--border)';
+  document.getElementById('btnModeChain').style.background        = !isBenchmark ? 'var(--accent2)' : 'transparent';
+  document.getElementById('btnModeChain').style.color             = !isBenchmark ? '#fff' : 'var(--muted)';
+  document.getElementById('btnModeChain').style.borderColor       = !isBenchmark ? 'var(--accent2)' : 'var(--border)';
+  document.getElementById('chainInfo').classList.toggle('hidden', isBenchmark);
+  document.getElementById('btnStart').textContent = isBenchmark
+    ? '📊 Clasificar con modelos seleccionados →'
+    : '🔗 Iniciar cadena →';
+}
+
+// Orden de la cadena: peor → mejor
+const CHAIN_ORDER = ['llama70f', 'gemini', 'sn_gpt120', 'sn_llama70', 'sn_deepseek', 'sn_llama4'];
+
+const AUDIT_PROMPT = `Eres un auditor de clasificaciones para VecinosMérida.com (Mérida, Yucatán).
+
+Recibirás posts de Facebook que ya fueron clasificados por otro modelo.
+Tu tarea es REVISAR cada clasificación y CORREGIRLA si es incorrecta.
+
+INSTRUCCIÓN CRÍTICA: Devuelve ÚNICAMENTE este JSON:
+{"posts": [{"fbid_post": "...", "tipo": "..."}]}
+
+════════════════════════════════════════
+TIPOS VÁLIDOS:
+════════════════════════════════════════
+
+"negocio" — venta, precios, servicios, anuncios, hashtags de veterinaria/negocio
+"noticia" — evento o hecho informativo de Mérida/Yucatán (SOLO ≥70 palabras)
+"alerta"  — incidente, denuncia, maltrato animal, estafa, fraude, peligro comunitario
+"mascota" — mascota perdida/encontrada/adopción/rescate/ayuda médica
+"ignorar" — spam, reflexión filosófica sin denuncia concreta, post sobre otro post, saludos
+
+════════════════════════════════════════
+REGLAS DE AUDITORÍA:
+════════════════════════════════════════
+1. Si el tipo asignado ES correcto → mantenlo sin cambiar
+2. Si el tipo asignado ES incorrecto → corrígelo con el tipo adecuado
+3. Una reflexión filosófica sobre animales SIN denuncia concreta → "ignorar"
+4. Una denuncia de maltrato, estafa o peligro → "alerta", no "mascota"
+5. "Apoya a [nombre] para [cirugía/tratamiento]" → "mascota", no "negocio"
+6. texto < 70 palabras → JAMÁS "noticia"
+
+Sé crítico. Corrige cuando sea necesario. Confía en tu propio juicio.`;
+
+// ─── Chain runner ───
+let chainResults   = [];   // array of {modelId, tipos: {fbid: tipo}}
+let chainFinalData = null;
+
+async function startChain() {
+  const checked = [...document.querySelectorAll('.mchk:checked')].map(c => c.value);
+  // Use checked models intersected with chain order
+  const chainModels = CHAIN_ORDER.filter(id => checked.includes(id) && MODELS[id]);
+  if (chainModels.length < 2) { alert('Selecciona al menos 2 modelos para la cadena'); return; }
+
+  document.getElementById('btnStart').disabled = true;
+  document.getElementById('cardConfig').classList.remove('active');
+  document.getElementById('cardResults').classList.remove('hidden');
+  document.getElementById('cardResults').classList.add('active');
+  document.getElementById('cardChain').classList.remove('hidden');
+
+  const grid = document.getElementById('modelCards');
+  grid.innerHTML = chainModels.map((id, idx) => {
+    const m = MODELS[id];
+    return `<div class="model-card" id="mc_${id}" style="--mc:${m.color}">
+      <div class="model-badge" style="color:${m.color}">${idx === 0 ? '🔵 INICIO' : idx === chainModels.length-1 ? '🏁 FINAL' : `🔗 PASO ${idx+1}`}</div>
+      <div class="model-name">${m.label}</div>
+      <div class="status-row"><span class="dot dot-waiting"></span><span class="status-text">En espera...</span></div>
+      <div class="card-body"></div>
+    </div>`;
+  }).join('');
+
+  chainResults = [];
+  log(`🔗 Iniciando cadena con ${chainModels.length} modelos`, 'info');
+  log(`   Orden: ${chainModels.map(id => MODELS[id].label).join(' → ')}`, 'info');
+
+  let currentTipos = null; // null = first model classifies from scratch
+
+  for (let i = 0; i < chainModels.length; i++) {
+    const modelId = chainModels[i];
+    const m = MODELS[modelId];
+    const isFirst = i === 0;
+    const isLast  = i === chainModels.length - 1;
+
+    const cardEl = document.getElementById(`mc_${modelId}`);
+    const dot    = cardEl.querySelector('.dot');
+    const stTxt  = cardEl.querySelector('.status-text');
+    dot.className = 'dot dot-running';
+    stTxt.textContent = isFirst ? 'Clasificando...' : 'Auditando...';
+
+    log(`${isFirst ? '🔵' : '🔗'} Paso ${i+1}: ${m.label} — ${isFirst ? 'clasificación inicial' : 'auditando resultado anterior'}`, 'info');
+
+    try {
+      const allPosts = rawData.posts || [];
+      const chunks   = Math.ceil(allPosts.length / m.chunk);
+      const newTipos = {};
+      let usage = { prompt_tokens: 0, completion_tokens: 0 };
+
+      for (let c = 0; c < chunks; c++) {
+        const chunk = allPosts.slice(c * m.chunk, (c + 1) * m.chunk);
+        stTxt.textContent = `${isFirst ? 'Clasificando' : 'Auditando'} lote ${c+1}/${chunks}...`;
+        log(`  📦 Lote ${c+1}/${chunks} (${chunk.length} posts)`, '');
+
+        let parsed, u;
+        if (isFirst) {
+          // First model: normal classification
+          const key = m.provider === 'gemini' ? document.getElementById('geminiKey').value.trim()
+                    : m.provider === 'sambanova' ? document.getElementById('sambanovaKey').value.trim()
+                    : document.getElementById('apiKey').value.trim();
+          const payload = chunk.map(p => ({ fbid_post: p.fbid_post, texto: (p.texto||'').slice(0,500) }));
+          let res;
+          if (m.provider === 'gemini') res = await callGemini(getGeminiModelName(), chunk, key);
+          else if (m.provider === 'sambanova') res = await callSambaNova(m.name, chunk, key);
+          else res = await callGroq(m.name, chunk, key, m.maxTokens||4000);
+          parsed = res.parsed; u = res.usage;
+        } else {
+          // Audit mode: send text + current tipo, ask to review
+          const key = m.provider === 'gemini' ? document.getElementById('geminiKey').value.trim()
+                    : m.provider === 'sambanova' ? document.getElementById('sambanovaKey').value.trim()
+                    : document.getElementById('apiKey').value.trim();
+          const payload = chunk.map(p => ({
+            fbid_post:  p.fbid_post,
+            texto:      (p.texto||'').slice(0, 500),
+            tipo_actual: currentTipos[p.fbid_post] || 'ignorar'
+          }));
+          const auditMsg = `Audita estas clasificaciones:\n${JSON.stringify(payload)}`;
+          let res;
+          if (m.provider === 'gemini') {
+            res = await callGeminiWithPrompt(getGeminiModelName(), auditMsg, AUDIT_PROMPT, key);
+          } else if (m.provider === 'sambanova') {
+            res = await callSambanovaWithPrompt(m.name, auditMsg, AUDIT_PROMPT, key);
+          } else {
+            res = await callGroqWithPrompt(m.name, auditMsg, AUDIT_PROMPT, key, m.maxTokens||4000);
+          }
+          parsed = res.parsed; u = res.usage;
+        }
+
+        (parsed.posts || []).forEach(p => { newTipos[p.fbid_post] = p.tipo; });
+        usage.prompt_tokens     += u.prompt_tokens     || 0;
+        usage.completion_tokens += u.completion_tokens || 0;
+
+        if (c < chunks - 1) await new Promise(r => setTimeout(r, m.pause || 1000));
+      }
+
+      // Count corrections vs previous step
+      let corrections = 0;
+      if (currentTipos) {
+        Object.keys(newTipos).forEach(fbid => {
+          if (currentTipos[fbid] && currentTipos[fbid] !== newTipos[fbid]) corrections++;
+        });
+      }
+
+      chainResults.push({ modelId, label: m.label, tipos: newTipos, corrections });
+      currentTipos = { ...newTipos };
+
+      // Update card
+      dot.className = 'dot dot-done';
+      const corrTxt = isFirst ? `${Object.keys(newTipos).length} posts clasificados`
+                               : `${corrections} corrección${corrections!==1?'es':''} realizadas`;
+      stTxt.textContent = `✓ ${corrTxt}`;
+      cardEl.querySelector('.card-body').innerHTML =
+        `<div style="font-size:.75rem;color:${corrections>0?'var(--accent2)':'var(--success)'};
+          font-family:'Space Mono',monospace;margin-top:.5rem">${corrTxt}</div>`;
+      cardEl.style.borderColor = 'var(--success)';
+
+      log(`  ✓ ${m.label}: ${isFirst ? 'clasificó' : `corrigió ${corrections} post${corrections!==1?'s':''}`}`, 'ok');
+
+      if (i < chainModels.length - 1) await new Promise(r => setTimeout(r, 1500));
+
+    } catch(err) {
+      dot.className = 'dot dot-error';
+      stTxt.textContent = `Error: ${err.message.slice(0,50)}`;
+      log(`❌ ${m.label}: ${err.message}`, 'err');
+      break;
+    }
+  }
+
+  // Build final chain JSON
+  if (currentTipos) {
+    const finalPosts = (rawData.posts || []).map(p => ({
+      ...p,
+      tipo: currentTipos[p.fbid_post] || 'ignorar',
+      cadena_pasos: chainResults.map(r => ({ modelo: r.label, tipo: r.tipos[p.fbid_post] || '—' })),
+    }));
+
+    chainFinalData = {
+      ...rawData,
+      posts: finalPosts,
+      meta: {
+        ...rawData.meta,
+        cadena_modelos:     chainResults.map(r => r.label),
+        cadena_total_pasos: chainResults.length,
+        cadena_correcciones_por_paso: chainResults.map(r => ({ modelo: r.label, correcciones: r.corrections })),
+        clasificado_en: new Date().toISOString(),
+      }
+    };
+
+    buildChainTable(finalPosts, chainResults);
+    log('🏁 Cadena completada', 'ok');
+  }
+}
+
+function buildChainTable(finalPosts, chain) {
+  const card = document.getElementById('cardChain');
+  const totalCorr = chain.slice(1).reduce((s,r) => s+r.corrections, 0);
+
+  document.getElementById('chainSummary').innerHTML =
+    `${chain.length} modelos · ${totalCorr} correcciones totales en la cadena · ` +
+    chain.slice(1).map(r => `<span style="color:var(--accent2)">${r.label.split('·').pop().trim()}: ${r.corrections}</span>`).join(' → ');
+
+  // Table header
+  const head = document.getElementById('chainHead');
+  head.innerHTML = `<tr>
+    <th style="text-align:left;padding:.4rem .5rem;color:var(--muted);border-bottom:1px solid var(--border);font-size:.7rem">#</th>
+    <th style="text-align:left;padding:.4rem .5rem;color:var(--muted);border-bottom:1px solid var(--border);font-size:.7rem;max-width:200px">Texto</th>
+    ${chain.map((r,i) => `<th style="padding:.4rem .5rem;color:${MODELS[r.modelId]?.color||'var(--muted)'};border-bottom:1px solid var(--border);font-size:.7rem;white-space:nowrap">
+      ${i===0?'①':i===chain.length-1?'🏁':'→'} ${r.label.split('·').pop().trim()}
+    </th>`).join('')}
+    <th style="padding:.4rem .5rem;color:var(--success);border-bottom:1px solid var(--border);font-size:.7rem">Final</th>
+  </tr>`;
+
+  const TIPO_COLOR = { mascota:'#a78bfa', negocio:'#34d399', alerta:'#f87171', noticia:'#60a5fa', ignorar:'#6b7280' };
+
+  // Table body
+  const body = document.getElementById('chainBody');
+  body.innerHTML = finalPosts.map((p, i) => {
+    const pasos = p.cadena_pasos || [];
+    const finalTipo = p.tipo;
+    const hasCambio = pasos.some((paso, j) => j > 0 && paso.tipo !== pasos[j-1]?.tipo);
+
+    return `<tr style="border-bottom:1px solid rgba(30,30,46,.4);${hasCambio?'background:rgba(6,182,212,.04)':''}">
+      <td style="padding:.35rem .5rem;color:var(--muted);font-size:.7rem">${i+1}</td>
+      <td style="padding:.35rem .5rem;max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:.7rem;color:var(--text)"
+          title="${(p.texto||'').replace(/"/g,'&quot;')}">${(p.texto||'').slice(0,45)}…</td>
+      ${pasos.map((paso, j) => {
+        const changed = j > 0 && paso.tipo !== pasos[j-1]?.tipo;
+        const col = TIPO_COLOR[paso.tipo] || 'var(--muted)';
+        return `<td style="padding:.35rem .5rem;text-align:center;font-size:.7rem;
+          color:${col};font-weight:${changed?'700':'400'};
+          ${changed?'background:rgba(6,182,212,.1);border-radius:4px':''}">
+          ${changed?'✎ ':''}${paso.tipo?.slice(0,5)||'—'}
+        </td>`;
+      }).join('')}
+      <td style="padding:.35rem .5rem;text-align:center;font-weight:700;font-size:.75rem;color:${TIPO_COLOR[finalTipo]||'var(--muted)'}">
+        ${finalTipo}
+      </td>
+    </tr>`;
+  }).join('');
+}
+
+function downloadChain() {
+  if (!chainFinalData) return;
+  const models = chainFinalData.meta.cadena_modelos?.join('+') || 'cadena';
+  const filename = `cadena_${models.replace(/[^a-z0-9]/gi,'-').slice(0,60)}_${Date.now()}.json`;
+  const blob = new Blob([JSON.stringify(chainFinalData, null, 2)], { type: 'application/json' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = filename;
+  a.click();
+}
+
+// ─── Helpers: call APIs with custom prompt ───
+async function callGroqWithPrompt(modelName, userMsg, systemPrompt, apiKey, maxTokens=4000) {
+  const resp = await fetch('https://api.groq.com/openai/v1/chat/completions', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${apiKey}` },
+    body: JSON.stringify({
+      model: modelName,
+      messages: [{ role: 'system', content: systemPrompt }, { role: 'user', content: userMsg }],
+      temperature: 0.1, max_tokens: maxTokens
+    })
+  });
+  if (!resp.ok) { const e = await resp.json().catch(()=>({})); throw new Error(e.error?.message||`HTTP ${resp.status}`); }
+  const data = await resp.json();
+  let text = data.choices[0].message.content.trim();
+  text = text.replace(/^```(?:json)?\s*/i,'').replace(/\s*```\s*$/i,'').trim();
+  const f = text.indexOf('{'), l = text.lastIndexOf('}');
+  if (f>=0&&l>f) text=text.slice(f,l+1);
+  return { parsed: JSON.parse(text), usage: data.usage||{} };
+}
+
+async function callGeminiWithPrompt(modelName, userMsg, systemPrompt, apiKey) {
+  const url = `https://generativelanguage.googleapis.com/v1beta/models/${modelName}:generateContent?key=${apiKey}`;
+  const resp = await fetch(url, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'x-goog-api-key': apiKey },
+    body: JSON.stringify({
+      systemInstruction: { parts: [{ text: systemPrompt }] },
+      contents: [{ role: 'user', parts: [{ text: userMsg }] }],
+      generationConfig: { temperature: 0.1, maxOutputTokens: 4000,
+        thinkingConfig: modelName.startsWith('gemini-3') ? { thinkingLevel: 'minimal' } : { thinkingBudget: 0 } }
+    })
+  });
+  if (!resp.ok) { const e = await resp.json().catch(()=>({})); throw new Error(e.error?.message||`HTTP ${resp.status}`); }
+  const data = await resp.json();
+  let text = data.candidates?.[0]?.content?.parts?.[0]?.text || '';
+  text = text.replace(/^```(?:json)?\s*/i,'').replace(/\s*```\s*$/i,'').trim();
+  const f=text.indexOf('{'),l=text.lastIndexOf('}');
+  if(f>=0&&l>f) text=text.slice(f,l+1);
+  return { parsed: JSON.parse(text), usage: { prompt_tokens: data.usageMetadata?.promptTokenCount||0, completion_tokens: data.usageMetadata?.candidatesTokenCount||0 } };
+}
+
+async function callSambanovaWithPrompt(modelName, userMsg, systemPrompt, apiKey) {
+  const resp = await fetch('https://api.sambanova.ai/v1/chat/completions', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${apiKey}` },
+    body: JSON.stringify({
+      model: modelName,
+      messages: [{ role: 'system', content: systemPrompt }, { role: 'user', content: userMsg }],
+      temperature: 0.1, max_tokens: 4000
+    })
+  });
+  if (!resp.ok) { const e = await resp.json().catch(()=>({})); throw new Error(e.error?.message||`HTTP ${resp.status}`); }
+  const data = await resp.json();
+  let text = data.choices[0].message.content.trim();
+  text = text.replace(/^```(?:json)?\s*/i,'').replace(/\s*```\s*$/i,'').trim();
+  const f=text.indexOf('{'),l=text.lastIndexOf('}');
+  if(f>=0&&l>f) text=text.slice(f,l+1);
+  return { parsed: JSON.parse(text), usage: data.usage||{} };
+}
+
 async function startClassifier() {
+  if (currentMode === 'chain') { await startChain(); return; }
   const selected = [...document.querySelectorAll('.mchk:checked')].map(c => c.value);
   if (!selected.length) { alert('Selecciona al menos un modelo'); return; }
 
