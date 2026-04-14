@@ -274,7 +274,7 @@
 
     <div class="input-group">
       <label>Groq API Key</label>
-      <input type="password" id="apiKey" placeholder="gsk_..." />
+      <input type="password" id="apiKey" placeholder="gsk_..." autocomplete="off" oninput="saveApiKey(); checkReady()" />
     </div>
 
     <div class="input-group">
@@ -410,11 +410,21 @@ document.getElementById('fileDrop').addEventListener('drop', e => {
   }
 });
 
-document.getElementById('apiKey').addEventListener('input', checkReady);
+function saveApiKey() {
+  const val = document.getElementById('apiKey')?.value?.trim();
+  if (val) sessionStorage.setItem('groq_key', val);
+  else sessionStorage.removeItem('groq_key');
+}
+
+document.addEventListener('DOMContentLoaded', () => {
+  const saved = sessionStorage.getItem('groq_key');
+  if (saved) document.getElementById('apiKey').value = saved;
+  checkReady();
+});
 
 function checkReady() {
-  const key = document.getElementById('apiKey').value.trim();
-  document.getElementById('btnStart').disabled = !(rawData && key.startsWith('gsk_'));
+  const key = document.getElementById('apiKey')?.value?.trim() || '';
+  document.getElementById('btnStart').disabled = !(rawData && key.length > 10);
 }
 
 // ─── Log ───
