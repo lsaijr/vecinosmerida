@@ -346,22 +346,38 @@
 
 
         <label class="model-check" style="--mc:var(--m6)" onchange="onModelToggle()">
-          <input type="checkbox" class="mchk" value="sambanova">
+          <input type="checkbox" class="mchk" value="sn_llama70" checked>
           <div class="mchk-card">
             <div class="mchk-badge" style="color:var(--m6)">⚡ SAMBANOVA</div>
-            <div class="mchk-name">SambaNova</div>
-            <div class="mchk-price" id="sambanovaPriceLabel">Llama 70B · free tier</div>
-            <select id="sambanovaModelSelect"
-              onclick="event.stopPropagation()"
-              onchange="onSambanovaModelChange(event)"
-              style="margin-top:.5rem;width:100%;background:var(--bg);border:1px solid var(--border);
-                     border-radius:6px;padding:.35rem .5rem;color:var(--text);font-size:.72rem;
-                     font-family:'Space Mono',monospace;cursor:pointer;outline:none">
-              <option value="Meta-Llama-3.3-70B-Instruct" selected data-price="Llama 70B · free tier">Meta-Llama-3.3-70B-Instruct</option>
-              <option value="gpt-oss-120b"                         data-price="GPT OSS 120B · pago">gpt-oss-120b</option>
-              <option value="DeepSeek-V3.1"                        data-price="DeepSeek V3.1 · pago">DeepSeek-V3.1</option>
-              <option value="Llama-4-Maverick-17B-128E-Instruct"   data-price="Llama 4 Maverick · preview">Llama-4-Maverick-17B-128E-Instruct</option>
-            </select>
+            <div class="mchk-name">Llama 3.3 70B</div>
+            <div class="mchk-price">🆓 free tier</div>
+          </div>
+        </label>
+
+        <label class="model-check" style="--mc:var(--m6)" onchange="onModelToggle()">
+          <input type="checkbox" class="mchk" value="sn_gpt120" checked>
+          <div class="mchk-card">
+            <div class="mchk-badge" style="color:var(--m6)">⚡ SAMBANOVA</div>
+            <div class="mchk-name">GPT OSS 120B</div>
+            <div class="mchk-price">💳 pago</div>
+          </div>
+        </label>
+
+        <label class="model-check" style="--mc:var(--m6)" onchange="onModelToggle()">
+          <input type="checkbox" class="mchk" value="sn_deepseek" checked>
+          <div class="mchk-card">
+            <div class="mchk-badge" style="color:var(--m6)">⚡ SAMBANOVA</div>
+            <div class="mchk-name">DeepSeek V3.1</div>
+            <div class="mchk-price">💳 pago</div>
+          </div>
+        </label>
+
+        <label class="model-check" style="--mc:var(--m6)" onchange="onModelToggle()">
+          <input type="checkbox" class="mchk" value="sn_llama4" checked>
+          <div class="mchk-card">
+            <div class="mchk-badge" style="color:var(--m6)">⚡ SAMBANOVA</div>
+            <div class="mchk-name">Llama 4 Maverick</div>
+            <div class="mchk-price">🧪 preview</div>
           </div>
         </label>
 
@@ -390,9 +406,12 @@
 
 <script>
 const MODELS = {
-  llama70f:   { name: 'llama-3.3-70b-versatile',      label: 'Llama 70B FREE',   provider: 'groq',       chunk: 20, pause: 15000, maxTokens: 4000, color: 'var(--m4)' },
-  gemini:     { name: 'gemini-2.5-flash',              label: 'Gemini 2.5 Flash', provider: 'gemini',     chunk: 30, pause: 2000,  maxTokens: 4000, color: 'var(--m5)' },
-  sambanova:  { name: 'Meta-Llama-3.3-70B-Instruct',  label: 'SambaNova',        provider: 'sambanova',  chunk: 20, pause: 1000,  maxTokens: 4000, color: 'var(--m6)' },
+  llama70f:   { name: 'llama-3.3-70b-versatile',              label: 'Llama 70B FREE',        provider: 'groq',      chunk: 20, pause: 15000, maxTokens: 4000, color: 'var(--m4)' },
+  gemini:     { name: 'gemini-2.5-flash',                      label: 'Gemini 2.5 Flash',      provider: 'gemini',    chunk: 30, pause: 2000,  maxTokens: 4000, color: 'var(--m5)' },
+  sn_llama70: { name: 'Meta-Llama-3.3-70B-Instruct',          label: 'SN · Llama 70B',        provider: 'sambanova', chunk: 20, pause: 1000,  maxTokens: 4000, color: 'var(--m6)' },
+  sn_gpt120:  { name: 'gpt-oss-120b',                         label: 'SN · GPT OSS 120B',     provider: 'sambanova', chunk: 20, pause: 1000,  maxTokens: 4000, color: 'var(--m6)' },
+  sn_deepseek:{ name: 'DeepSeek-V3.1',                        label: 'SN · DeepSeek V3.1',    provider: 'sambanova', chunk: 20, pause: 1000,  maxTokens: 4000, color: 'var(--m6)' },
+  sn_llama4:  { name: 'Llama-4-Maverick-17B-128E-Instruct',   label: 'SN · Llama 4 Maverick', provider: 'sambanova', chunk: 20, pause: 1000,  maxTokens: 4000, color: 'var(--m6)' },
 };
 
 const PROMPT = `Eres un clasificador de posts de Facebook para VecinosMérida.com (Mérida, Yucatán).
@@ -507,19 +526,6 @@ function saveSambanovaKey() {
   else sessionStorage.removeItem('sambanova_key');
 }
 
-function onSambanovaModelChange(e) {
-  e.stopPropagation();
-  const sel = document.getElementById('sambanovaModelSelect');
-  const opt = sel.options[sel.selectedIndex];
-  document.getElementById('sambanovaPriceLabel').textContent = opt.dataset.price || '';
-  MODELS.sambanova.name  = sel.value;
-  MODELS.sambanova.label = 'SambaNova · ' + sel.value.split('-').slice(0,2).join('-');
-}
-
-function getSambanovaModelName() {
-  return document.getElementById('sambanovaModelSelect')?.value || 'Meta-Llama-3.3-70B-Instruct';
-}
-
 function saveGeminiKey() {
   const val = document.getElementById('geminiKey')?.value?.trim();
   if (val) sessionStorage.setItem('gemini_key', val);
@@ -546,6 +552,10 @@ function onModelToggle() {
   document.getElementById('groqKeyWrap').classList.toggle('hidden', !hasGroq);
   document.getElementById('geminiKeyWrap').classList.toggle('hidden', !hasGemini);
   document.getElementById('sambanovaKeyWrap').classList.toggle('hidden', !hasSambanova);
+  // Update SambaNova key label to reflect count
+  const snCount = checked.filter(id => MODELS[id]?.provider === 'sambanova').length;
+  const snLabel = document.querySelector('#sambanovaKeyWrap label');
+  if (snLabel) snLabel.innerHTML = `SambaNova API Key <span style="color:var(--muted);font-weight:400">(${snCount} modelo${snCount!==1?'s':''})</span>`;
   checkReady();
 }
 
@@ -699,8 +709,6 @@ async function processModel(modelId) {
   statusText.textContent = `Lote 1/${chunks}...`;
   const displayLabel = m.provider === 'gemini'
     ? `Gemini · ${getGeminiModelName().replace('gemini-','').replace('-preview','')}`
-    : m.provider === 'sambanova'
-    ? `SambaNova · ${getSambanovaModelName().split('-').slice(0,3).join('-')}`
     : m.label;
   log(`🚀 ${displayLabel} — ${allPosts.length} posts en ${chunks} lotes`, 'info');
 
@@ -720,7 +728,7 @@ async function processModel(modelId) {
         callResult = await callGemini(resolvedName, chunk, key);
       } else if (m.provider === 'sambanova') {
         key = document.getElementById('sambanovaKey').value.trim();
-        resolvedName = getSambanovaModelName();
+        resolvedName = m.name;
         callResult = await callSambaNova(resolvedName, chunk, key);
       } else {
         key = document.getElementById('apiKey').value.trim();
@@ -811,10 +819,30 @@ async function startClassifier() {
 function download(modelId, label) {
   const data = results[modelId];
   if (!data) return;
-  const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+
+  // Inyectar metadatos del modelo dentro del JSON
+  const m = MODELS[modelId];
+  const modelName = m.provider === 'gemini'
+    ? getGeminiModelName()
+    : m.name;
+
+  const enriched = {
+    ...data,
+    meta: {
+      ...data.meta,
+      modelo_clasificador:   modelName,
+      modelo_label:          label,
+      modelo_provider:       m.provider,
+      clasificado_en:        new Date().toISOString(),
+      total_clasificados:    (data.posts || []).length,
+    }
+  };
+
+  const filename = `clasificado_${label.replace(/[^a-z0-9]/gi, '-')}_${Date.now()}.json`;
+  const blob = new Blob([JSON.stringify(enriched, null, 2)], { type: 'application/json' });
   const a = document.createElement('a');
   a.href = URL.createObjectURL(blob);
-  a.download = `clasificado_${label.replace(/[^a-z0-9]/gi, '-')}_${Date.now()}.json`;
+  a.download = filename;
   a.click();
 }
 </script>
