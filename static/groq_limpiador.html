@@ -479,7 +479,14 @@
       <div id="b1msg" style="font-size:.78rem;color:var(--success);font-family:'Space Mono',monospace"></div>
     </div>
 
-    <input type="hidden" id="apiKey" value="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" />
+    <div class="input-group" style="margin-top:1rem">
+      <label>Groq API Key</label>
+      <input type="password" id="apiKey" placeholder="gsk_..." autocomplete="off"
+             oninput="saveApiKey(); checkReady()" />
+      <div style="font-size:.7rem;color:var(--muted);font-family:'Space Mono',monospace;margin-top:.35rem">
+        🔒 Solo se guarda en tu sesión del navegador. <a href="https://console.groq.com/keys" target="_blank" style="color:var(--accent2)">Obtener key →</a>
+      </div>
+    </div>
 
     <div class="input-group" style="margin-top:1.25rem">
       <label>Selecciona los modelos a probar</label>
@@ -705,15 +712,22 @@ async function runBloque1Preview() {
   }
 }
 
+// Persistir API key en sessionStorage (solo dura mientras la pestaña está abierta)
+function saveApiKey() {
+  const val = document.getElementById('apiKey')?.value?.trim();
+  if (val) sessionStorage.setItem('groq_key', val);
+  else sessionStorage.removeItem('groq_key');
+}
+
 document.addEventListener('DOMContentLoaded', () => {
-  const apiKeyInput = document.getElementById('apiKey');
-  if (apiKeyInput) {
-    apiKeyInput.addEventListener('input', checkReady);
-  }
+  const saved = sessionStorage.getItem('groq_key');
+  if (saved) document.getElementById('apiKey').value = saved;
+  checkReady();
 });
 
 function checkReady() {
-  document.getElementById('btnStart').disabled = !rawData;
+  const hasKey = !!(document.getElementById('apiKey')?.value?.trim());
+  document.getElementById('btnStart').disabled = !(rawData && hasKey);
 }
 
 function log(msg, type = '') {
