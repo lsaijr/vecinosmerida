@@ -18,7 +18,7 @@ from utils import (
 
 def _get_groq_keys():
     keys = []
-    for var in ["GROQ_API_KEY", "GROQ_API_KEY_2", "GROQ_API_KEY_3"]:
+    for var in ["GROQ_API_KEY_VM", "GROQ_API_KEY_VM_2", "GROQ_API_KEY_VM_3"]:
         k = os.getenv(var)
         if k:
             keys.append(k)

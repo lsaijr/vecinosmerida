@@ -627,14 +627,14 @@ async def bloque1_preview(request: Request):
 async def groq_limpiar(request: Request):
     """
     Llama a Groq con el JSON crudo y un modelo específico.
-    La API key viene de la variable de entorno GROQ_API_KEY.
+    La API key viene de la variable de entorno GROQ_API_KEY_VM.
     Body: { "model": "llama-3.3-70b-versatile", "json_data": {...} }
     """
     import httpx
 
-    groq_key = os.environ.get("GROQ_API_KEY", "")
+    groq_key = os.environ.get("GROQ_API_KEY_VM", "")
     if not groq_key:
-        return JSONResponse({"error": "GROQ_API_KEY no configurada en el servidor"}, status_code=500)
+        return JSONResponse({"error": "GROQ_API_KEY_VM no configurada en el servidor"}, status_code=500)
 
     try:
         body = await request.json()
