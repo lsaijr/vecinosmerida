@@ -429,7 +429,7 @@ function log(msg, type = '') {
 }
 
 // ─── API call ───
-async function callGroq(modelName, posts, apiKey) {
+async function callGroq(modelName, posts, apiKey, maxTokens = 4000) {
   const payload = posts.map(p => ({ fbid_post: p.fbid_post, texto: (p.texto || '').slice(0, 500) }));
   const resp = await fetch('https://api.groq.com/openai/v1/chat/completions', {
     method: 'POST',
@@ -441,7 +441,7 @@ async function callGroq(modelName, posts, apiKey) {
         { role: 'user', content: `Clasifica estos posts:\n${JSON.stringify(payload)}` }
       ],
       temperature: 0.1,
-      max_tokens: 4000
+      max_tokens: maxTokens
     })
   });
 
@@ -482,7 +482,7 @@ async function processModel(modelId) {
       statusText.textContent = `Lote ${i+1}/${chunks}...`;
       log(`  📦 ${m.label} lote ${i+1}/${chunks} (${chunk.length} posts)`);
 
-      const { parsed, usage: u } = await callGroq(m.name, chunk, apiKey);
+      const { parsed, usage: u } = await callGroq(m.name, chunk, apiKey, m.maxTokens || 4000);
       (parsed.posts || []).forEach(p => { classified[p.fbid_post] = p.tipo; });
       usage.prompt_tokens += u.prompt_tokens || 0;
       usage.completion_tokens += u.completion_tokens || 0;
