@@ -65,9 +65,9 @@ _TOKENS = {
     "gemini_calls": 0,
 }
 
-# Precios Groq 70B (USD por millón de tokens)
-_PRECIO_GROQ_INPUT  = 1.00   # moonshotai/kimi-k2-instruct-0905
-_PRECIO_GROQ_OUTPUT = 1.50
+# Precios Groq Llama 70B (USD por millón de tokens)
+_PRECIO_GROQ_INPUT  = 0.59
+_PRECIO_GROQ_OUTPUT = 0.79
 # Precios Gemini 2.5 Flash (USD por millón de tokens)
 _PRECIO_GEMINI_INPUT  = 0.15
 _PRECIO_GEMINI_OUTPUT = 0.60
@@ -322,10 +322,10 @@ def _esperar_key(last_calls, key, intervalo):
 
 
 # ═══════════════════════════════════════════════════════════════
-# GROQ — moonshotai/kimi-k2-instruct-0905 (mejor inteligencia en Groq)
-# Fallback: llama-3.3-70b-versatile
+# GROQ — llama-3.3-70b-versatile
+# Kimi K2 (moonshotai/kimi-k2-instruct-0905) dado de baja 2026-04-14
 # ═══════════════════════════════════════════════════════════════
-_GROQ_MODEL_DEFAULT = "moonshotai/kimi-k2-instruct-0905"
+_GROQ_MODEL_DEFAULT = "llama-3.3-70b-versatile"
 
 def _llamar_groq(prompt, temperatura=0.3, modelo=None):
     if modelo is None:
