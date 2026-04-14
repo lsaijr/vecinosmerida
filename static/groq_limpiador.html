@@ -898,6 +898,88 @@ function showStats(n, posts, tokInfo, modelObj) {
   document.getElementById(`dl${n}`).classList.remove('hidden');
 }
 
+
+// ═══════════════════════════════════════════════════════════════
+// PRE-CLASIFICACIÓN DETERMINISTA (portada de utils.py)
+// ═══════════════════════════════════════════════════════════════
+
+const _KW = {
+  negocio: {
+    2: ['vendo','venta','precio','oferta','servicio','domicilio','pedido','encargo',
+        'contamos con','disponible','delivery','envio','envío','whatsapp','cel','tel',
+        'pesos','mxn','dlls','repostería','reposteria','taller','reparaci','instalaci',
+        'plomero','electricista','carpintero','pintura','herreria','albañil','mantenimiento',
+        'cotiz','ubicados en','ubicado en','horario','frapp','smoothie','crepa',
+        'fresas con','menu','menú'],
+    1: ['comida','tacos','pizza','hamburguesa','torta','sushi','mariscos','pollo','carne',
+        'panadería','panaderia','pastel','refresco','agua','café','cafe','ropa','calzado',
+        'zapato','accesorio','joyeria','joyería','belleza','estética','uñas','cabello',
+        'maquillaje','masaje','spa','gym','clases','curso','academia','asesoría','asesoria',
+        'seguro','crédito','credito','préstamo','prestamo','inmueble','renta','entrega'],
+  },
+  alerta: {
+    2: ['robo','robaron','ladrón','ladron','sospechoso','bache','fuga de agua','accidente',
+        'choque','atropelló','atropello','herido','peligro','cuidado','alerta','auxilio',
+        'emergencia','sin luz'],
+    1: ['incendio','inundación','inundacion','poste caido','fuga','cables'],
+  },
+  mascota: {
+    2: ['perdí mi perro','perdí mi gato','se escapó mi','se me escapó','se perdió mi',
+        'en adopción','en adopcion','busca hogar','busca familia','dar en adopción',
+        'encontré un perro','encontré un gato','perro perdido','gato perdido',
+        'si la ves','responde al nombre','avísame','la entregamos'],
+    1: ['mascota','perro','gato','cachorro','gatito','canino','felino','adopción','adopcion'],
+  },
+  noticia: {
+    3: ['autoridades','policía','policia','bomberos','protección civil','proteccion civil'],
+    2: ['vecinos reportan','se registra','comunicado','ayuntamiento','movilización','movilizacion'],
+    1: ['reportan','informan','accidente','incendio','hechos'],
+  },
+};
+
+const UMBRAL_KW = 2;
+const NEWS_MIN_WORDS = 70;
+
+function contarPalabras(txt) {
+  return (txt || '').trim().split(/\s+/).filter(w => w.length > 0).length;
+}
+
+function noticiaPermitida(txt) {
+  return contarPalabras(txt) >= NEWS_MIN_WORDS;
+}
+
+function preClasificarKeywords(texto, autor) {
+  const haystack = ((texto || '') + ' ' + (autor || '')).toLowerCase();
+  const scores = {};
+  for (const [tipo, grupos] of Object.entries(_KW)) {
+    let score = 0;
+    for (const [peso, kws] of Object.entries(grupos)) {
+      for (const kw of kws) {
+        if (haystack.includes(kw)) score += Number(peso);
+      }
+    }
+    scores[tipo] = score;
+  }
+  const mejorTipo  = Object.keys(scores).reduce((a, b) => scores[a] >= scores[b] ? a : b);
+  const mejorScore = scores[mejorTipo];
+
+  if (mejorTipo === 'noticia' && !noticiaPermitida(texto)) return ['ambiguo', 0];
+  if (mejorScore >= UMBRAL_KW) return [mejorTipo, mejorScore];
+  return ['ambiguo', 0];
+}
+
+function aplicarPreClasificacion(posts) {
+  return posts.map(p => {
+    const [pre_tipo, pre_score] = preClasificarKeywords(p.texto, p.autor);
+    return {
+      ...p,
+      pre_tipo,
+      pre_score,
+      noticia_permitida: noticiaPermitida(p.texto),
+    };
+  });
+}
+
 async function processModel(modelObj) {
   const n = modelObj.id;
   const allPosts = rawData.posts || [];
@@ -940,16 +1022,18 @@ async function processModel(modelObj) {
       }
     }
 
-    // Construir resultado final
-    const finalData = { ...rawData, posts: allProcessed, meta: { ...rawData.meta, total_posts: allProcessed.length } };
+    // Construir resultado final — aplicar pre-clasificación determinista
+    const postsPre = aplicarPreClasificacion(allProcessed);
+    const finalData = { ...rawData, posts: postsPre, meta: { ...rawData.meta, total_posts: postsPre.length } };
+    const allProcessed_final = postsPre;
     const tokInfo = calcCost(totalUsage, modelObj);
 
-    results[n] = { data: finalData, posts: allProcessed, tokInfo, modelObj };
+    results[n] = { data: finalData, posts: postsPre, tokInfo, modelObj };
 
     setStatus(n, 'done', `✓ Completado — ${allProcessed.length} posts`);
     document.getElementById(`mc${n}`).classList.add('done-card');
-    showStats(n, allProcessed, tokInfo, modelObj);
-    log(`✅ ${modelObj.label}: ${allProcessed.length} posts, ${tokInfo.total.toLocaleString()} tokens, $${tokInfo.cost.toFixed(4)} USD`, 'ok');
+    showStats(n, postsPre, tokInfo, modelObj);
+    log(`✅ ${modelObj.label}: ${postsPre.length} posts, ${tokInfo.total.toLocaleString()} tokens, $${tokInfo.cost.toFixed(4)} USD`, 'ok');
 
   } catch(err) {
     setStatus(n, 'err', `Error: ${err.message}`);
