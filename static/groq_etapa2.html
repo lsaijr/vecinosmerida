@@ -272,9 +272,24 @@
       <div class="card-title">Configuración</div>
     </div>
 
-    <div class="input-group">
+    <!-- Groq key — visible cuando hay modelos Groq seleccionados -->
+    <div class="input-group" id="groqKeyWrap">
       <label>Groq API Key</label>
-      <input type="password" id="apiKey" placeholder="gsk_..." autocomplete="off" oninput="saveApiKey(); checkReady()" />
+      <input type="password" id="apiKey" placeholder="gsk_..." autocomplete="off"
+             oninput="saveApiKey(); checkReady()" />
+      <div style="font-size:.7rem;color:var(--muted);font-family:'Space Mono',monospace;margin-top:.3rem">
+        🔒 Solo se guarda en tu sesión del navegador
+      </div>
+    </div>
+
+    <!-- Gemini key — visible solo cuando Gemini está seleccionado -->
+    <div class="input-group hidden" id="geminiKeyWrap">
+      <label style="color:var(--m5)">Gemini API Key <span style="color:var(--muted);font-weight:400">(GROQ_API_KEY en Railway)</span></label>
+      <input type="password" id="geminiKey" placeholder="AIza..." autocomplete="off"
+             oninput="saveGeminiKey(); checkReady()" />
+      <div style="font-size:.7rem;color:var(--muted);font-family:'Space Mono',monospace;margin-top:.3rem">
+        🔒 Solo se guarda en tu sesión del navegador
+      </div>
     </div>
 
     <div class="input-group">
@@ -327,6 +342,15 @@
           </div>
         </label>
 
+        <label class="model-check" style="--mc:var(--m5)" onchange="onModelToggle()">
+          <input type="checkbox" class="mchk" value="gemini">
+          <div class="mchk-card">
+            <div class="mchk-badge" style="color:var(--m5)">🆓 GRATIS</div>
+            <div class="mchk-name">Gemini 2.0 Flash</div>
+            <div class="mchk-price">free tier · chunk 30</div>
+          </div>
+        </label>
+
       </div>
     </div>
 
@@ -352,10 +376,11 @@
 
 <script>
 const MODELS = {
-  gpt20b:  { name: 'openai/gpt-oss-20b',       label: 'GPT OSS 20B',    chunk: 20, pause: 1000,  maxTokens: 8000, color: 'var(--m3)' },
-  llama70p:{ name: 'llama-3.3-70b-versatile',   label: 'Llama 70B PAGO', chunk: 40, pause: 1000,  maxTokens: 4000, color: 'var(--m1)' },
-  llama70f:{ name: 'llama-3.3-70b-versatile',   label: 'Llama 70B FREE', chunk: 20, pause: 15000, maxTokens: 4000, color: 'var(--m4)' },
-  llama8b: { name: 'llama-3.1-8b-instant',      label: 'Llama 3.1 8B',   chunk: 40, pause: 1000,  maxTokens: 4000, color: 'var(--m2)' },
+  gpt20b:   { name: 'openai/gpt-oss-20b',          label: 'GPT OSS 20B',      provider: 'groq',   chunk: 20, pause: 1000,  maxTokens: 8000, color: 'var(--m3)' },
+  llama70p: { name: 'llama-3.3-70b-versatile',      label: 'Llama 70B PAGO',   provider: 'groq',   chunk: 40, pause: 1000,  maxTokens: 4000, color: 'var(--m1)' },
+  llama70f: { name: 'llama-3.3-70b-versatile',      label: 'Llama 70B FREE',   provider: 'groq',   chunk: 20, pause: 15000, maxTokens: 4000, color: 'var(--m4)' },
+  llama8b:  { name: 'llama-3.1-8b-instant',         label: 'Llama 3.1 8B',     provider: 'groq',   chunk: 40, pause: 1000,  maxTokens: 4000, color: 'var(--m2)' },
+  gemini:   { name: 'gemini-2.0-flash',             label: 'Gemini 2.0 Flash', provider: 'gemini', chunk: 30, pause: 2000,  maxTokens: 4000, color: 'var(--m5)' },
 };
 
 const PROMPT = `Eres un clasificador de posts de Facebook para VecinosMérida.com (Mérida, Yucatán).
@@ -410,21 +435,52 @@ document.getElementById('fileDrop').addEventListener('drop', e => {
   }
 });
 
+// ── Persistencia de keys en sessionStorage ────────────────────
 function saveApiKey() {
   const val = document.getElementById('apiKey')?.value?.trim();
   if (val) sessionStorage.setItem('groq_key', val);
   else sessionStorage.removeItem('groq_key');
 }
 
+function saveGeminiKey() {
+  const val = document.getElementById('geminiKey')?.value?.trim();
+  if (val) sessionStorage.setItem('gemini_key', val);
+  else sessionStorage.removeItem('gemini_key');
+}
+
 document.addEventListener('DOMContentLoaded', () => {
-  const saved = sessionStorage.getItem('groq_key');
-  if (saved) document.getElementById('apiKey').value = saved;
+  const groqSaved   = sessionStorage.getItem('groq_key');
+  const geminiSaved = sessionStorage.getItem('gemini_key');
+  if (groqSaved)   document.getElementById('apiKey').value   = groqSaved;
+  if (geminiSaved) document.getElementById('geminiKey').value = geminiSaved;
+  onModelToggle();
   checkReady();
 });
 
+// ── Mostrar/ocultar campos de key según modelos seleccionados ──
+function onModelToggle() {
+  const checked = [...document.querySelectorAll('.mchk:checked')].map(c => c.value);
+  const hasGroq   = checked.some(id => MODELS[id]?.provider === 'groq');
+  const hasGemini = checked.some(id => MODELS[id]?.provider === 'gemini');
+  document.getElementById('groqKeyWrap').classList.toggle('hidden', !hasGroq);
+  document.getElementById('geminiKeyWrap').classList.toggle('hidden', !hasGemini);
+  checkReady();
+}
+
+// Agregar listener a todos los checkboxes de modelos Groq también
+document.querySelectorAll && document.addEventListener('DOMContentLoaded', () => {
+  document.querySelectorAll('.mchk').forEach(cb => {
+    cb.addEventListener('change', onModelToggle);
+  });
+});
+
 function checkReady() {
-  const key = document.getElementById('apiKey')?.value?.trim() || '';
-  document.getElementById('btnStart').disabled = !(rawData && key.length > 10);
+  const checked   = [...document.querySelectorAll('.mchk:checked')].map(c => c.value);
+  const hasGroq   = checked.some(id => MODELS[id]?.provider === 'groq');
+  const hasGemini = checked.some(id => MODELS[id]?.provider === 'gemini');
+  const groqOk    = !hasGroq   || (document.getElementById('apiKey')?.value?.trim().length > 10);
+  const geminiOk  = !hasGemini || (document.getElementById('geminiKey')?.value?.trim().length > 10);
+  document.getElementById('btnStart').disabled = !(rawData && groqOk && geminiOk);
 }
 
 // ─── Log ───
@@ -469,13 +525,46 @@ async function callGroq(modelName, posts, apiKey, maxTokens = 4000) {
   return { parsed: JSON.parse(content), usage: data.usage || {} };
 }
 
+// ─── Gemini API call ───
+async function callGemini(modelName, posts, apiKey) {
+  const payload = posts.map(p => ({ fbid_post: p.fbid_post, texto: (p.texto || '').slice(0, 500) }));
+  const url = `https://generativelanguage.googleapis.com/v1beta/models/${modelName}:generateContent?key=${apiKey}`;
+
+  const resp = await fetch(url, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      systemInstruction: { parts: [{ text: PROMPT }] },
+      contents: [{ role: 'user', parts: [{ text: `Clasifica estos posts:\n${JSON.stringify(payload)}` }] }],
+      generationConfig: { temperature: 0.1, maxOutputTokens: 4000 }
+    })
+  });
+
+  if (!resp.ok) {
+    const err = await resp.json().catch(() => ({}));
+    throw new Error(err.error?.message || `HTTP ${resp.status}`);
+  }
+
+  const data = await resp.json();
+  let text = data.candidates?.[0]?.content?.parts?.[0]?.text || '';
+  text = text.replace(/^```(?:json)?\s*/i, '').replace(/\s*```\s*$/i, '').trim();
+  const first = text.indexOf('{');
+  const last  = text.lastIndexOf('}');
+  if (first >= 0 && last > first) text = text.slice(first, last + 1);
+  const usage = {
+    prompt_tokens:     data.usageMetadata?.promptTokenCount     || 0,
+    completion_tokens: data.usageMetadata?.candidatesTokenCount || 0,
+  };
+  return { parsed: JSON.parse(text), usage };
+}
+
 // ─── Process one model ───
 async function processModel(modelId) {
   const m = MODELS[modelId];
   const cardEl = document.getElementById(`mc_${modelId}`);
   const dot = cardEl.querySelector('.dot');
   const statusText = cardEl.querySelector('.status-text');
-  const apiKey = document.getElementById('apiKey').value.trim();
+  // La key se resuelve por provider dentro del loop
   const allPosts = rawData.posts || [];
   const chunks = Math.ceil(allPosts.length / m.chunk);
 
@@ -492,7 +581,12 @@ async function processModel(modelId) {
       statusText.textContent = `Lote ${i+1}/${chunks}...`;
       log(`  📦 ${m.label} lote ${i+1}/${chunks} (${chunk.length} posts)`);
 
-      const { parsed, usage: u } = await callGroq(m.name, chunk, apiKey, m.maxTokens || 4000);
+      const key = m.provider === 'gemini'
+        ? document.getElementById('geminiKey').value.trim()
+        : document.getElementById('apiKey').value.trim();
+      const { parsed, usage: u } = m.provider === 'gemini'
+        ? await callGemini(m.name, chunk, key)
+        : await callGroq(m.name, chunk, key, m.maxTokens || 4000);
       (parsed.posts || []).forEach(p => { classified[p.fbid_post] = p.tipo; });
       usage.prompt_tokens += u.prompt_tokens || 0;
       usage.completion_tokens += u.completion_tokens || 0;
