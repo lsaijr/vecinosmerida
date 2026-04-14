@@ -680,7 +680,7 @@ FORMATO DE SALIDA:
 - Campos fbid_post y repeticiones agregados
 - Campos pre_tipo, pre_score, noticia_permitida, tipos_validos preservados si existen
 - meta.total_posts actualizado
-- NUNCA uses "..." en arrays de imagenes o videos — copia los arrays completos`;
+- NUNCA uses "..." en ningún campo — devuelve valores completos`;
 
 const PAID_MODELS = [
   { id: 1, name: 'llama-3.3-70b-versatile', label: 'Llama 70B', priceIn: 0, priceOut: 0, chunk: 10, pause: 15000, free: true },
@@ -1295,8 +1295,13 @@ async function processModel(modelObj) {
   try {
     for (let i = 0; i < totalChunks; i++) {
       const chunk = allPosts.slice(i * (modelObj.chunk || 30), (i + 1) * (modelObj.chunk || 30));
-      const chunkData = { ...rawData, posts: chunk, meta: { ...rawData.meta, total_posts: chunk.length } };
-      
+
+      // Slim: quitar imagenes[] y videos[] antes de mandar a la API.
+      // El modelo no necesita las URLs — solo num_imgs/num_videos ya están en el post.
+      // Se re-adjuntan desde el chunk original después de parsear la respuesta.
+      const chunkSlim = chunk.map(({ imagenes, videos, ...rest }) => rest);
+      const chunkData = { ...rawData, posts: chunkSlim, meta: { ...rawData.meta, total_posts: chunkSlim.length } };
+
       setStatus(n, 'run', `Lote ${i+1}/${totalChunks}...`);
       // Actualizar barra de progreso
       const pb = document.getElementById(`pb${n}`);
@@ -1307,8 +1312,16 @@ async function processModel(modelObj) {
 
       const response = await callGroq(modelObj.name, chunkData, modelObj.label);
       const { data, usage } = parseResult(response);
-      
-      allProcessed = allProcessed.concat(data.posts || []);
+
+      // Re-adjuntar imagenes[] y videos[] desde el chunk original por fbid_post
+      const origByFbid = {};
+      chunk.forEach(p => { if (p.fbid_post) origByFbid[p.fbid_post] = p; });
+      const mergedPosts = (data.posts || []).map((p, idx) => {
+        const orig = origByFbid[p.fbid_post] || chunk[idx] || {};
+        return { ...p, imagenes: orig.imagenes || [], videos: orig.videos || [] };
+      });
+
+      allProcessed = allProcessed.concat(mergedPosts);
       totalUsage.prompt_tokens += usage.prompt_tokens || 0;
       totalUsage.completion_tokens += usage.completion_tokens || 0;
 
