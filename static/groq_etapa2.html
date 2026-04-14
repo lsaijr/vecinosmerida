@@ -393,12 +393,45 @@
   <div class="card hidden" id="cardResults">
     <div class="card-header">
       <div class="step-num">2</div>
-      <div class="card-title">Resultados</div>
+      <div class="card-title">Resultados por modelo</div>
     </div>
     <div class="results-grid" id="modelCards"></div>
     <div>
       <label>Log de proceso</label>
       <div class="log" id="logBox">Iniciando...<br></div>
+    </div>
+  </div>
+
+  <!-- Consensus card -->
+  <div class="card hidden" id="cardConsensus">
+    <div class="card-header">
+      <div class="step-num" style="background:var(--success)">✦</div>
+      <div class="card-title">Consenso</div>
+    </div>
+
+    <div style="margin-bottom:1rem">
+      <label style="margin-bottom:.5rem;display:block">Modelos a incluir en el voto</label>
+      <div id="consensusModelList" style="display:flex;flex-wrap:wrap;gap:.4rem;margin-bottom:1rem"></div>
+      <button class="btn btn-primary" onclick="buildConsensus()"
+        style="width:auto;padding:.6rem 1.4rem;font-size:.85rem">
+        ⚡ Generar consenso
+      </button>
+    </div>
+
+    <div id="consensusResult" class="hidden">
+      <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:.5rem;margin-bottom:1.25rem" id="consensusStats"></div>
+
+      <div style="margin-bottom:1rem">
+        <label>Posts con desacuerdo entre modelos</label>
+        <div id="conflictList" style="margin-top:.5rem;font-family:'Space Mono',monospace;font-size:.72rem;
+             background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:.75rem;
+             max-height:180px;overflow-y:auto;line-height:1.8"></div>
+      </div>
+
+      <button class="btn btn-primary" onclick="downloadConsensus()"
+        style="background:var(--success);width:auto;padding:.7rem 1.5rem">
+        ⬇ Descargar JSON Consenso
+      </button>
     </div>
   </div>
 
@@ -813,6 +846,139 @@ async function startClassifier() {
   }
 
   log('═══ Clasificación completada ═══', 'ok');
+  showConsensusCard();
+}
+
+// ─── Consensus ───
+let consensusData = null;
+
+function showConsensusCard() {
+  const completed = Object.keys(results).filter(id => results[id]);
+  if (completed.length < 2) return; // need at least 2
+  const card = document.getElementById('cardConsensus');
+  card.classList.remove('hidden');
+
+  // Build checkbox list of completed models
+  const list = document.getElementById('consensusModelList');
+  list.innerHTML = completed.map(id => {
+    const m = MODELS[id];
+    return `<label style="display:flex;align-items:center;gap:.35rem;cursor:pointer;
+              background:var(--bg);border:1px solid var(--border);border-radius:8px;
+              padding:.35rem .7rem;font-size:.75rem;font-family:'Space Mono',monospace">
+      <input type="checkbox" class="cons-mchk" value="${id}" checked
+             style="accent-color:${m.color}">
+      <span style="color:${m.color}">${m.label}</span>
+    </label>`;
+  }).join('');
+}
+
+function buildConsensus() {
+  const selected = [...document.querySelectorAll('.cons-mchk:checked')].map(c => c.value);
+  if (selected.length < 2) { alert('Selecciona al menos 2 modelos'); return; }
+
+  const allPosts = rawData.posts || [];
+  const consensusPosts = [];
+  const conflicts = [];
+
+  allPosts.forEach((post, i) => {
+    const fbid = post.fbid_post;
+    const votes = {};
+    selected.forEach(id => {
+      const r = results[id];
+      if (!r) return;
+      const match = r.posts.find(p => p.fbid_post === fbid);
+      const tipo = match?.tipo || 'ignorar';
+      votes[id] = tipo;
+    });
+
+    const tipoCounts = {};
+    Object.values(votes).forEach(t => { tipoCounts[t] = (tipoCounts[t] || 0) + 1; });
+    const sorted  = Object.entries(tipoCounts).sort((a,b) => b[1]-a[1]);
+    const winner  = sorted[0][0];
+    const winVotes = sorted[0][1];
+    const total   = selected.length;
+    const pct     = Math.round(winVotes / total * 100);
+    const allAgree = winVotes === total;
+
+    if (!allAgree) {
+      const detail = selected.map(id => `${MODELS[id]?.label.split('·').pop().trim()}:${votes[id]}`).join(' | ');
+      conflicts.push({ n: i+1, fbid, winner, pct, detail, texto: (post.texto||'').slice(0,70) });
+    }
+
+    consensusPosts.push({
+      ...post,
+      tipo:              winner,
+      consenso_pct:      pct,
+      consenso_acuerdo:  allAgree,
+      consenso_votos:    votes,
+    });
+  });
+
+  // Build final JSON
+  consensusData = {
+    ...rawData,
+    posts: consensusPosts,
+    meta: {
+      ...rawData.meta,
+      consenso_modelos:    selected.map(id => MODELS[id]?.name),
+      consenso_labels:     selected.map(id => MODELS[id]?.label),
+      consenso_total:      consensusPosts.length,
+      consenso_acuerdo:    consensusPosts.filter(p => p.consenso_acuerdo).length,
+      consenso_conflictos: conflicts.length,
+      clasificado_en:      new Date().toISOString(),
+    }
+  };
+
+  // Stats
+  const statsEl = document.getElementById('consensusStats');
+  const acuerdo = consensusPosts.filter(p => p.consenso_acuerdo).length;
+  const tipoDist = {};
+  consensusPosts.forEach(p => { tipoDist[p.tipo] = (tipoDist[p.tipo]||0)+1; });
+  const tipoStr = Object.entries(tipoDist).sort((a,b)=>b[1]-a[1])
+    .map(([t,c]) => `<div style="background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:.5rem;text-align:center">
+      <div style="font-size:1.1rem;font-weight:700;color:var(--accent2);font-family:'Space Mono',monospace">${c}</div>
+      <div style="font-size:.65rem;color:var(--muted);text-transform:uppercase">${t}</div>
+    </div>`).join('');
+
+  statsEl.innerHTML = `
+    <div style="background:var(--bg);border:1px solid var(--success);border-radius:8px;padding:.5rem;text-align:center">
+      <div style="font-size:1.1rem;font-weight:700;color:var(--success);font-family:'Space Mono',monospace">${acuerdo}/${consensusPosts.length}</div>
+      <div style="font-size:.65rem;color:var(--muted);text-transform:uppercase">Acuerdo total</div>
+    </div>
+    <div style="background:var(--bg);border:1px solid var(--error);border-radius:8px;padding:.5rem;text-align:center">
+      <div style="font-size:1.1rem;font-weight:700;color:var(--error);font-family:'Space Mono',monospace">${conflicts.length}</div>
+      <div style="font-size:.65rem;color:var(--muted);text-transform:uppercase">Conflictos</div>
+    </div>
+    ${tipoStr}`;
+
+  // Conflict list
+  const conflictEl = document.getElementById('conflictList');
+  if (conflicts.length === 0) {
+    conflictEl.innerHTML = '<span style="color:var(--success)">✓ Todos los modelos coincidieron en cada post</span>';
+  } else {
+    conflictEl.innerHTML = conflicts.map(c =>
+      `<div style="margin-bottom:.4rem;padding-bottom:.4rem;border-bottom:1px solid var(--border)">
+        <span style="color:var(--error)">⚠ #${c.n}</span>
+        <span style="color:var(--accent2)"> → ${c.winner} (${c.pct}%)</span>
+        <span style="color:var(--muted)"> | ${c.detail}</span><br>
+        <span style="color:var(--text);opacity:.7">${c.texto}…</span>
+      </div>`
+    ).join('');
+  }
+
+  document.getElementById('consensusResult').classList.remove('hidden');
+  log(`✦ Consenso generado: ${acuerdo}/${consensusPosts.length} acuerdos · ${conflicts.length} conflictos`, 'ok');
+}
+
+function downloadConsensus() {
+  if (!consensusData) return;
+  const models = consensusData.meta.consenso_labels?.join('+') || 'consenso';
+  const filename = `consenso_${models.replace(/[^a-z0-9]/gi,'-')}_${Date.now()}.json`;
+  const blob = new Blob([JSON.stringify(consensusData, null, 2)], { type: 'application/json' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = filename;
+  a.click();
 }
 
 // ─── Download ───
