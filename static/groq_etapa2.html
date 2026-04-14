@@ -345,9 +345,21 @@
         <label class="model-check" style="--mc:var(--m5)" onchange="onModelToggle()">
           <input type="checkbox" class="mchk" value="gemini">
           <div class="mchk-card">
-            <div class="mchk-badge" style="color:var(--m5)">🆓 GRATIS</div>
-            <div class="mchk-name">Gemini 2.5 Flash</div>
-            <div class="mchk-price">$0.15/$0.60 · thinking OFF · chunk 30</div>
+            <div class="mchk-badge" style="color:var(--m5)">✨ GEMINI</div>
+            <div class="mchk-name">Gemini</div>
+            <div class="mchk-price" id="geminiPriceLabel">💳 2.5 · $0.15/$0.60</div>
+            <select id="geminiModelSelect"
+              onclick="event.stopPropagation()"
+              onchange="onGeminiModelChange(event)"
+              style="margin-top:.5rem;width:100%;background:var(--bg);border:1px solid var(--border);
+                     border-radius:6px;padding:.35rem .5rem;color:var(--text);font-size:.72rem;
+                     font-family:'Space Mono',monospace;cursor:pointer;outline:none">
+              <option value="gemini-3.1-pro-preview"  data-price="💳 Pro · $1.25/$10">gemini-3.1-pro-preview</option>
+              <option value="gemini-3-flash-preview"   data-price="💳 Flash3 · $0.15/$0.60">gemini-3-flash-preview</option>
+              <option value="gemini-3.1-flash-lite"    data-price="🆓 Lite3 · $0.25/$1.50">gemini-3.1-flash-lite</option>
+              <option value="gemini-2.5-flash" selected data-price="💳 2.5 · $0.15/$0.60">gemini-2.5-flash</option>
+              <option value="gemini-2.0-flash"         data-price="💳 2.0 · $0.10/$0.40">gemini-2.0-flash</option>
+            </select>
           </div>
         </label>
 
@@ -380,7 +392,7 @@ const MODELS = {
   llama70p: { name: 'llama-3.3-70b-versatile',      label: 'Llama 70B PAGO',   provider: 'groq',   chunk: 40, pause: 1000,  maxTokens: 4000, color: 'var(--m1)' },
   llama70f: { name: 'llama-3.3-70b-versatile',      label: 'Llama 70B FREE',   provider: 'groq',   chunk: 20, pause: 15000, maxTokens: 4000, color: 'var(--m4)' },
   llama8b:  { name: 'llama-3.1-8b-instant',         label: 'Llama 3.1 8B',     provider: 'groq',   chunk: 40, pause: 1000,  maxTokens: 4000, color: 'var(--m2)' },
-  gemini:   { name: 'gemini-2.5-flash',             label: 'Gemini 2.5 Flash', provider: 'gemini', chunk: 30, pause: 2000,  maxTokens: 4000, color: 'var(--m5)' },
+  gemini:     { name: 'gemini-2.5-flash',          label: 'Gemini',                provider: 'gemini', chunk: 30, pause: 2000, maxTokens: 4000, color: 'var(--m5)' },
 };
 
 const PROMPT = `Eres un clasificador de posts de Facebook para VecinosMérida.com (Mérida, Yucatán).
@@ -436,6 +448,22 @@ document.getElementById('fileDrop').addEventListener('drop', e => {
 });
 
 // ── Persistencia de keys en sessionStorage ────────────────────
+function onGeminiModelChange(e) {
+  e.stopPropagation();
+  const sel = document.getElementById('geminiModelSelect');
+  const opt = sel.options[sel.selectedIndex];
+  // Update price label
+  document.getElementById('geminiPriceLabel').textContent =
+    (opt.dataset.price || '') + ' · chunk 30';
+  // Update MODELS entry
+  MODELS.gemini.name  = sel.value;
+  MODELS.gemini.label = 'Gemini · ' + sel.value.replace('gemini-','').replace('-preview','');
+}
+
+function getGeminiModelName() {
+  return document.getElementById('geminiModelSelect')?.value || 'gemini-2.5-flash';
+}
+
 function saveApiKey() {
   const val = document.getElementById('apiKey')?.value?.trim();
   if (val) sessionStorage.setItem('groq_key', val);
@@ -542,7 +570,10 @@ async function callGemini(modelName, posts, apiKey) {
       generationConfig: {
         temperature: 0.1,
         maxOutputTokens: 4000,
-        thinkingConfig: { thinkingBudget: 0 }
+        // Gemini 3.x usa thinkingLevel, Gemini 2.x usa thinkingBudget
+        thinkingConfig: modelName.startsWith('gemini-3')
+          ? { thinkingLevel: 'minimal' }
+          : { thinkingBudget: 0 }
       }
     })
   });
@@ -577,7 +608,10 @@ async function processModel(modelId) {
 
   dot.className = 'dot dot-running';
   statusText.textContent = `Lote 1/${chunks}...`;
-  log(`🚀 ${m.label} — ${allPosts.length} posts en ${chunks} lotes`, 'info');
+  const displayLabel = m.provider === 'gemini'
+    ? `Gemini · ${getGeminiModelName().replace('gemini-','').replace('-preview','')}`
+    : m.label;
+  log(`🚀 ${displayLabel} — ${allPosts.length} posts en ${chunks} lotes`, 'info');
 
   const classified = {};
   let usage = { prompt_tokens: 0, completion_tokens: 0 };
@@ -591,8 +625,9 @@ async function processModel(modelId) {
       const key = m.provider === 'gemini'
         ? document.getElementById('geminiKey').value.trim()
         : document.getElementById('apiKey').value.trim();
+      const geminiName = m.provider === 'gemini' ? getGeminiModelName() : m.name;
       const { parsed, usage: u } = m.provider === 'gemini'
-        ? await callGemini(m.name, chunk, key)
+        ? await callGemini(geminiName, chunk, key)
         : await callGroq(m.name, chunk, key, m.maxTokens || 4000);
       (parsed.posts || []).forEach(p => { classified[p.fbid_post] = p.tipo; });
       usage.prompt_tokens += u.prompt_tokens || 0;
