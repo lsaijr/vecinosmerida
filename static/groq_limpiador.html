@@ -488,6 +488,20 @@
       </div>
     </div>
 
+    <div class="input-group" style="margin-top:1rem">
+      <label>Pausa entre lotes</label>
+      <div style="display:flex;align-items:center;gap:.75rem;margin-top:.4rem">
+        <input type="range" id="pauseRange" min="0" max="60" value="15" step="1"
+               style="flex:1;accent-color:var(--accent);cursor:pointer"
+               oninput="document.getElementById('pauseVal').textContent=this.value+'s'" />
+        <span id="pauseVal" style="font-family:'Space Mono',monospace;font-size:.9rem;
+              color:var(--accent2);min-width:2.5rem;text-align:right">15s</span>
+      </div>
+      <div style="font-size:.7rem;color:var(--muted);font-family:'Space Mono',monospace;margin-top:.25rem">
+        Groq free tier: ≥10s recomendado para evitar rate limit
+      </div>
+    </div>
+
     <div class="input-group" style="margin-top:1.25rem">
       <label>Selecciona los modelos a probar</label>
       <div style="margin-top:.5rem">
@@ -880,10 +894,14 @@ async function processModel(modelObj) {
       totalUsage.prompt_tokens += usage.prompt_tokens || 0;
       totalUsage.completion_tokens += usage.completion_tokens || 0;
 
-      // Pausa entre lotes (excepto el último)
+      // Pausa entre lotes (excepto el último) — usa el slider de la UI
       if (i < totalChunks - 1) {
-        log(`  ⏸ Pausa ${(modelObj.pause || 2000)/1000}s entre lotes...`, '');
-        await new Promise(r => setTimeout(r, modelObj.pause || 2000));
+        const pauseSecs = parseInt(document.getElementById('pauseRange')?.value ?? 15, 10);
+        const pauseMs = pauseSecs * 1000;
+        if (pauseMs > 0) {
+          log(`  ⏸ Pausa ${pauseSecs}s entre lotes...`, '');
+          await new Promise(r => setTimeout(r, pauseMs));
+        }
       }
     }
 
