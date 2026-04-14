@@ -602,13 +602,15 @@ REGLAS DE DESCARTE — eliminar el post si cumple CUALQUIERA de estas condicione
 1. SIN IMAGEN (obligatorio):
    - num_imgs = 0  →  DESCARTAR SIEMPRE, sin excepción
    - num_imgs es null o el campo no existe  →  DESCARTAR
+   - Esta regla aplica a TODOS los tipos de post y grupos sin importar la longitud del texto,
+     el tema (mascotas, alertas, noticias) o cualquier otra condición
 
 2. TEXTO INSUFICIENTE — descartar si el texto (sin espacios extra) tiene:
    - Menos de 8 palabras útiles en total
    - Ejemplos que DEBEN descartarse: "Formas de pago", "Sé que es morena",
      "¡Te esperamos hoy, no te quedes sin el tuyo!", "Camioneta equipada con herrería"
    - EXCEPCIÓN: posts de mascota perdida/encontrada pueden tener menos palabras
-     si mencionan colonia, color o raza del animal
+     si mencionan colonia, color o raza del animal — pero SOLO si tienen imagen (num_imgs > 0)
 
 3. TOKEN BASURA:
    - Palabra individual >28 caracteres mezclando letras y números
