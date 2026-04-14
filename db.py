@@ -380,10 +380,10 @@ def insertar_noticia(p, colonia_id):
     cursor.execute(
         """
         INSERT INTO noticias
-          (titulo, texto, categoria_id, colonia_id, autor,
-           imagen_cloudinary, url_post, fbid_post, fecha_captura,
+          (titulo, texto, categoria_id, colonia_id, autor, autor_id,
+           imagen_url, url_post, fbid_post, fecha_publicacion,
            fecha_post, fecha_post_dt)
-        VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
+        VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
         """,
         (
             (p.get("titulo") or "")[:200],
@@ -391,10 +391,11 @@ def insertar_noticia(p, colonia_id):
             p.get("categoria_id"),
             colonia_id,
             p.get("autor", "")[:200],
+            p.get("_autor_db_id") or None,
             imagen_principal,
             p.get("url_post") or None,
             fbid_post,
-            p.get("fecha_captura"),
+            parsear_fecha_fb(p.get("fecha_post"), p.get("fecha_captura", "")),
             (p.get("fecha_post") or "")[:60] or None,
             parsear_fecha_fb(p.get("fecha_post"), p.get("fecha_captura", "")),
         ),
@@ -422,21 +423,22 @@ def insertar_alerta(p, colonia_id):
     cursor.execute(
         """
         INSERT INTO alertas
-          (texto_alerta, categoria_id, colonia_id, direccion_aprox,
-           autor, imagen_cloudinary, url_post, fbid_post, fecha_captura,
+          (texto, categoria_id, colonia_id, direccion_aprox,
+           autor, autor_id, imagen_url, url_post, fbid_post, fecha,
            fecha_post, fecha_post_dt)
-        VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
+        VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
         """,
         (
-            p.get("texto_alerta", "")[:500],
+            p.get("texto", ""),
             p.get("categoria_id"),
             colonia_id,
             p.get("direccion_aprox"),
             p.get("autor", "")[:200],
+            p.get("_autor_db_id") or None,
             imagen_principal,
             p.get("url_post") or None,
             fbid_post,
-            p.get("fecha_captura"),
+            parsear_fecha_fb(p.get("fecha_post"), p.get("fecha_captura", "")),
             (p.get("fecha_post") or "")[:60] or None,
             parsear_fecha_fb(p.get("fecha_post"), p.get("fecha_captura", "")),
         ),
@@ -826,10 +828,11 @@ def actualizar_ranking_autor(autor_db_id):
     conn.close()
 
 
-def upsert_autor_completo(autor_id_fb, nombre):
+def upsert_autor_completo(autor_id_fb, nombre, autor_url=None):
     """
     Versión mejorada de upsert_autor que además:
     - Detecta tipo_nombre (empresa/persona) y tipo_perfil
+    - Guarda autor_url para páginas FB sin ID numérico
     - Recalcula ranking y badge
     Retorna (autor_db_id, es_empresa) donde es_empresa es True/False.
     """
@@ -840,7 +843,6 @@ def upsert_autor_completo(autor_id_fb, nombre):
     cursor = conn.cursor()
 
     tipo_nombre = detectar_tipo_nombre(nombre)
-    # tipo_perfil: 'empresa' si se detectó como empresa, 'persona' si persona, sino 'desconocido'
     tipo_perfil = tipo_nombre if tipo_nombre in ('empresa', 'persona') else 'desconocido'
 
     cursor.execute(
@@ -868,10 +870,13 @@ def upsert_autor_completo(autor_id_fb, nombre):
             updates.append("tipo_nombre = %s")
             params.append(tipo_nombre)
 
-        # Actualizar tipo_perfil si aún es desconocido
         if perfil_actual == 'desconocido' and tipo_perfil != 'desconocido':
             updates.append("tipo_perfil = %s")
             params.append(tipo_perfil)
+
+        if autor_url and _column_exists("autores", "autor_url"):
+            updates.append("autor_url = %s")
+            params.append(autor_url[:200])
 
         if updates:
             params.append(autor_db_id)
@@ -881,28 +886,94 @@ def upsert_autor_completo(autor_id_fb, nombre):
             )
             conn.commit()
 
-        # Usar el perfil más reciente disponible
         tipo_perfil = tipo_perfil if tipo_perfil != 'desconocido' else perfil_actual
         tipo_nombre = tipo_nombre if tipo_nombre != 'desconocido' else tipo_actual
     else:
-        cursor.execute(
-            """
-            INSERT INTO autores (autor_id_fb, nombre, tipo_nombre, tipo_perfil)
-            VALUES (%s, %s, %s, %s)
-            """,
-            (str(autor_id_fb), (nombre or '').strip()[:200], tipo_nombre, tipo_perfil)
-        )
+        if _column_exists("autores", "autor_url"):
+            cursor.execute(
+                """
+                INSERT INTO autores (autor_id_fb, nombre, tipo_nombre, tipo_perfil, autor_url)
+                VALUES (%s, %s, %s, %s, %s)
+                """,
+                (str(autor_id_fb), (nombre or '').strip()[:200], tipo_nombre, tipo_perfil,
+                 autor_url[:200] if autor_url else None)
+            )
+        else:
+            cursor.execute(
+                """
+                INSERT INTO autores (autor_id_fb, nombre, tipo_nombre, tipo_perfil)
+                VALUES (%s, %s, %s, %s)
+                """,
+                (str(autor_id_fb), (nombre or '').strip()[:200], tipo_nombre, tipo_perfil)
+            )
         conn.commit()
         autor_db_id = cursor.lastrowid
 
     cursor.close()
     conn.close()
 
-    # Actualizar ranking y badge
     actualizar_ranking_autor(autor_db_id)
 
     es_empresa = (tipo_nombre == 'empresa' or tipo_perfil == 'empresa')
     return autor_db_id, es_empresa
+
+
+# ─── MASCOTAS ────────────────────────────────────────────────
+
+def mascota_ya_existe(fbid_post):
+    if not fbid_post:
+        return None
+    conn = get_conn()
+    cursor = conn.cursor()
+    cursor.execute("SELECT id FROM mascotas WHERE fbid_post = %s LIMIT 1", (str(fbid_post),))
+    row = cursor.fetchone()
+    cursor.close()
+    conn.close()
+    return row[0] if row else None
+
+
+def insertar_mascota(p, colonia_id):
+    fbid_post = p.get("fbid_post")
+    existing  = mascota_ya_existe(fbid_post)
+    if existing:
+        return existing, "duplicado"
+
+    imgs    = p.get("imagenes_cloudinary") or []
+    img_url = _img_url(imgs[0]) if imgs else None
+
+    conn   = get_conn()
+    cursor = conn.cursor()
+    cursor.execute(
+        """
+        INSERT INTO mascotas
+          (tipo, nombre_mascota, especie, descripcion, colonia_id,
+           telefono, imagen_url, url_post, fbid_post,
+           autor, autor_id, fecha, fecha_post, fecha_post_dt)
+        VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
+        """,
+        (
+            p.get("tipo_mascota", "perdida"),
+            (p.get("nombre_mascota") or "")[:100] or None,
+            p.get("especie", "perro"),
+            p.get("texto", ""),
+            colonia_id,
+            p.get("telefono") or None,
+            img_url,
+            p.get("url_post") or None,
+            fbid_post,
+            (p.get("autor") or "")[:200],
+            p.get("_autor_db_id") or None,
+            parsear_fecha_fb(p.get("fecha_post"), p.get("fecha_captura", "")),
+            (p.get("fecha_post") or "")[:60] or None,
+            parsear_fecha_fb(p.get("fecha_post"), p.get("fecha_captura", "")),
+        ),
+    )
+    mascota_id = cursor.lastrowid
+    conn.commit()
+    cursor.close()
+    conn.close()
+    return mascota_id, "nuevo"
+
 
 def obtener_potenciales_clientes(limite=50, score_minimo=5):
     """
