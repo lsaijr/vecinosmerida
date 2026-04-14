@@ -509,7 +509,10 @@ TIPOS — definiciones exactas:
 
 "noticia"
   Evento, hecho o información de interés general ocurrido en Mérida/Yucatán.
-  SOLO si el texto tiene 70 o más palabras — NUNCA noticia con menos de 70 palabras.
+  ⚠ LEY ABSOLUTA: SOLO puede ser "noticia" si el texto tiene 70 palabras o más.
+  Un post de 69 palabras o menos JAMÁS puede ser "noticia", sin importar el contenido.
+  Esta es la ÚNICA restricción de longitud en todo el sistema — aplica SOLO a "noticia".
+  Los demás tipos (negocio, alerta, mascota, ignorar) NO tienen restricción de longitud.
   Ejemplos: "Autoridades reportan accidente en periférico...", "Ayuntamiento comunica..."
 
 "alerta"
@@ -535,7 +538,7 @@ TIPOS — definiciones exactas:
 ════════════════════════════════════════
 REGLAS DE ORO — nunca violarlas:
 ════════════════════════════════════════
-1. texto < 70 palabras → JAMÁS puede ser "noticia"
+1. ÚNICA LEY DE LONGITUD: texto < 70 palabras → JAMÁS "noticia". Los demás tipos no tienen restricción de longitud.
 2. Una reflexión filosófica sobre animales SIN denuncia concreta → "ignorar", no "alerta" ni "mascota"
 3. Una denuncia de maltrato animal, estafa o fraude → "alerta", no "mascota"
 4. Un post que habla de otro post sin contenido propio → "ignorar"
@@ -553,10 +556,15 @@ document.getElementById('fileInput').addEventListener('change', function(e) {
     try {
       rawData = JSON.parse(ev.target.result);
       const n = rawData.posts?.length || 0;
+      const grupoTipo = rawData.meta?.grupo_tipo || 'desconocido';
+      const grupoNombre = rawData.meta?.group_name || '';
       document.getElementById('fileName').textContent = `✓ ${file.name} — ${n} posts`;
       document.getElementById('fileName').classList.remove('hidden');
       checkReady();
       log(`📂 Cargado: ${file.name} — ${n} posts`, 'info');
+      if (rawData.meta?.grupo_tipo) {
+        log(`📋 Tipo de grupo detectado: ${grupoTipo} — ${grupoNombre}`, 'info');
+      }
     } catch(e) {
       log(`❌ JSON inválido: ${e.message}`, 'err');
     }
@@ -906,7 +914,7 @@ REGLAS DE AUDITORÍA:
 3. Una reflexión filosófica sobre animales SIN denuncia concreta → "ignorar"
 4. Una denuncia de maltrato, estafa o peligro → "alerta", no "mascota"
 5. "Apoya a [nombre] para [cirugía/tratamiento]" → "mascota", no "negocio"
-6. texto < 70 palabras → JAMÁS "noticia"
+6. ÚNICA LEY DE LONGITUD: texto < 70 palabras → JAMÁS "noticia". negocio/alerta/mascota/ignorar no tienen mínimo de palabras.
 
 Sé crítico. Corrige cuando sea necesario. Confía en tu propio juicio.`;
 
@@ -1036,9 +1044,15 @@ async function startChain() {
 
     } catch(err) {
       dot.className = 'dot dot-error';
-      stTxt.textContent = `Error: ${err.message.slice(0,50)}`;
-      log(`❌ ${m.label}: ${err.message}`, 'err');
-      break;
+      stTxt.textContent = `⚠ Error — saltando al siguiente`;
+      cardEl.style.borderColor = 'var(--error)';
+      cardEl.querySelector('.card-body').innerHTML =
+        `<div style="font-size:.72rem;color:var(--error);font-family:'Space Mono',monospace;margin-top:.5rem">
+          ${err.message.slice(0,80)}<br>
+          <span style="color:var(--muted)">Resultado anterior conservado</span>
+        </div>`;
+      log(`❌ ${m.label}: ${err.message} — continuando cadena con resultado anterior`, 'err');
+      // No break — continue with currentTipos unchanged (previous model's result)
     }
   }
 

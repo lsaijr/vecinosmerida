@@ -480,6 +480,22 @@
     </div>
 
     <div class="input-group" style="margin-top:1rem">
+      <label>Tipo de grupo</label>
+      <select id="grupoTipo" onchange="onGrupoTipoChange()"
+        style="width:100%;background:var(--bg);border:1px solid var(--border);border-radius:8px;
+               padding:.75rem 1rem;color:var(--text);font-family:'Space Mono',monospace;
+               font-size:.85rem;outline:none;cursor:pointer">
+        <option value="vecinos">🏘 Vecinos / Colonias</option>
+        <option value="noticias">📰 Noticias</option>
+        <option value="mascotas">🐾 Mascotas / Adopciones</option>
+        <option value="empleo">💼 Empleo / Trabajo</option>
+        <option value="ventas">🛍 Ventas / Negocios</option>
+      </select>
+      <div style="font-size:.7rem;color:var(--muted);font-family:'Space Mono',monospace;margin-top:.3rem"
+           id="grupoTipoDesc">Calibra umbrales y reglas de descarte según el tipo de grupo</div>
+    </div>
+
+    <div class="input-group" style="margin-top:1rem">
       <label>Groq API Key</label>
       <input type="password" id="apiKey" placeholder="gsk_..." autocomplete="off"
              oninput="saveApiKey(); checkReady()" />
@@ -654,7 +670,7 @@ CAMPOS A PRESERVAR — si el post ya tiene estos campos, conservarlos exactament
 ════════════════════════════════════════
 - pre_tipo: clasificación sugerida por keywords (negocio/noticia/alerta/mascota/ambiguo)
 - pre_score: nivel de certeza (1, 2 o 3)
-- noticia_permitida: true/false según longitud del texto
+- noticia_permitida: true si el texto tiene ≥70 palabras (SOLO afecta a "noticia" — los demás tipos no tienen restricción de longitud)
 - tipos_validos: array de tipos que puede tomar este post
 
 ════════════════════════════════════════
@@ -759,6 +775,24 @@ async function runBloque1Preview() {
     grid.innerHTML = '';
     msg.textContent = `⚠ Bloque 1 no disponible: ${e.message}`;
   }
+}
+
+// ── Tipo de grupo ────────────────────────────────────────────────
+function onGrupoTipoChange() {
+  const tipo = document.getElementById('grupoTipo').value;
+  const cfg = getConfigGrupo(tipo);
+  const descs = {
+    vecinos:  '🏘 Posts cortos, mayoría negocios. Imagen requerida.',
+    noticias: '📰 Sin restricción de imagen. Fragmentos noticiosos válidos.',
+    mascotas: '🐾 Imagen casi siempre requerida. Textos medianos.',
+    empleo:   '💼 Sin imagen requerida. NUNCA "noticia". Ofertas y búsquedas.',
+    ventas:   '🛍 Imagen requerida. Todo es negocio o ignorar.',
+  };
+  document.getElementById('grupoTipoDesc').textContent = descs[tipo] || '';
+}
+
+function getGrupoTipo() {
+  return document.getElementById('grupoTipo')?.value || 'vecinos';
 }
 
 // Persistir API key en sessionStorage (solo dura mientras la pestaña está abierta)
@@ -878,10 +912,18 @@ function calcCost(usage, model) {
 
 function showStats(n, posts, tokInfo, modelObj) {
   const repCount = posts.filter(p => (p.repeticiones || 1) > 1).length;
+  const conTel    = posts.filter(p => p.telefono).length;
+  const conPreTipo = posts.filter(p => p.pre_tipo && p.pre_tipo !== 'ambiguo').length;
   document.getElementById(`sv${n}p`).textContent = posts.length;
   document.getElementById(`sv${n}r`).textContent = repCount;
   document.getElementById(`sv${n}t`).textContent = tokInfo.total.toLocaleString();
   document.getElementById(`sv${n}c`).textContent = `$${tokInfo.cost.toFixed(4)}`;
+  // Mostrar campos nuevos en log
+  const tipoCounts = {};
+  posts.forEach(p => { tipoCounts[p.pre_tipo || 'ambiguo'] = (tipoCounts[p.pre_tipo || 'ambiguo'] || 0) + 1; });
+  const tipoStr = Object.entries(tipoCounts).sort((a,b)=>b[1]-a[1]).map(([t,c])=>`${t}:${c}`).join(' · ');
+  log(`  📊 pre_tipo → ${tipoStr}`, 'info');
+  log(`  📞 con teléfono: ${conTel} · clasificados: ${conPreTipo}/${posts.length}`, 'info');
   document.getElementById(`stats${n}`).classList.remove('hidden');
 
   // Sample texts
@@ -900,8 +942,198 @@ function showStats(n, posts, tokInfo, modelObj) {
 
 
 // ═══════════════════════════════════════════════════════════════
-// PRE-CLASIFICACIÓN DETERMINISTA (portada de utils.py)
+// ETAPA 1 — PROCESAMIENTO DETERMINISTA POST-GROQ
+// Portado de utils.py (VecinosMérida pipeline)
 // ═══════════════════════════════════════════════════════════════
+
+// ── Patrones regex ────────────────────────────────────────────
+const _RE_URL        = /https?:\/\/\S+|wa\.me(?:\/c)?\/\S+/gi;
+const _RE_HASHTAG    = /#\w+/g;
+const _RE_EMOJI      = /[\u{1F300}-\u{1F9FF}\u{2700}-\u{27BF}\u{FE00}-\u{FE0F}\u2600-\u26FF\u2B50\u2B55\u231A\u231B\u25AA-\u25FE\u2614\u2615]+/gu;
+const _RE_DECO_UNI   = /[\u{1D400}-\u{1D7FF}\u{1F100}-\u{1F1FF}]+/gu;
+const _RE_MENCIONES  = /@\[\d+:\d+:[^\]]*\]/g;
+const _RE_SIGNOS_REP = /([!?])\1+|\.{4,}/g;
+const _RE_ESPACIOS   = /\s+/g;
+const _RE_SOLO_TEL   = /^[\d\s\-.()\+]{8,18}$/;
+const _RE_TIKTOK     = /tiktok\.com|vm\.tiktok|tiktok para descubrir|entra a tiktok/i;
+const _RE_LIVE       = /transmisi[oó]n en directo|en vivo ahora|live\s+ahora|unirte a la transmisi[oó]n/i;
+const _PATRONES_TEL  = [
+  /\b(\d{10})\b/,
+  /\b(\d{3})[\s\-.](\d{3})[\s\-.](\d{4})\b/,
+  /(?:\+52|52)[\s\-]?(\d{10})\b/,
+  /(?:\+52|52)[\s\-]?(\d{3})[\s\-.](\d{3})[\s\-.](\d{4})\b/,
+  /(?:cel|tel|whatsapp|wha|llamar?\s*al?|marca\s*al?|al\s+num(?:ero)?)[:\s\-]*(\d[\d\s\-.]{8,12}\d)/i,
+  /wa\.me(?:\/c)?\/(?:52)?(\d{10})/,
+];
+
+// ── Geografía ─────────────────────────────────────────────────
+const _GEO_YUCATAN = [
+  'mérida','merida','yucatán','yucatan','colonia','fraccionamiento',
+  'comisaría','comisaria','ticul','progreso','valladolid','izamal',
+  'motul','umán','uman','kanasín','kanasin','celestún','celestun',
+  'telchac','hunucmá','hunucma','tizimín','tizimin','oxkutzcab',
+  'tekax','maxcanú','maxcanu','dzilam','sisal','chicxulub',
+  'municipio de','ayuntamiento de','sspe','seye','conkal',
+  'cancún','cancun','quintana roo','campeche','chetumal',
+];
+const _GEO_EXTERNA = [
+  'california','estados unidos','eeuu','cdmx','ciudad de mexico',
+  'guadalajara','monterrey','nuevo leon','jalisco','puebla',
+  'veracruz','chiapas','oaxaca','tabasco','coahuila','tamaulipas',
+  'sinaloa','sonora','tijuana','acapulco','torreon','torreón',
+  'indonesia','tailandia','irán','iran','israel','ucrania','rusia','cuba',
+];
+const _SIGNALS_URGENTE = [
+  'difundamos','difunde','urgente','comparte esto','🆘','sos ',
+  'necesito su ayuda','ayúdanos a compartir','ayudanos a compartir',
+];
+
+// ── UI residual de Facebook ───────────────────────────────────
+const _UI_FB = new Set([
+  'más relevantes','ver más comentarios','por qué ves esto',
+  'compartir','me gusta','comentar',
+]);
+
+// ── Consultas sin señal comercial ─────────────────────────────
+const CONSULTA_HINTS = [
+  'alguien vende','quien vende','quién vende','alguien sabe',
+  'saben donde','saben dónde','recomienden','recomendacion',
+  'recomendación','sugerencias','donde venden','dónde venden',
+  'donde hay','dónde hay','que me recomiendan','qué me recomiendan',
+  'conocen a','alguna recomendacion','alguna recomendación',
+];
+const COMERCIAL_FUERTE_HINTS = [
+  'vendo','venta','precio','pesos','$','whatsapp','telefono','tel',
+  'servicio','domicilio','pedido','pedidos','menu','menú','horario',
+  'contamos con','ubicados en','ubicado en','promo','promocion',
+  'promoción','cotiza','reserva','entrega','disponible',
+];
+
+// ── Palabras de ruido para conteo real ────────────────────────
+const RUIDO_PALABRAS = new Set([
+  'inbox','whatsapp','info','tel','cel','num','numero','al',
+  'llamar','llama','escribe','mensaje','escribeme','contacto',
+]);
+
+// ═══════════════════════════════════════════════════════════════
+// FUNCIONES
+// ═══════════════════════════════════════════════════════════════
+
+function _norm(txt) { return (txt || '').toLowerCase(); }
+
+function removerUrls(txt) {
+  return (txt || '').replace(_RE_URL, '').trim();
+}
+
+function extraerTelefono(txt) {
+  if (!txt) return null;
+  for (const pat of _PATRONES_TEL) {
+    const m = (txt + ' ' + txt).match(pat); // doble para patrones con lookahead
+    const m2 = txt.match(pat);
+    const match = m2;
+    if (match) {
+      const numero = match.slice(1).filter(Boolean).join('').replace(/\D/g, '');
+      if (numero.length >= 10) return numero.slice(-10);
+    }
+  }
+  return null;
+}
+
+function limpiarTextoRegex(txt) {
+  if (!txt) return '';
+  txt = txt.replace(_RE_MENCIONES, '');
+  txt = txt.replace(_RE_HASHTAG, '');
+  txt = txt.replace(_RE_EMOJI, '');
+  txt = txt.replace(_RE_DECO_UNI, '');
+  // Quitar tokens scrambled (>25 chars con letras y números mezclados)
+  txt = txt.split(/\s+/).filter(w => !(w.length > 25 && /\d/.test(w) && /[a-zA-Z]/.test(w))).join(' ');
+  txt = txt.replace(_RE_SIGNOS_REP, m => /[!?]/.test(m[0]) ? m[0] : '...');
+  txt = txt.replace(_RE_ESPACIOS, ' ').trim();
+  return txt;
+}
+
+function contarPalabras(txt) {
+  return (txt || '').trim().split(/\s+/).filter(w => w.length > 0).length;
+}
+
+function contarPalabrasContenido(txt) {
+  if (!txt) return 0;
+  return txt.trim().split(/\s+/).filter(w => {
+    if (!w) return false;
+    if (/^[\d\s\-.()\+]+$/.test(w)) return false;
+    if (/^\d{10}$/.test(w.replace(/\D/g, '')) && w.replace(/\D/g, '').length === 10) return false;
+    if (RUIDO_PALABRAS.has(w.toLowerCase())) return false;
+    return true;
+  }).length;
+}
+
+function noticiaPermitida(txt) {
+  // ⚠ LEY ABSOLUTA: 70 palabras mínimo para "noticia", sin excepciones.
+  // Esta regla aplica a TODOS los tipos de grupo. Los demás tipos no tienen restricción.
+  return contarPalabras(txt) >= NEWS_MIN_WORDS;
+}
+
+function clasificarUrgenteGeo(texto) {
+  const t = _norm(texto);
+  if (!_SIGNALS_URGENTE.some(s => t.includes(s))) return null;
+  const tieneLocal    = _GEO_YUCATAN.some(s => t.includes(s));
+  const tieneExterna  = _GEO_EXTERNA.some(s => t.includes(s));
+  if (tieneLocal && !tieneExterna) return 'alerta';
+  if (tieneExterna) return 'ignorar';
+  return 'ambiguo';
+}
+
+function esPostConsulta(txt) {
+  const t = _norm(txt);
+  if (CONSULTA_HINTS.some(kw => t.includes(kw))) return true;
+  if ((txt.includes('?') || txt.includes('¿')) &&
+      ['alguien','quien','donde','recomienden','saben'].some(w => t.includes(w))) return true;
+  return false;
+}
+
+function tienesenalComercialFuerte(post, txt) {
+  const t = _norm(txt);
+  if ((post.num_imgs || 0) > 0) return true;
+  if (post.url_post) return true;
+  if (extraerTelefono(txt)) return true;
+  if (/\$\s?\d+|\b\d+\s*(pesos|mxn)\b/i.test(txt)) return true;
+  return COMERCIAL_FUERTE_HINTS.some(kw => t.includes(kw));
+}
+
+function esDescartablePost(post) {
+  const txt = (post.texto || '').trim();
+  const num_imgs = post.num_imgs || 0;
+
+  // UI residual de Facebook
+  if (_UI_FB.has(_norm(txt))) return 'ui_facebook';
+  // Solo número de teléfono
+  if (_RE_SOLO_TEL.test(txt)) return 'solo_telefono';
+  // Spam TikTok
+  if (_RE_TIKTOK.test(txt)) return 'spam_tiktok';
+  // Transmisión en vivo
+  if (_RE_LIVE.test(txt)) return 'live_stream';
+  // Consulta sin señal comercial (grupos no-empleo)
+  if (esPostConsulta(txt) && !tienesenalComercialFuerte(post, txt)) return 'consulta_sin_valor';
+
+  return null;
+}
+
+// ── Pre-clasificación por keywords ────────────────────────────
+const NEWS_MIN_WORDS = 70; // ← LEY ABSOLUTA: solo para tipo "noticia"
+
+// ── CONFIG_GRUPO: calibrado con datos reales de +6,000 posts ──────
+// Define umbrales y reglas por tipo de grupo
+const CONFIG_GRUPO = {
+  vecinos:  { min_palabras: 3,  noticia_umbral: NEWS_MIN_WORDS, requiere_imagen: true,  tipos_permitidos: ['negocio','alerta','mascota','noticia','ignorar'] },
+  noticias: { min_palabras: 5,  noticia_umbral: NEWS_MIN_WORDS, requiere_imagen: false, tipos_permitidos: ['noticia','alerta','negocio','ignorar'] },
+  mascotas: { min_palabras: 7,  noticia_umbral: NEWS_MIN_WORDS, requiere_imagen: true,  tipos_permitidos: ['mascota','alerta','negocio','ignorar'] },
+  empleo:   { min_palabras: 5,  noticia_umbral: 9999,           requiere_imagen: false, tipos_permitidos: ['empleo','ignorar'] },
+  ventas:   { min_palabras: 3,  noticia_umbral: 9999,           requiere_imagen: true,  tipos_permitidos: ['negocio','mascota','ignorar'] },
+};
+
+function getConfigGrupo(tipo) {
+  return CONFIG_GRUPO[tipo] || CONFIG_GRUPO['vecinos'];
+}
 
 const _KW = {
   negocio: {
@@ -910,74 +1142,143 @@ const _KW = {
         'pesos','mxn','dlls','repostería','reposteria','taller','reparaci','instalaci',
         'plomero','electricista','carpintero','pintura','herreria','albañil','mantenimiento',
         'cotiz','ubicados en','ubicado en','horario','frapp','smoothie','crepa',
-        'fresas con','menu','menú'],
+        'fresas con','menu','menú',
+        // ── Nuevas — calibradas con datos reales ──
+        'tenemos','contamos','pedidos','ingredientes','estamos laborando',
+        'ven a visitarnos','nos ubicamos','sucursal','local en','calidad',
+        'hacemos','realizamos','ofrecemos'],
     1: ['comida','tacos','pizza','hamburguesa','torta','sushi','mariscos','pollo','carne',
         'panadería','panaderia','pastel','refresco','agua','café','cafe','ropa','calzado',
         'zapato','accesorio','joyeria','joyería','belleza','estética','uñas','cabello',
         'maquillaje','masaje','spa','gym','clases','curso','academia','asesoría','asesoria',
-        'seguro','crédito','credito','préstamo','prestamo','inmueble','renta','entrega'],
+        'seguro','crédito','credito','préstamo','prestamo','inmueble','renta','entrega',
+        // ── Nuevas ──
+        'birria','burger','hot dog','pierna','pastor','tamales','pozole',
+        'mochila','bolsa','vestido','blusa','pantalon','zapatos',
+        'instalacion','mantenimiento','reparacion','fumigacion'],
   },
   alerta: {
     2: ['robo','robaron','ladrón','ladron','sospechoso','bache','fuga de agua','accidente',
         'choque','atropelló','atropello','herido','peligro','cuidado','alerta','auxilio',
-        'emergencia','sin luz'],
-    1: ['incendio','inundación','inundacion','poste caido','fuga','cables'],
+        'emergencia','sin luz',
+        // ── Nuevas ──
+        'maltrato','estafa','fraude','depósito','deposito','timo','engaño',
+        'invasores','despojo','amenaza','violencia'],
+    1: ['incendio','inundación','inundacion','poste caido','fuga','cables','denuncia'],
   },
   mascota: {
     2: ['perdí mi perro','perdí mi gato','se escapó mi','se me escapó','se perdió mi',
         'en adopción','en adopcion','busca hogar','busca familia','dar en adopción',
         'encontré un perro','encontré un gato','perro perdido','gato perdido',
         'si la ves','responde al nombre','avísame','la entregamos'],
-    1: ['mascota','perro','gato','cachorro','gatito','canino','felino','adopción','adopcion'],
+    1: ['mascota','perro','gato','cachorro','gatito','canino','felino','adopción','adopcion',
+        // ── Nuevas ──
+        'perrito','perrita','gatitos','rescate','hogar temporal','esteriliz',
+        'desparasit','collar','correa','veterinari'],
   },
   noticia: {
     3: ['autoridades','policía','policia','bomberos','protección civil','proteccion civil'],
-    2: ['vecinos reportan','se registra','comunicado','ayuntamiento','movilización','movilizacion'],
-    1: ['reportan','informan','accidente','incendio','hechos'],
+    2: ['vecinos reportan','se registra','comunicado','ayuntamiento','movilización','movilizacion',
+        // ── Nuevas ──
+        'gobierno','secretaría','secretaria','programa','municipio','detenido',
+        'operativo','volcadura','fallecio','falleció'],
+    1: ['reportan','informan','accidente','incendio','hechos','estado','seguridad'],
+  },
+  // ── NUEVO: empleo — calibrado con 201 posts reales ──────────────
+  empleo: {
+    2: ['se solicita','se solicitan','solicitamos','estamos contratando','buscamos personal',
+        'vacante','vacantes','contratación inmediata','únete a nuestro equipo',
+        'estamos buscando','envía tu cv','manda tu cv','pago semanal','pago quincenal',
+        'prestaciones','solicito personal','contratando','busco trabajo','busco empleo',
+        'ando en busca de trabajo','necesito trabajo','ofrezco mis servicios',
+        'busca empleo','en búsqueda de empleo'],
+    1: ['sueldo','requisitos','experiencia','horario','turno','interesados','curriculum',
+        'tiempo completo','medio tiempo','vacante','plaza','puesto'],
   },
 };
-
 const UMBRAL_KW = 2;
-const NEWS_MIN_WORDS = 70;
-
-function contarPalabras(txt) {
-  return (txt || '').trim().split(/\s+/).filter(w => w.length > 0).length;
-}
-
-function noticiaPermitida(txt) {
-  return contarPalabras(txt) >= NEWS_MIN_WORDS;
-}
 
 function preClasificarKeywords(texto, autor) {
-  const haystack = ((texto || '') + ' ' + (autor || '')).toLowerCase();
+  const haystack = (_norm(texto) + ' ' + _norm(autor));
   const scores = {};
   for (const [tipo, grupos] of Object.entries(_KW)) {
     let score = 0;
     for (const [peso, kws] of Object.entries(grupos)) {
-      for (const kw of kws) {
-        if (haystack.includes(kw)) score += Number(peso);
-      }
+      for (const kw of kws) { if (haystack.includes(kw)) score += Number(peso); }
     }
     scores[tipo] = score;
   }
   const mejorTipo  = Object.keys(scores).reduce((a, b) => scores[a] >= scores[b] ? a : b);
   const mejorScore = scores[mejorTipo];
-
+  // Ley absoluta: noticia solo con ≥70 palabras
   if (mejorTipo === 'noticia' && !noticiaPermitida(texto)) return ['ambiguo', 0];
+  // En grupos de empleo, priorizar tipo empleo
+  if (getGrupoTipo() === 'empleo' && scores['empleo'] >= UMBRAL_KW) return ['empleo', scores['empleo']];
   if (mejorScore >= UMBRAL_KW) return [mejorTipo, mejorScore];
   return ['ambiguo', 0];
 }
 
-function aplicarPreClasificacion(posts) {
-  return posts.map(p => {
-    const [pre_tipo, pre_score] = preClasificarKeywords(p.texto, p.autor);
-    return {
+// ── Función principal: aplica todo el procesamiento post-Groq ─
+function procesarPostsEtapa1(posts) {
+  const resultado = [];
+  const descartados = [];
+  const cfg = getConfigGrupo(getGrupoTipo()); // Config calibrada por tipo de grupo
+
+  for (const p of posts) {
+    const textoOriginal = p.texto || '';
+
+    // 1. Descarte adicional determinista
+    const razonDescarte = esDescartablePost(p);
+    if (razonDescarte) {
+      descartados.push({ ...p, _descartado: razonDescarte });
+      continue;
+    }
+
+    // 2. Descarte por imagen según tipo de grupo (empleo y noticias no requieren imagen)
+    if (cfg.requiere_imagen && !(p.num_imgs > 0)) {
+      descartados.push({ ...p, _descartado: 'sin_imagen_grupo_' + getGrupoTipo() });
+      continue;
+    }
+
+    // 3. Descarte por texto demasiado corto según tipo de grupo
+    if (contarPalabras(textoOriginal) < cfg.min_palabras) {
+      descartados.push({ ...p, _descartado: 'texto_corto_grupo_' + getGrupoTipo() });
+      continue;
+    }
+
+    // 2. texto_limpio: quitar URLs, hashtags, emojis, unicode deco
+    const textoSinUrls = removerUrls(textoOriginal);
+    const textoLimpio  = limpiarTextoRegex(textoSinUrls);
+
+    // 3. Extraer teléfono
+    const telefono = extraerTelefono(textoOriginal) || extraerTelefono(p.autor || '');
+
+    // 4. Filtro urgente geográfico (alerta local vs externa)
+    const geoUrgente = clasificarUrgenteGeo(textoOriginal);
+    let preOverride = null;
+    if (geoUrgente === 'ignorar') {
+      descartados.push({ ...p, _descartado: 'urgente_geo_externa' });
+      continue;
+    }
+    if (geoUrgente === 'alerta') preOverride = ['alerta', 3];
+
+    // 5. Pre-clasificación por keywords
+    const [pre_tipo, pre_score] = preOverride || preClasificarKeywords(textoLimpio, p.autor || '');
+
+    // 6. Construir post enriquecido
+    resultado.push({
       ...p,
+      texto_limpio:       textoLimpio,
+      telefono:           telefono || null,
       pre_tipo,
       pre_score,
-      noticia_permitida: noticiaPermitida(p.texto),
-    };
-  });
+      noticia_permitida:  cfg.noticia_umbral < 9999
+        ? contarPalabras(textoOriginal) >= cfg.noticia_umbral
+        : false, // empleo/ventas: nunca noticia
+    });
+  }
+
+  return { posts: resultado, descartados };
 }
 
 async function processModel(modelObj) {
@@ -1022,13 +1323,20 @@ async function processModel(modelObj) {
       }
     }
 
-    // Construir resultado final — aplicar pre-clasificación determinista
-    const postsPre = aplicarPreClasificacion(allProcessed);
-    const finalData = { ...rawData, posts: postsPre, meta: { ...rawData.meta, total_posts: postsPre.length } };
-    const allProcessed_final = postsPre;
+    // Construir resultado final — procesamiento determinista Etapa 1
+    const { posts: postsPre, descartados: postsDescartados } = procesarPostsEtapa1(allProcessed);
+    const finalData = { ...rawData, posts: postsPre, meta: {
+      ...rawData.meta,
+      total_posts:     postsPre.length,
+      grupo_tipo:      getGrupoTipo(),
+      descartados_etapa1: postsDescartados.length,
+    }};
+    if (postsDescartados.length > 0) {
+      log(`  🗑 ${postsDescartados.length} post(s) descartados en post-proceso: ${[...new Set(postsDescartados.map(p => p._descartado))].join(', ')}`, '');
+    }
     const tokInfo = calcCost(totalUsage, modelObj);
 
-    results[n] = { data: finalData, posts: postsPre, tokInfo, modelObj };
+    results[n] = { data: finalData, posts: postsPre, descartados: postsDescartados, tokInfo, modelObj };
 
     setStatus(n, 'done', `✓ Completado — ${allProcessed.length} posts`);
     document.getElementById(`mc${n}`).classList.add('done-card');
