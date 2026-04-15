@@ -15,34 +15,37 @@ NEWS_MIN_WORDS = 70
 
 CONFIG_GRUPO = {
     "vecinos": {
-        "tipos_permitidos":    ["noticia", "negocio", "mascota", "alerta"],
+        "tipos_permitidos":    ["noticia", "negocio", "mascota", "alerta", "empleo", "perdido"],
         "tipos_prioritarios":  ["negocio", "alerta"],
+        "min_palabras":        3,
         "min_palabras_noticia": 70,
         "min_palabras_mascota": 15,
         "requiere_imagen":     ["negocio", "alerta"],
-        "no_requiere_imagen":  ["noticia", "mascota"],
-        "largo_es_negocio":    True,   # post >150w en vecinos → sospechar negocio
+        "no_requiere_imagen":  ["noticia", "mascota", "perdido"],
+        "largo_es_negocio":    True,
         "validar_noticia_ia":  True,
         "filtrar_geo_externa": False,
     },
     "noticias": {
-        "tipos_permitidos":    ["noticia", "alerta", "mascota"],
+        "tipos_permitidos":    ["noticia", "alerta", "mascota", "negocio"],
         "tipos_prioritarios":  ["noticia"],
+        "min_palabras":        5,
         "min_palabras_noticia": 70,
         "min_palabras_mascota": 15,
-        "requiere_imagen":     ["mascota"],
+        "requiere_imagen":     [],
         "no_requiere_imagen":  ["noticia", "alerta"],
         "largo_es_negocio":    False,
-        "validar_noticia_ia":  True,   # obligatorio — grupos ruidosos
-        "filtrar_geo_externa": True,   # descartar noticias fuera de Yucatán
+        "validar_noticia_ia":  True,
+        "filtrar_geo_externa": True,
     },
     "mascotas": {
-        "tipos_permitidos":    ["mascota"],
+        "tipos_permitidos":    ["mascota", "alerta", "negocio"],
         "tipos_prioritarios":  ["mascota"],
-        "min_palabras_noticia": 9999,  # nunca noticias
-        "min_palabras_mascota": 15,    # umbral bajo — posts cortos son válidos
+        "min_palabras":        7,
+        "min_palabras_noticia": 9999,
+        "min_palabras_mascota": 15,
         "requiere_imagen":     [],
-        "no_requiere_imagen":  ["mascota"],
+        "no_requiere_imagen":  ["mascota", "alerta"],
         "largo_es_negocio":    False,
         "validar_noticia_ia":  False,
         "filtrar_geo_externa": False,
@@ -50,6 +53,7 @@ CONFIG_GRUPO = {
     "negocios": {
         "tipos_permitidos":    ["negocio", "mascota"],
         "tipos_prioritarios":  ["negocio"],
+        "min_palabras":        3,
         "min_palabras_noticia": 9999,
         "min_palabras_mascota": 15,
         "requiere_imagen":     ["negocio"],
@@ -61,10 +65,23 @@ CONFIG_GRUPO = {
     "empleo": {
         "tipos_permitidos":    ["empleo"],
         "tipos_prioritarios":  ["empleo"],
+        "min_palabras":        5,
         "min_palabras_noticia": 9999,
         "min_palabras_mascota": 9999,
         "requiere_imagen":     [],
         "no_requiere_imagen":  ["empleo"],
+        "largo_es_negocio":    False,
+        "validar_noticia_ia":  False,
+        "filtrar_geo_externa": False,
+    },
+    "perdidos": {
+        "tipos_permitidos":    ["perdido", "mascota", "negocio", "ignorar"],
+        "tipos_prioritarios":  ["perdido"],
+        "min_palabras":        5,
+        "min_palabras_noticia": 9999,
+        "min_palabras_mascota": 15,
+        "requiere_imagen":     [],
+        "no_requiere_imagen":  ["perdido", "mascota"],
         "largo_es_negocio":    False,
         "validar_noticia_ia":  False,
         "filtrar_geo_externa": False,
@@ -422,52 +439,153 @@ def puede_ser_noticia_desde_json(txt, min_palabras=None, grupo_tipo="vecinos"):
 
 _KW = {
     'negocio': {
-        2: [
-            'vendo', 'venta', 'precio', 'oferta', 'servicio', 'domicilio', 'pedido',
-            'encargo', 'contamos con', 'disponible', 'delivery', 'envio', 'envío',
-            'whatsapp', 'cel', 'tel', 'pesos', 'mxn', 'dlls', 'repostería', 'reposteria',
-            'taller', 'reparaci', 'instalaci', 'plomero', 'electricista', 'carpintero',
-            'pintura', 'herreria', 'albañil', 'mantenimiento', 'cotiz', 'ubicados en',
-            'ubicado en', 'horario', 'frapp', 'smoothie', 'crepa', 'fresas con', 'menu', 'menú'
-        ],
-        1: [
-            'comida', 'tacos', 'pizza', 'hamburguesa', 'torta', 'sushi', 'mariscos',
-            'pollo', 'carne', 'panadería', 'panaderia', 'pastel', 'refresco', 'agua', 'café', 'cafe',
-            'ropa', 'calzado', 'zapato', 'accesorio', 'joyeria', 'joyería', 'belleza', 'estética',
-            'uñas', 'cabello', 'maquillaje', 'masaje', 'spa', 'gym', 'clases', 'curso',
-            'academia', 'asesoría', 'asesoria', 'seguro', 'crédito', 'credito', 'préstamo', 'prestamo',
-            'inmueble', 'renta', 'entrega'
-        ],
+        2: ['vendo','venta','precio','oferta','servicio','domicilio','pedido','encargo',
+            'contamos con','disponible','delivery','envio','envío','whatsapp','cotiz',
+            'ubicados en','ubicado en','horario','tenemos','pedidos','ingredientes',
+            'estamos laborando','ven a visitarnos','nos ubicamos','sucursal',
+            'hacemos','realizamos','ofrecemos','apartado','aparta el tuyo',
+            'pesos','mxn','repostería','reposteria','taller','reparaci','instalaci',
+            'plomero','electricista','carpintero','herreria','albañil',
+            'frapp','smoothie','crepa','fresas con','menu','menú'],
+        1: ['comida','tacos','pizza','hamburguesa','torta','sushi','mariscos','pollo','carne',
+            'panadería','panaderia','pastel','café','cafe','ropa','calzado','zapato',
+            'accesorio','joyeria','joyería','belleza','estética','uñas','cabello',
+            'maquillaje','masaje','spa','gym','clases','curso','academia',
+            'seguro','crédito','credito','préstamo','prestamo','inmueble','renta','entrega',
+            'birria','burger','hot dog','pierna','pastor','tamales','pozole',
+            'mochila','bolsa','vestido','blusa','pantalon','zapatos',
+            'instalacion','mantenimiento','reparacion','fumigacion',
+            'remato','entrega inmediata','modelos disponibles','keratina',
+            'alaciado','permanente','corte','tinte','tratamiento','limpieza',
+            'lavado','piscina','alberca','brincolines','inflable',
+            'lentes','armazones','internet','fibra óptica','fibra optica',
+            'megas','totalplay','pisos','azulejo','loseta','cemento',
+            'block','varilla','material','construcción','construccion',
+            'nueva colección','nueva coleccion','temporada','catálogo','catalogo'],
     },
     'alerta': {
-        2: [
-            'robo', 'robaron', 'ladrón', 'ladron', 'sospechoso', 'bache', 'fuga de agua',
-            'accidente', 'choque', 'atropelló', 'atropello', 'herido', 'peligro',
-            'cuidado', 'alerta', 'auxilio', 'emergencia', 'sin luz'
-        ],
-        1: ['incendio', 'inundación', 'inundacion', 'poste caido', 'fuga', 'cables']
+        2: ['robo','robaron','ladrón','ladron','sospechoso','bache','fuga de agua','accidente',
+            'choque','atropelló','atropello','herido','peligro','cuidado','alerta','auxilio',
+            'emergencia','sin luz','maltrato','estafa','fraude','depósito','deposito',
+            'timo','engaño','invasores','despojo','amenaza','violencia'],
+        1: ['incendio','inundación','inundacion','poste caido','fuga','cables','denuncia'],
     },
     'mascota': {
-        2: [
-            'perdí mi perro', 'perdí mi gato', 'se escapó mi', 'se me escapó', 'se perdió mi',
-            'en adopción', 'en adopcion', 'busca hogar', 'busca familia', 'dar en adopción',
-            'encontré un perro', 'encontré un gato', 'perro perdido', 'gato perdido',
-            'si la ves', 'responde al nombre', 'avísame', 'la entregamos'
-        ],
-        1: ['mascota', 'perro', 'gato', 'cachorro', 'gatito', 'canino', 'felino', 'adopción', 'adopcion']
+        2: ['perdí mi perro','perdí mi gato','se escapó mi','se me escapó','se perdió mi',
+            'en adopción','en adopcion','busca hogar','busca familia','dar en adopción',
+            'encontré un perro','encontré un gato','perro perdido','gato perdido',
+            'si la ves','responde al nombre','avísame','la entregamos'],
+        1: ['mascota','perro','gato','cachorro','gatito','canino','felino','adopción','adopcion',
+            'perrito','perrita','gatitos','rescate','hogar temporal','esteriliz',
+            'desparasit','collar','correa','veterinari','abandonado','abandonada'],
     },
     'noticia': {
-        3: ['autoridades', 'policía', 'policia', 'bomberos', 'protección civil', 'proteccion civil'],
-        2: ['vecinos reportan', 'se registra', 'comunicado', 'ayuntamiento', 'movilización', 'movilizacion'],
-        1: ['reportan', 'informan', 'accidente', 'incendio', 'hechos']
+        3: ['autoridades','policía','policia','bomberos','protección civil','proteccion civil'],
+        2: ['vecinos reportan','se registra','comunicado','ayuntamiento','movilización','movilizacion',
+            'gobierno','secretaría','secretaria','programa','municipio','detenido',
+            'operativo','volcadura','fallecio','falleció'],
+        1: ['reportan','informan','hechos','seguridad'],
+    },
+    'empleo': {
+        2: ['se solicita','se solicitan','solicitamos','estamos contratando','buscamos personal',
+            'vacante','vacantes','contratación inmediata','únete a nuestro equipo',
+            'estamos buscando','envía tu cv','manda tu cv','pago semanal','pago quincenal',
+            'prestaciones','solicito personal','contratando','busco trabajo','busco empleo',
+            'ofrezco mis servicios','busca empleo','en búsqueda de empleo'],
+        1: ['sueldo','requisitos','experiencia','turno','interesados','curriculum',
+            'tiempo completo','medio tiempo','plaza','puesto'],
+    },
+    'perdido': {
+        3: ['se me perdió','se me perdio','perdí mi','perdi mi','se me extravió','se me extravio',
+            'encontré un','encontre un','encontré una','encontre una','encontré este','encontre este',
+            'encontré esta','encontre esta'],
+        2: ['se perdió','se perdio','extravié','extravie','se me cayó','se me cayo',
+            'se extraviaron','se extravió','se extravio','perdí','perdi','encontré','encontre',
+            'si alguien encontró','si alguien encontro','alguien perdió','alguien perdio',
+            'se le cayó','se le cayo','recompensa','gratificación','gratificacion'],
+        1: ['perdido','perdida','extraviado','extraviada','encontrado','encontrada',
+            'ine','credencial','identificación','identificacion','cartera','billetera',
+            'llaves','llave','llavero','celular','iphone','samsung','mochila','bolsa',
+            'pasaporte','licencia de conducir','placa','bicicleta'],
     },
 }
 
 UMBRAL_KEYWORDS = 2
 
 
-# ═══════════════════════════════════════════════════════════════
-# EMPLEO — KEYWORDS, ÁREAS Y FUNCIONES DE EXTRACCIÓN
+# ── Detección de objetos perdidos/encontrados ─────────────────
+
+_PERDIDO_CATEGORIAS = {
+    'documento':    ['ine','credencial','identificación','identificacion','pasaporte','licencia',
+                     'acta de nacimiento','curp','visa','tarjeta de circulación','tarjeta de circulacion',
+                     'cartilla','titulo','cédula','cedula','constancia','certificado'],
+    'electronico':  ['celular','iphone','samsung','xiaomi','motorola','teléfono','telefono','tablet',
+                     'laptop','computadora','airpods','audífonos','audifonos','cámara','camara',
+                     'reloj','smartwatch','bocina'],
+    'llaves':       ['llaves','llave','llavero'],
+    'cartera_bolsa':['cartera','billetera','bolsa','mochila','maletín','maletin','portafolio',
+                     'riñonera','monedero','cangurera'],
+    'vehiculo':     ['bicicleta','bici','moto','motocicleta','carro','auto','camioneta','placa',
+                     'placas','patín','patin','scooter'],
+    'mascota':      ['perro','perra','gato','gata','perrit','gatit','mascota','cachorro'],
+    'lentes':       ['lentes','gafas','anteojos'],
+    'ropa':         ['chamarra','sudadera','sombrero','gorra','zapato','tenis','suéter','sueter'],
+}
+
+
+def detectar_categoria_perdido(texto):
+    t = (texto or '').lower()
+    for cat, kws in _PERDIDO_CATEGORIAS.items():
+        if any(k in t for k in kws):
+            return cat
+    return 'otro'
+
+
+def detectar_estado_perdido(texto):
+    t = (texto or '').lower()
+    if any(k in t for k in ['encontré','encontre','encontramos','hallé','halle','apareció',
+                              'aparecio','encontrado','encontrada']):
+        return 'encontrado'
+    if any(k in t for k in ['perdí','perdi','se perdió','se perdio','extravié','extravie',
+                              'se me cayó','se me cayo','se me perdió','se me perdio','robaron',
+                              'robó','robo mi','me robaron','perdido','perdida','extraviado',
+                              'extraviada']):
+        return 'perdido'
+    return None
+
+
+def detectar_recompensa(texto):
+    return bool(re.search(r'recompensa|gratificaci[oó]n|reward|\$\s*\d+.*recompensa', texto or '', re.IGNORECASE))
+
+
+def pre_clasificar_keywords(txt, autor="", grupo_tipo="vecinos"):
+    texto_completo = ((txt or "") + ' ' + (autor or "")).lower()
+    scores = {}
+
+    for tipo, grupos in _KW.items():
+        score = 0
+        for peso, keywords in grupos.items():
+            for kw in keywords:
+                if kw in texto_completo:
+                    score += peso
+        scores[tipo] = score
+
+    mejor_tipo = max(scores, key=scores.get)
+    mejor_score = scores[mejor_tipo]
+
+    if mejor_tipo == 'noticia' and not puede_ser_noticia_desde_json(txt):
+        return 'ambiguo', 0
+
+    # Prioridad por tipo de grupo
+    if grupo_tipo == 'empleo' and scores.get('empleo', 0) >= UMBRAL_KEYWORDS:
+        return 'empleo', scores['empleo']
+    if grupo_tipo == 'perdidos' and scores.get('perdido', 0) >= UMBRAL_KEYWORDS:
+        return 'perdido', scores['perdido']
+
+    if mejor_score >= UMBRAL_KEYWORDS:
+        return mejor_tipo, mejor_score
+
+    return 'ambiguo', 0
 # ═══════════════════════════════════════════════════════════════
 
 OFERTA_KW = [
@@ -739,29 +857,6 @@ def clasificar_tipo_empleo(txt):
     return None
 
 
-def pre_clasificar_keywords(txt, autor="", grupo_tipo="vecinos"):
-    texto_completo = ((txt or "") + ' ' + (autor or "")).lower()
-    scores = {}
-
-    for tipo, grupos in _KW.items():
-        score = 0
-        for peso, keywords in grupos.items():
-            for kw in keywords:
-                if kw in texto_completo:
-                    score += peso
-        scores[tipo] = score
-
-    mejor_tipo = max(scores, key=scores.get)
-    mejor_score = scores[mejor_tipo]
-
-    if mejor_tipo == 'noticia' and not puede_ser_noticia_desde_json(txt):
-        return 'ambiguo', 0
-
-    if mejor_score >= UMBRAL_KEYWORDS:
-        return mejor_tipo, mejor_score
-
-    return 'ambiguo', 0
-
 
 # ═══════════════════════════════════════════════════════════════
 # PASO 1: LIMPIEZA
@@ -779,8 +874,15 @@ def paso_1_limpieza(posts, grupo_tipo="vecinos"):
     min_palabras_noticia  = cfg.get("min_palabras_noticia", NEWS_MIN_WORDS)
     largo_es_negocio      = cfg.get("largo_es_negocio", False)
 
+    # ── Contar frecuencia por autor ANTES de cualquier filtro ──
+    _autor_freq = {}
+    for p in posts:
+        aid = p.get('autor_id') or p.get('autor_url')
+        if aid:
+            _autor_freq[aid] = _autor_freq.get(aid, 0) + 1
+
     for i, post in enumerate(posts):
-        # Generar fbid_post sintético si no existe — evita fallos en dedup y DB
+        # Preservar fbid_post del scraper v3, o generar sintético
         if not post.get('fbid_post'):
             autor = (post.get('autor') or 'x')[:8].replace(' ','')
             texto_hash = abs(hash((post.get('texto') or '')[:50])) % 10**9
@@ -897,6 +999,21 @@ def paso_1_limpieza(posts, grupo_tipo="vecinos"):
 
         post['pre_tipo']  = pre_tipo
         post['pre_score'] = pre_score
+
+        # ── Frecuencia del autor ──────────────────────────────
+        aid = post.get('autor_id') or post.get('autor_url')
+        post['autor_frecuencia'] = _autor_freq.get(aid, 1) if aid else 1
+
+        # ── Campos específicos de perdidos ────────────────────
+        if grupo_tipo == 'perdidos' or pre_tipo == 'perdido':
+            post['perdido_estado']    = detectar_estado_perdido(txt_original)
+            post['perdido_categoria'] = detectar_categoria_perdido(txt_original)
+            post['perdido_recompensa'] = detectar_recompensa(txt_original)
+            # Boost: si es grupo perdidos y tiene estado pero quedó ambiguo, forzar perdido
+            if grupo_tipo == 'perdidos' and pre_tipo == 'ambiguo' and post['perdido_estado']:
+                post['pre_tipo'] = 'perdido'
+                post['pre_score'] = 2
+
         limpios.append(post)
 
     return limpios, descartados
