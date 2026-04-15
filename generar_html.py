@@ -49,8 +49,6 @@ def generar_html_resultados(resultados, meta, config_grupo, cats_negocios, cats_
         "empleos": len(resultados.get("empleos", [])),
         "perdidos": len(resultados.get("perdidos", [])),
         "ignorados": len(resultados.get("ignorados", [])),
-        "perdidos_perdido": sum(1 for p in resultados.get("perdidos",[]) if p.get("perdido_estado")=="perdido"),
-        "perdidos_encontrado": sum(1 for p in resultados.get("perdidos",[]) if p.get("perdido_estado")=="encontrado"),
     }
 
     cats_neg_map = _cat_map(cats_negocios)
@@ -112,7 +110,8 @@ def generar_html_resultados(resultados, meta, config_grupo, cats_negocios, cats_
             emoji_estado = "🔍" if estado == "perdido" else "📦"
             titulo = p.get("titulo") or f"Objeto {estado}"
             texto_completo = p.get("descripcion") or p.get("texto_limpio") or ""
-            if p.get("perdido_recompensa"):
+            # Solo agregar recompensa si no está ya en el título
+            if p.get("perdido_recompensa") and "recompensa" not in (titulo or "").lower():
                 titulo += " — 💰 Recompensa"
         else:
             titulo = p.get("titulo") or p.get("nombre") or (p.get("texto_limpio") or "")[:60] or "Publicación"
@@ -207,8 +206,11 @@ def generar_html_resultados(resultados, meta, config_grupo, cats_negocios, cats_
         else:
             desc_html = f'<div class="cdesc">{texto_completo}</div>'
 
+        # data-estado for perdido sub-filtering
+        estado_attr = f' data-estado="{p.get("perdido_estado") or "sin_estado"}"' if tipo == "perdido" else ''
+
         return f"""
-<div class="card" data-tipo="{tipo}" data-cat="{cat_nombre}">
+<div class="card" data-tipo="{tipo}" data-cat="{cat_nombre}"{estado_attr}>
   {gal_html}
   <div class="cbody">
     <div style="display:flex;align-items:center;gap:6px;margin-bottom:8px">
@@ -236,6 +238,15 @@ def generar_html_resultados(resultados, meta, config_grupo, cats_negocios, cats_
         if t in tipos_presentes:
             cnt = resumen.get(t + "s", 0)
             filtros_html += f'<button class="fb" data-tipo="{t}" onclick="filtrar(this)">{etiquetas[t]} ({cnt})</button>\n'
+
+    # Sub-filtros perdido/encontrado
+    if "perdido" in tipos_presentes:
+        n_perd = resumen.get("perdidos_perdido", 0)
+        n_enc  = resumen.get("perdidos_encontrado", 0)
+        if n_perd > 0:
+            filtros_html += f'<button class="fb" data-tipo="perdido" data-estado="perdido" onclick="filtrarEstado(this)" style="border-color:#9333ea;color:#9333ea">🔍 Perdidos ({n_perd})</button>\n'
+        if n_enc > 0:
+            filtros_html += f'<button class="fb" data-tipo="perdido" data-estado="encontrado" onclick="filtrarEstado(this)" style="border-color:#059669;color:#059669">📦 Encontrados ({n_enc})</button>\n'
 
     nombre_archivo = f"resultado_{meta.get('group_id', 'grupo')}_{fecha.replace('-','')}.html"
     ruta = os.path.join(OUTPUT_DIR, nombre_archivo)
@@ -381,7 +392,7 @@ body{{font-family:'DM Sans',sans-serif;background:var(--crema);color:var(--carbo
 
 <script>
 var LI=[],LX=0,LN='';
-var tipoActivo='todos', busquedaActiva='';
+var tipoActivo='todos', estadoActivo='', busquedaActiva='';
 
 function openLB(imgs,idx,name){{LI=imgs;LX=idx;LN=name;drawLB();document.getElementById('lb').classList.add('open');document.body.style.overflow='hidden';}}
 function closeLB(){{document.getElementById('lb').classList.remove('open');document.body.style.overflow='';}}
@@ -421,6 +432,15 @@ function filtrar(btn){{
   btn.classList.add('on');
   if(btn.dataset.tipo==='todos')btn.classList.add('r');
   tipoActivo=btn.dataset.tipo;
+  estadoActivo='';
+  aplicarFiltros();
+}}
+
+function filtrarEstado(btn){{
+  document.querySelectorAll('.fb').forEach(function(b){{b.classList.remove('on','r');}});
+  btn.classList.add('on');
+  tipoActivo='perdido';
+  estadoActivo=btn.dataset.estado||'';
   aplicarFiltros();
 }}
 
@@ -434,9 +454,10 @@ function aplicarFiltros(){{
   var visible=0;
   cards.forEach(function(c){{
     var matchTipo=tipoActivo==='todos'||c.dataset.tipo===tipoActivo;
+    var matchEstado=!estadoActivo||c.dataset.estado===estadoActivo;
     var txt=c.textContent.toLowerCase();
     var matchBusq=!busquedaActiva||txt.includes(busquedaActiva);
-    var show=matchTipo&&matchBusq;
+    var show=matchTipo&&matchEstado&&matchBusq;
     c.style.display=show?'':'none';
     if(show)visible++;
   }});

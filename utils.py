@@ -1828,29 +1828,28 @@ def generar_titulo_perdido(post):
             break
 
     # Estado con concordancia de género
+    _femeninas_sing = ('cartera','billetera','mochila','bolsa','moto','bicicleta',
+                       'ine','credencial','licencia','laptop','tablet','prenda de ropa',
+                       'mascota','identificación','identificacion','placa')
+    _femeninas_plur = ('llaves','gafas','placas')
+    _masculinas_plur = ('lentes','audífonos','audifonos','airpods','documentos')
+
+    def _concordar(base_masc, base_fem, obj):
+        o = obj.lower()
+        if o in _femeninas_sing:
+            return base_fem + 'a'
+        elif o in _femeninas_plur:
+            return base_fem + 'as'
+        elif o in _masculinas_plur:
+            return base_masc + 's'
+        else:
+            return base_masc
+
     if estado == 'encontrado':
-        # Femeninos
-        if objeto.lower() in ('cartera','billetera','mochila','bolsa','moto','bicicleta',
-                                'ine','credencial','licencia','laptop','tablet','prenda de ropa'):
-            estado_txt = 'encontrada'
-        elif objeto.lower() in ('llaves','gafas','placas'):
-            estado_txt = 'encontradas'
-        elif objeto.lower() == 'lentes':
-            estado_txt = 'encontrados'
-        else:
-            estado_txt = 'encontrado'
-    elif estado == 'perdido':
-        if objeto.lower() in ('cartera','billetera','mochila','bolsa','moto','bicicleta',
-                                'ine','credencial','licencia','laptop','tablet','prenda de ropa'):
-            estado_txt = 'perdida'
-        elif objeto.lower() in ('llaves','gafas','placas'):
-            estado_txt = 'perdidas'
-        elif objeto.lower() == 'lentes':
-            estado_txt = 'perdidos'
-        else:
-            estado_txt = 'perdido'
+        estado_txt = _concordar('encontrado', 'encontrad', objeto)
     else:
-        estado_txt = 'perdido'  # fallback
+        # perdido o None — usar "perdido" con concordancia
+        estado_txt = _concordar('perdido', 'perdid', objeto)
 
     ubic = extraer_ubicacion_simple(txt)
     titulo = f"{objeto} {estado_txt}"
