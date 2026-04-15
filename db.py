@@ -975,6 +975,67 @@ def insertar_mascota(p, colonia_id):
     return mascota_id, "nuevo"
 
 
+# ─── PERDIDOS ───────────────────────────────────────────────
+
+def perdido_ya_existe(fbid_post):
+    if not fbid_post:
+        return None
+    conn = get_conn()
+    cursor = conn.cursor()
+    cursor.execute("SELECT id FROM perdidos WHERE fbid_post = %s LIMIT 1", (str(fbid_post),))
+    row = cursor.fetchone()
+    cursor.close()
+    conn.close()
+    return row[0] if row else None
+
+
+def insertar_perdido(p, colonia_id):
+    fbid_post = p.get("fbid_post")
+    existing  = perdido_ya_existe(fbid_post)
+    if existing:
+        return existing, "duplicado"
+
+    imgs    = p.get("imagenes_cloudinary") or []
+    img_url = _img_url(imgs[0]) if imgs else None
+
+    conn   = get_conn()
+    cursor = conn.cursor()
+    cursor.execute(
+        """
+        INSERT INTO perdidos
+          (estado, categoria_id, objeto, descripcion, ubicacion,
+           fecha_evento, recompensa, telefono, imagen_cloudinary,
+           url_post, fbid_post, autor, autor_id, colonia_id,
+           fecha_captura, fecha_post, fecha_post_dt)
+        VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
+        """,
+        (
+            p.get("perdido_estado", "perdido"),
+            p.get("perdido_categoria_id") or None,
+            (p.get("objeto") or p.get("perdido_categoria") or "")[:150] or None,
+            p.get("texto_limpio") or p.get("texto") or "",
+            (p.get("ubicacion") or "")[:200] or None,
+            (p.get("fecha_evento") or "")[:60] or None,
+            1 if p.get("perdido_recompensa") else 0,
+            p.get("telefono") or None,
+            img_url,
+            p.get("url_post") or None,
+            fbid_post,
+            (p.get("autor") or "")[:200],
+            p.get("_autor_db_id") or None,
+            colonia_id,
+            parsear_fecha_fb(p.get("fecha_post"), p.get("fecha_captura", "")),
+            (p.get("fecha_post") or "")[:60] or None,
+            parsear_fecha_fb(p.get("fecha_post"), p.get("fecha_captura", "")),
+        ),
+    )
+    perdido_id = cursor.lastrowid
+    conn.commit()
+    cursor.close()
+    conn.close()
+    return perdido_id, "nuevo"
+
+
 def obtener_potenciales_clientes(limite=50, score_minimo=5):
     """
     Retorna autores tipo 'empresa' con alto ranking_score que aún no son clientes.

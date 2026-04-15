@@ -134,8 +134,10 @@ def _prompt_clasificar_tipo(texto, grupo_tipo="vecinos", grupo_nombre=""):
     contexto_grupo = {
         "vecinos": "grupo de vecinos de una colonia en Mérida, Yucatán. Mezcla de negocios, alertas, noticias locales y mascotas.",
         "noticias": "grupo de noticias locales de Mérida y Yucatán. La mayoría son noticias; pocos posts son negocios.",
-        "mascotas": "grupo dedicado a mascotas perdidas, encontradas y en adopción en Mérida. La mayoría son mascotas, pero también hay denuncias de malos adoptantes o maltrato animal (clasifica como 'alerta'), solicitudes de donaciones para refugios (clasifica como 'ignorar' si no hay mascota específica), y ventas de accesorios para mascotas (clasifica como 'negocio').",
+        "mascotas": "grupo dedicado a mascotas perdidas, encontradas y en adopción en Mérida. La mayoría son mascotas, pero también hay denuncias de maltrato (→alerta) y ventas de accesorios (→negocio).",
         "negocios": "grupo de compra-venta y negocios locales de Mérida. La gran mayoría son negocios.",
+        "empleo": "grupo de empleo y trabajo en Mérida. Todo post válido es empleo o ignorar.",
+        "perdidos": "grupo de objetos perdidos y encontrados en Mérida. Documentos, celulares, llaves, carteras, vehículos. También mascotas perdidas.",
     }.get(grupo_tipo, "grupo de Facebook de vecinos en Mérida, Yucatán.")
 
     return f"""Clasifica el siguiente texto de Facebook en UNA sola categoría.
@@ -147,25 +149,21 @@ TEXTO:
 
 CATEGORÍAS:
 - "negocio": venta de productos/servicios, ofertas, anuncios de negocios, precios
-- "noticia": eventos, accidentes, política, cultura, información general de interés
-- "alerta": incidentes locales inmediatos (bache, robo, sospechoso, fuga de agua, accidente en colonia). También denuncias de malos adoptantes o maltrato animal.
-- "mascota": mascotas perdidas, encontradas o en adopción. Incluye posts cortos o truncados que contengan "se perdió", "se extravió" o "desapareció" junto con una fecha, nombre del animal o ubicación, aunque el texto esté incompleto.
-- "ignorar": spam, texto sin sentido, saludos solos, menos de 15 palabras útiles. También posts de actualización sin contexto propio como "ya apareció", "ya está con sus dueños", "gracias a todos por compartir", "ya fue encontrado".
+- "noticia": eventos, hechos informativos de Mérida/Yucatán. ⚠ SOLO si tiene ≥70 palabras.
+- "alerta": incidentes, denuncias, maltrato animal, estafas, fraudes, peligro. Incluye denuncias implícitas con indignación por un hecho concreto.
+- "mascota": mascotas perdidas, encontradas, adopción, rescate, ayuda médica. ⚠ "Apoya a [animal] para cirugía" = mascota, NO negocio.
+- "empleo": ofertas o búsquedas de trabajo, vacantes, solicitudes de personal.
+- "perdido": objetos perdidos o encontrados (documentos, celulares, llaves, carteras, NO mascotas). Si es mascota perdida → "mascota".
+- "ignorar": spam, reflexiones filosóficas sin denuncia concreta, posts sobre otro post, saludos.
 
-EJEMPLOS:
-- "Se vende sala, precio 3,500 pesos, llame al 999..." → negocio
-- "Incendio en la calle 64 moviliza a bomberos de Mérida" → noticia
-- "Cuidado, hay bache profundo en calle 20 cerca del Oxxo" → alerta
-- "MALA ADOPTANTE: entregué un gatito y lo perdió, tengan cuidado" → alerta
-- "Se perdió mi perrita labrador, responde al nombre Luna" → mascota
-- "Se perdió el 23 de enero en la Col. María Luisa, cualquier info al" → mascota (aunque esté truncado)
-- "Seguimos buscando hasta encontrarla, se ofrece recompensa" → mascota (perdida; 'encontrar' aquí es el objetivo, no el estado)
-- "Les pido ayuda para encontrar a mi perrito, se llama Blacki" → mascota (perdida; 'encontrar' es el objetivo)
-- "Ya está con sus dueños, gracias a todos 🙏" → ignorar (actualización sin contexto)
-- "Muchísimas gracias a todos los que me ayudaron a compartir" → ignorar (actualización de cierre)
-- "Buenos días a todos 😊" → ignorar
+REGLAS:
+1. Texto < 70 palabras → JAMÁS "noticia"
+2. Reflexión filosófica sobre animales SIN denuncia concreta → "ignorar", no "mascota"
+3. Denuncia de maltrato (explícita o implícita) → "alerta", no "mascota"
+4. "Apoya/ayuda a [animal] para cirugía/tratamiento" → "mascota", no "negocio"
+5. Objeto perdido/encontrado → "perdido". Mascota perdida → "mascota"
 
-Responde ÚNICAMENTE con una de estas palabras: negocio, noticia, alerta, mascota, ignorar"""
+Responde ÚNICAMENTE con una de estas palabras: negocio, noticia, alerta, mascota, empleo, perdido, ignorar"""
 
 
 def _prompt_negocio(texto, categorias):
@@ -443,7 +441,7 @@ def clasificar_tipo(texto, grupo_tipo="vecinos", grupo_nombre=""):
         prompt = _prompt_clasificar_tipo(texto, grupo_tipo=grupo_tipo, grupo_nombre=grupo_nombre)
         resultado = _llamar_groq(prompt, temperatura=0.1)
         tipo = resultado.strip().lower()
-        if tipo not in ["negocio", "noticia", "alerta", "mascota", "ignorar"]:
+        if tipo not in ["negocio", "noticia", "alerta", "mascota", "empleo", "perdido", "ignorar"]:
             tipo = "ignorar"
         _CACHE_CLASIFICAR[key] = tipo
         return tipo, None

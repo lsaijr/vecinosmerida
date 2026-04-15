@@ -2,8 +2,10 @@ from db import (
     actualizar_grupo_stats,
     insertar_alerta,
     insertar_empleo,
+    insertar_mascota,
     insertar_negocio,
     insertar_noticia,
+    insertar_perdido,
     obtener_categorias_alertas,
     obtener_categorias_negocios,
     obtener_categorias_noticias,
@@ -21,6 +23,8 @@ from utils import (
     generar_titulo_mascota,
     generar_titulo_negocio,
     generar_titulo_noticia_fallback,
+    generar_titulo_perdido,
+    generar_titulo_empleo,
     limpiar_titulo,
     paso_1_limpieza,
     paso_2_clusters,
@@ -72,6 +76,11 @@ POLITICAS = {
         "ia_categoria_negocio": False,
         "noticia_ligera": False,
     },
+    "perdidos": {
+        "ia_clasificacion": "solo_ambiguos",
+        "ia_categoria_negocio": False,
+        "noticia_ligera": False,
+    },
 }
 
 
@@ -99,6 +108,7 @@ def ejecutar_pipeline(posts, meta, config_grupo, estado):
         "alertas": [],
         "mascotas": [],
         "empleos": [],
+        "perdidos": [],
         "ignorados": [],
         "errores": [],
     }
@@ -232,6 +242,14 @@ def ejecutar_pipeline(posts, meta, config_grupo, estado):
             descartados_sin_imagen += 1
             continue
 
+        if tipo == "perdido":
+            p["tipo"] = "perdido"
+            p["titulo"] = generar_titulo_perdido(p)
+            p["descripcion"] = p.get("texto_limpio", "")
+            resultados["perdidos"].append(p)
+            aprobados.append(p)
+            continue
+
         if tipo == "mascota":
             p["tipo"] = "mascota"
             p["categoria_id"] = _detectar_cat_mascota(p.get("texto_limpio", ""))
@@ -345,10 +363,10 @@ def ejecutar_pipeline(posts, meta, config_grupo, estado):
     colonia_id = colonia_ids[0]
     db_nuevos = db_duplicados = 0
 
-    total_db = len(resultados["negocios"]) + len(resultados["mascotas"]) + len(resultados["noticias"]) + len(resultados["alertas"])
+    total_db = len(resultados["negocios"]) + len(resultados["mascotas"]) + len(resultados["noticias"]) + len(resultados["alertas"]) + len(resultados["perdidos"])
     db_idx = 0
 
-    for p in resultados["negocios"] + resultados["mascotas"]:
+    for p in resultados["negocios"]:
         db_idx += 1
         if db_idx == 1 or db_idx % 12 == 0:
             _set_estado(estado, actividad=f"Guardando en DB {db_idx}/{max(total_db,1)}")
@@ -358,6 +376,17 @@ def ejecutar_pipeline(posts, meta, config_grupo, estado):
             db_duplicados += 1 if st == "duplicado" else 0
         except Exception as e:
             resultados["errores"].append({"tipo": "db_negocio", "error": str(e), "autor": p.get("autor")})
+
+    for p in resultados["mascotas"]:
+        db_idx += 1
+        if db_idx == 1 or db_idx % 12 == 0:
+            _set_estado(estado, actividad=f"Guardando en DB {db_idx}/{max(total_db,1)}")
+        try:
+            _, st = insertar_mascota(p, colonia_id)
+            db_nuevos += 1 if st == "nuevo" else 0
+            db_duplicados += 1 if st == "duplicado" else 0
+        except Exception as e:
+            resultados["errores"].append({"tipo": "db_mascota", "error": str(e), "autor": p.get("autor")})
 
     for p in resultados["noticias"]:
         db_idx += 1
@@ -392,6 +421,17 @@ def ejecutar_pipeline(posts, meta, config_grupo, estado):
         except Exception as e:
             resultados["errores"].append({"tipo": "db_empleo", "error": str(e), "autor": p.get("autor")})
 
+    for p in resultados["perdidos"]:
+        db_idx += 1
+        if db_idx == 1 or db_idx % 12 == 0:
+            _set_estado(estado, actividad=f"Guardando en DB {db_idx}/{max(total_db,1)}")
+        try:
+            _, st = insertar_perdido(p, colonia_id)
+            db_nuevos += 1 if st == "nuevo" else 0
+            db_duplicados += 1 if st == "duplicado" else 0
+        except Exception as e:
+            resultados["errores"].append({"tipo": "db_perdido", "error": str(e), "autor": p.get("autor")})
+
     actualizar_grupo_stats(meta.get("group_id"), len(posts))
 
     # ── Registrar actividad de autores ────────────────────────
@@ -406,6 +446,7 @@ def ejecutar_pipeline(posts, meta, config_grupo, estado):
         "noticias": "noticia",
         "alertas":  "alerta",
         "empleos":  "empleo",
+        "perdidos": "perdido",
     }
     for bucket, tipo_str in _tipo_map.items():
         for p in resultados.get(bucket, []):
@@ -497,6 +538,7 @@ def ejecutar_pipeline(posts, meta, config_grupo, estado):
         "alertas": len(resultados["alertas"]),
         "mascotas": len(resultados["mascotas"]),
         "empleos": len(resultados["empleos"]),
+        "perdidos": len(resultados["perdidos"]),
         "ignorados": len(resultados["ignorados"]),
         "imagenes_ok": imgs_ok,
         "imagenes_fail": imgs_fail,
