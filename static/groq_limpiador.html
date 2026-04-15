@@ -201,6 +201,7 @@
         <option value="mascotas">🐾 Mascotas / Adopciones</option>
         <option value="empleo">💼 Empleo / Trabajo</option>
         <option value="ventas">🛍 Ventas / Negocios</option>
+        <option value="perdidos">🔍 Objetos Perdidos / Encontrados</option>
       </select>
     </div>
 
@@ -261,6 +262,7 @@ const CONFIG_GRUPO = {
   mascotas: { min_palabras: 7,  noticia_umbral: NEWS_MIN_WORDS, requiere_imagen: true,  tipos_permitidos: ['mascota','alerta','negocio','ignorar'] },
   empleo:   { min_palabras: 5,  noticia_umbral: 9999,           requiere_imagen: false, tipos_permitidos: ['empleo','ignorar'] },
   ventas:   { min_palabras: 3,  noticia_umbral: 9999,           requiere_imagen: true,  tipos_permitidos: ['negocio','mascota','ignorar'] },
+  perdidos: { min_palabras: 5,  noticia_umbral: 9999,           requiere_imagen: false, tipos_permitidos: ['perdido','mascota','negocio','ignorar'] },
 };
 
 // ── Keywords para pre-clasificación (calibrado con 6,368+ posts) ──
@@ -323,8 +325,63 @@ const _KW = {
     1: ['sueldo','requisitos','experiencia','turno','interesados','curriculum',
         'tiempo completo','medio tiempo','plaza','puesto'],
   },
+  perdido: {
+    3: ['se me perdió','se me perdio','perdí mi','perdi mi','se me extravió','se me extravio',
+        'encontré un','encontre un','encontré una','encontre una','encontré este','encontre este',
+        'encontré esta','encontre esta'],
+    2: ['se perdió','se perdio','extravié','extravie','se me cayó','se me cayo',
+        'se extraviaron','se extravió','se extravio','perdí','perdi','encontré','encontre',
+        'si alguien encontró','si alguien encontro','alguien perdió','alguien perdio',
+        'se le cayó','se le cayo','recompensa','gratificación','gratificacion'],
+    1: ['perdido','perdida','extraviado','extraviada','encontrado','encontrada',
+        'ine','credencial','identificación','identificacion','cartera','billetera',
+        'llaves','llave','llavero','celular','iphone','samsung','mochila','bolsa',
+        'pasaporte','licencia de conducir','placa','bicicleta'],
+  },
 };
 const UMBRAL_KW = 2;
+
+// ── Subcategorías de objetos perdidos ────────────────────────
+const _PERDIDO_CATEGORIAS = {
+  documento:    ['ine','credencial','identificación','identificacion','pasaporte','licencia',
+                 'acta de nacimiento','curp','visa','tarjeta de circulación','tarjeta de circulacion',
+                 'cartilla','titulo','cédula','cedula','constancia','certificado'],
+  electronico:  ['celular','iphone','samsung','xiaomi','motorola','teléfono','telefono','tablet',
+                 'laptop','computadora','airpods','audífonos','audifonos','cámara','camara',
+                 'reloj','smartwatch','bocina','control remoto'],
+  llaves:       ['llaves','llave','llavero'],
+  cartera_bolsa:['cartera','billetera','bolsa','mochila','maletín','maletin','portafolio',
+                 'riñonera','rinonera','cangurera','monedero'],
+  vehiculo:     ['bicicleta','bici','moto','motocicleta','carro','auto','camioneta','placa',
+                 'placas','patín','patin','scooter'],
+  mascota:      ['perro','perra','gato','gata','perrit','gatit','mascota','cachorro'],
+  lentes:       ['lentes','gafas','anteojos'],
+  ropa:         ['chamarra','sudadera','sombrero','gorra','zapato','tenis','suéter','sueter'],
+  otro:         [],
+};
+
+function detectarCategoriaPerdido(texto) {
+  const t = (texto || '').toLowerCase();
+  for (const [cat, kws] of Object.entries(_PERDIDO_CATEGORIAS)) {
+    if (cat === 'otro') continue;
+    if (kws.some(k => t.includes(k))) return cat;
+  }
+  return 'otro';
+}
+
+function detectarEstadoPerdido(texto) {
+  const t = (texto || '').toLowerCase();
+  if (['encontré','encontre','encontramos','hallé','halle','apareció','aparecio',
+       'encontrado','encontrada'].some(k => t.includes(k))) return 'encontrado';
+  if (['perdí','perdi','se perdió','se perdio','extravié','extravie','se me cayó',
+       'se me cayo','se me perdió','se me perdio','robaron','robó','robo mi',
+       'me robaron','perdido','perdida','extraviado','extraviada'].some(k => t.includes(k))) return 'perdido';
+  return null;
+}
+
+function detectarRecompensa(texto) {
+  return /recompensa|gratificaci[oó]n|reward|\$\s*\d+.*recompensa/i.test(texto || '');
+}
 
 // ── Ortografía (portado de limpiar_json.py) ─────────────────
 const ORTOGRAFIA = [
@@ -586,6 +643,7 @@ function preClasificar(texto, autor, grupoTipo) {
 
   if (mejorTipo === 'noticia' && contarPalabras(texto) < NEWS_MIN_WORDS) return ['ambiguo', 0];
   if (grupoTipo === 'empleo' && scores['empleo'] >= UMBRAL_KW) return ['empleo', scores['empleo']];
+  if (grupoTipo === 'perdidos' && scores['perdido'] >= UMBRAL_KW) return ['perdido', scores['perdido']];
   if (mejorScore >= UMBRAL_KW) return [mejorTipo, mejorScore];
   return ['ambiguo', 0];
 }
@@ -746,15 +804,33 @@ function procesar() {
 
     tipoCounts[pre_tipo] = (tipoCounts[pre_tipo] || 0) + 1;
 
-    postsFinales.push({
+    // Campos extra para objetos perdidos/encontrados
+    const esPerdido = pre_tipo === 'perdido' || grupoTipo === 'perdidos';
+    const textoCompleto = p.texto || '';
+
+    const postFinal = {
       ...p,
       texto_limpio:      textoLimpio,
       telefono:          telefono || null,
       pre_tipo,
       pre_score,
-      noticia_permitida: cfg.noticia_umbral < 9999 ? contarPalabras(p.texto || '') >= cfg.noticia_umbral : false,
+      noticia_permitida: cfg.noticia_umbral < 9999 ? contarPalabras(textoCompleto) >= cfg.noticia_umbral : false,
       autor_frecuencia,
-    });
+    };
+
+    if (esPerdido) {
+      postFinal.perdido_estado    = detectarEstadoPerdido(textoCompleto);
+      postFinal.perdido_categoria = detectarCategoriaPerdido(textoCompleto);
+      postFinal.perdido_recompensa = detectarRecompensa(textoCompleto);
+      // En grupo de perdidos, si no se detectó pre_tipo pero hay señal de perdido/encontrado, forzar
+      if (pre_tipo === 'ambiguo' && postFinal.perdido_estado) {
+        postFinal.pre_tipo = 'perdido';
+        tipoCounts['perdido'] = (tipoCounts['perdido'] || 0) + 1;
+        tipoCounts['ambiguo'] = (tipoCounts['ambiguo'] || 0) - 1;
+      }
+    }
+
+    postsFinales.push(postFinal);
   }
 
   if (descartadosPostLimpio > 0) {
@@ -862,7 +938,7 @@ function renderStats(total, final, descartados, duplicados, postLimpio, fbidColi
     </div>`).join('');
 
   // Pre-tipo distribution
-  const colors = { negocio:'#7c3aed', alerta:'#ef4444', mascota:'#06b6d4', noticia:'#f59e0b', empleo:'#10b981', ambiguo:'#64748b', ignorar:'#374151' };
+  const colors = { negocio:'#7c3aed', alerta:'#ef4444', mascota:'#06b6d4', noticia:'#f59e0b', empleo:'#10b981', perdido:'#f472b6', ambiguo:'#64748b', ignorar:'#374151' };
   const tipoItems = Object.entries(tipoCounts).sort((a,b) => b[1]-a[1]);
   if (tipoItems.length > 0) {
     document.getElementById('preTipoSection').classList.remove('hidden');
@@ -878,7 +954,7 @@ function renderProspectos() {
   if (prospectos.length === 0) return;
   document.getElementById('prospectSection').classList.remove('hidden');
 
-  const colors = { negocio:'#7c3aed', alerta:'#ef4444', mascota:'#06b6d4', noticia:'#f59e0b', empleo:'#10b981', ambiguo:'#64748b' };
+  const colors = { negocio:'#7c3aed', alerta:'#ef4444', mascota:'#06b6d4', noticia:'#f59e0b', empleo:'#10b981', perdido:'#f472b6', ambiguo:'#64748b' };
   const top = prospectos.slice(0, 15);
 
   let html = `<table class="prospect-table">
@@ -939,6 +1015,9 @@ document.getElementById('fileInput').addEventListener('change', function(e) {
       const name = _norm(rawData.meta?.group_name || '');
       if (['empleo','trabajo','vacante','contratando','bolsa de trabajo'].some(k => name.includes(k)))
         document.getElementById('grupoTipo').value = 'empleo';
+      else if (['objetos perdidos','cosas perdidas','perdidos y encontrados','lost and found',
+                'extraviados','objetos encontrados'].some(k => name.includes(k)))
+        document.getElementById('grupoTipo').value = 'perdidos';
       else if (['mascota','adopci','perros perdidos','gatos perdidos','rescate animal','adopciones'].some(k => name.includes(k)))
         document.getElementById('grupoTipo').value = 'mascotas';
       else if (['noticias','policía','policia','seguridad','informativo','se entere',
