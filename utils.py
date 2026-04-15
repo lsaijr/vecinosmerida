@@ -1919,23 +1919,23 @@ def generar_alt_imagen(post, config_grupo=None, idx=0, total=1):
     ubic = extraer_ubicacion_simple(txt)
 
     if tipo == 'mascota':
-        titulo = generar_titulo_mascota(post, post.get('categoria_id', 11))
+        titulo = generar_titulo_mascota(post, post.get('categoria_id', 11)) or 'Mascota en Mérida'
         alt = f"Imagen de {titulo.lower()}"
     elif tipo == 'alerta':
         alt = "Imagen de alerta vecinal"
         if ubic:
             alt += f" en {ubic}"
     elif tipo == 'noticia':
-        titulo = post.get('titulo') or generar_titulo_noticia_fallback(post)
+        titulo = post.get('titulo') or generar_titulo_noticia_fallback(post) or 'Noticia local'
         alt = f"Imagen relacionada con {titulo.lower()}"
     elif tipo == 'perdido':
-        titulo = generar_titulo_perdido(post)
+        titulo = generar_titulo_perdido(post) or 'Objeto perdido en Mérida'
         alt = f"Imagen de {titulo.lower()}"
     elif tipo == 'empleo':
-        titulo = generar_titulo_empleo(post)
+        titulo = generar_titulo_empleo(post) or 'Empleo en Mérida'
         alt = f"Imagen de {titulo.lower()}"
     else:
-        titulo = post.get('titulo') or generar_titulo_negocio(post, categoria_nombre='')
+        titulo = post.get('titulo') or generar_titulo_negocio(post, categoria_nombre='') or 'Publicación en Mérida'
         alt = f"Imagen de {titulo.lower()}"
 
     # Numerar cuando hay más de una foto
@@ -1951,15 +1951,15 @@ def construir_public_id(post, img, meta=None, config_grupo=None, idx=0):
 
     # Título según tipo
     if tipo == 'perdido':
-        tema = slugify(generar_titulo_perdido(post), max_words=8, max_len=55)
+        tema = slugify(generar_titulo_perdido(post) or 'objeto-perdido', max_words=8, max_len=55)
     elif tipo == 'empleo':
-        tema = slugify(generar_titulo_empleo(post), max_words=8, max_len=55)
+        tema = slugify(generar_titulo_empleo(post) or 'empleo', max_words=8, max_len=55)
     elif tipo == 'mascota':
-        tema = slugify(generar_titulo_mascota(post, post.get('categoria_id', 11)), max_words=8, max_len=55)
+        tema = slugify(generar_titulo_mascota(post, post.get('categoria_id', 11)) or 'mascota', max_words=8, max_len=55)
     elif tipo == 'alerta':
-        tema = slugify(generar_titulo_alerta(post), max_words=8, max_len=55)
+        tema = slugify(generar_titulo_alerta(post) or 'alerta', max_words=8, max_len=55)
     else:
-        tema = slugify(post.get('titulo') or generar_titulo_negocio(post, categoria_nombre=''), max_words=8, max_len=55)
+        tema = slugify(post.get('titulo') or generar_titulo_negocio(post, categoria_nombre='') or 'post', max_words=8, max_len=55)
 
     ciudad = slugify((meta or {}).get('city') or 'merida', max_words=3, max_len=20)
     estado = slugify((meta or {}).get('state') or 'yucatan', max_words=3, max_len=20)
