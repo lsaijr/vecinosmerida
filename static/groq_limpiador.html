@@ -676,20 +676,47 @@ function procesar() {
   // ── PASO 3: Deduplicación ──
   log('🔁 Paso 3: Deduplicación...', '');
   const antesDedup = postsFiltrados.length;
-  const postsUnicos = deduplicar(postsFiltrados);
+  let postsUnicos = deduplicar(postsFiltrados);
+
+  // Dedup secundaria por fbid_post (atrapa duplicados que la comparación texto no detectó)
+  const fbidSeenDedup = {};
+  const antesDedup2 = postsUnicos.length;
+  postsUnicos = postsUnicos.filter(p => {
+    const fbid = p.fbid_post;
+    if (!fbid) return true;
+    if (fbidSeenDedup[fbid]) {
+      fbidSeenDedup[fbid].repeticiones = (fbidSeenDedup[fbid].repeticiones || 1) + 1;
+      return false;
+    }
+    fbidSeenDedup[fbid] = p;
+    return true;
+  });
+
   const duplicados = antesDedup - postsUnicos.length;
-  log(`  → ${duplicados} duplicados eliminados, ${postsUnicos.length} únicos`, 'ok');
+  const dupTexto = antesDedup - antesDedup2;
+  const dupFbid = antesDedup2 - postsUnicos.length;
+  log(`  → ${duplicados} duplicados eliminados (${dupTexto} por texto, ${dupFbid} por fbid), ${postsUnicos.length} únicos`, 'ok');
   setProgress(55);
 
   // ── PASO 4: Enriquecimiento + pre-clasificación ──
   log('🏷 Paso 4: Enriquecimiento y pre-clasificación...', '');
   const postsFinales = [];
   let descartadosPostLimpio = 0;
+  let fbidColisiones = 0;
   const tipoCounts = {};
+  const fbidVisto = {}; // {fbid: texto_primeros_80_chars} — detectar colisiones
 
   for (const p of postsUnicos) {
-    // fbid_post
-    p.fbid_post = asegurarFbidPost(p);
+    // fbid_post con detección de colisión
+    let fbid = asegurarFbidPost(p);
+    const textoCorto = (p.texto || '').substring(0, 80);
+    if (fbidVisto[fbid] && fbidVisto[fbid] !== textoCorto) {
+      // Colisión: mismo fbid pero texto diferente → generar hash alternativo
+      fbid = 'col_' + simpleHash((p.autor || '') + '|' + textoCorto);
+      fbidColisiones++;
+    }
+    fbidVisto[fbid] = textoCorto;
+    p.fbid_post = fbid;
 
     // texto_limpio
     const textoLimpio = generarTextoLimpio(p.texto || '');
@@ -733,6 +760,9 @@ function procesar() {
   if (descartadosPostLimpio > 0) {
     log(`  ⚠ ${descartadosPostLimpio} post(s) descartados: texto_limpio vacío o geo externa`, 'warn');
   }
+  if (fbidColisiones > 0) {
+    log(`  🔀 ${fbidColisiones} colisión(es) de fbid_post resueltas (misma foto, diferente post)`, 'warn');
+  }
 
   const tipoStr = Object.entries(tipoCounts).sort((a,b)=>b[1]-a[1]).map(([t,c])=>`${t}:${c}`).join(' · ');
   log(`  → Pre-tipos: ${tipoStr}`, 'info');
@@ -773,6 +803,7 @@ function procesar() {
       descartados_filtro:  totalDescartados,
       duplicados,
       descartados_post_limpio: descartadosPostLimpio,
+      fbid_colisiones:     fbidColisiones,
       prospectos_count:    prospectos.length,
       fecha_proceso:       new Date().toISOString(),
     },
@@ -783,7 +814,7 @@ function procesar() {
   setProgress(100);
 
   // ── Render UI ──
-  renderStats(posts.length, postsFinales.length, totalDescartados, duplicados, descartadosPostLimpio, tipoCounts, postsFinales);
+  renderStats(posts.length, postsFinales.length, totalDescartados, duplicados, descartadosPostLimpio, fbidColisiones, tipoCounts, postsFinales);
   renderProspectos();
   document.getElementById('downloadSection').classList.remove('hidden');
 }
@@ -806,10 +837,11 @@ function log(msg, type = '') {
   box.scrollTop = box.scrollHeight;
 }
 
-function renderStats(total, final, descartados, duplicados, postLimpio, tipoCounts, posts) {
+function renderStats(total, final, descartados, duplicados, postLimpio, fbidColisiones, tipoCounts, posts) {
   const conTel = posts.filter(p => p.telefono).length;
   const conRepeticiones = posts.filter(p => (p.repeticiones || 1) > 1).length;
-  const fbidReal = posts.filter(p => p.fbid_post && !p.fbid_post.startsWith('cft_') && !p.fbid_post.startsWith('syn_')).length;
+  const fbidReal = posts.filter(p => p.fbid_post && !p.fbid_post.startsWith('cft_') && !p.fbid_post.startsWith('syn_') && !p.fbid_post.startsWith('col_')).length;
+  const fbidUnicos = new Set(posts.map(p => p.fbid_post)).size;
 
   const items = [
     { label: 'Entrada',     val: total,         color: 'var(--text)' },
@@ -820,6 +852,7 @@ function renderStats(total, final, descartados, duplicados, postLimpio, tipoCoun
     { label: 'Con teléfono',val: conTel,         color: 'var(--accent2)' },
     { label: 'Repiten',     val: conRepeticiones,color: 'var(--accent3)' },
     { label: 'fbid real',   val: fbidReal,       color: 'var(--accent)' },
+    { label: 'fbid únicos', val: fbidUnicos + '/' + final, color: fbidUnicos === final ? 'var(--success)' : 'var(--error)' },
   ];
 
   document.getElementById('statsGrid').innerHTML = items.map(i => `
@@ -904,13 +937,16 @@ document.getElementById('fileInput').addEventListener('change', function(e) {
 
       // Auto-detectar tipo de grupo por nombre
       const name = _norm(rawData.meta?.group_name || '');
-      if (['empleo','trabajo','vacante','contratando'].some(k => name.includes(k)))
+      if (['empleo','trabajo','vacante','contratando','bolsa de trabajo'].some(k => name.includes(k)))
         document.getElementById('grupoTipo').value = 'empleo';
-      else if (['mascota','adopci','perros perdidos','gatos perdidos','rescate animal'].some(k => name.includes(k)))
+      else if (['mascota','adopci','perros perdidos','gatos perdidos','rescate animal','adopciones'].some(k => name.includes(k)))
         document.getElementById('grupoTipo').value = 'mascotas';
-      else if (['noticias','policía','policia','seguridad','informativo'].some(k => name.includes(k)))
+      else if (['noticias','policía','policia','seguridad','informativo','se entere',
+                'noticiero','prensa','alerta','denuncias','urgente','viral','reportero',
+                'periodismo','sucesos','acontecer','informa','entérate','enterate'].some(k => name.includes(k)))
         document.getElementById('grupoTipo').value = 'noticias';
-      else if (['compra','venta','marketplace','negocios','servicios'].some(k => name.includes(k)))
+      else if (['compra','venta','marketplace','negocios','servicios','bazar',
+                'tianguis','comercio','ofertas'].some(k => name.includes(k)))
         document.getElementById('grupoTipo').value = 'ventas';
       else
         document.getElementById('grupoTipo').value = 'vecinos';
