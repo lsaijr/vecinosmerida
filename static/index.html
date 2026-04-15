@@ -242,9 +242,9 @@ function mostrarModal(data){
     body += '<div class="success-box"><span>✅</span><span>Este grupo ya está registrado como <strong>' + data.tipo + '</strong>. Se usará la configuración guardada.</span></div>';
     configGrupo = { guardar_grupo: false };
   } else {
-    var tipoOpts = ['noticias','vecinos','mascotas','empleo','mixto'].map(function(t){
+    var tipoOpts = ['noticias','vecinos','mascotas','empleo','perdidos','mixto'].map(function(t){
       var sel = t === data.tipo_sugerido ? 'selected' : '';
-      var etiq = {noticias:'📰 Noticias',vecinos:'🏘️ Vecinos / Negocios',mascotas:'🐾 Mascotas',empleo:'💼 Empleo',mixto:'🔀 Mixto'}[t];
+      var etiq = {noticias:'📰 Noticias',vecinos:'🏘️ Vecinos / Negocios',mascotas:'🐾 Mascotas',empleo:'💼 Empleo',perdidos:'🔍 Perdidos',mixto:'🔀 Mixto'}[t];
       return '<option value="'+t+'" '+sel+'>'+etiq+'</option>';
     }).join('');
     body += '<div class="field-wrap"><div class="field-label">Tipo de contenido</div><select id="selTipo" onchange="onTipoChange(this.value)">'+tipoOpts+'</select></div>';
@@ -371,6 +371,7 @@ function mostrarResultado(data){
     {n: r.alertas||0,    l:'Alertas'},
     {n: r.mascotas||0,   l:'Mascotas'},
     {n: r.empleos||0,    l:'Empleos'},
+    {n: r.perdidos||0,   l:'Perdidos'},
     {n: r.ignorados||0,  l:'Ignorados'}
   ];
   document.getElementById('resultStats').innerHTML = stats.map(function(s){
@@ -403,6 +404,8 @@ function insertarDB(){
       html += '<div class="db-stat-row"><span class="lbl">Mascotas nuevas</span><span class="val ok">+'+d.mascotas_nuevas+'</span></div>';
       html += '<div class="db-stat-row"><span class="lbl">Mascotas duplicadas</span><span class="val dup">'+d.mascotas_dup+'</span></div>';
       html += '<div class="db-stat-row"><span class="lbl">Empleos nuevos</span><span class="val ok">+'+d.empleos_nuevos+'</span></div>';
+      html += '<div class="db-stat-row"><span class="lbl">Perdidos nuevos</span><span class="val ok">+'+(d.perdidos_nuevos||0)+'</span></div>';
+      html += '<div class="db-stat-row"><span class="lbl">Perdidos duplicados</span><span class="val dup">+'+(d.perdidos_dup||0)+'</span></div>';
       html += '<div class="db-stat-row"><span class="lbl" style="font-weight:600">Total guardado</span><span class="val ok" style="font-size:1.1rem">'+d.total_nuevos+'</span></div>';
       if(d.errores&&d.errores.length) html+='<div class="db-error-list"><strong>Errores ('+d.errores.length+'):</strong><br>'+d.errores.map(function(e){return e.tipo+': '+e.error;}).join('<br>')+'</div>';
     }
