@@ -2021,6 +2021,11 @@ KEYWORDS_NEGOCIOS = [
     'directorio', 'comercios', 'servicios',
 ]
 
+KEYWORDS_PERDIDOS = [
+    'objetos perdidos', 'cosas perdidas', 'perdidos y encontrados',
+    'lost and found', 'perdido', 'encontrado',
+]
+
 
 def detectar_tipo_por_nombre(group_name):
     nombre_lower = (group_name or '').lower()
@@ -2028,6 +2033,9 @@ def detectar_tipo_por_nombre(group_name):
     for kw in KEYWORDS_EMPLEO:
         if kw in nombre_lower:
             return 'empleo'
+    for kw in KEYWORDS_PERDIDOS:
+        if kw in nombre_lower:
+            return 'perdidos'
     for kw in KEYWORDS_MASCOTAS:
         if kw in nombre_lower:
             return 'mascotas'

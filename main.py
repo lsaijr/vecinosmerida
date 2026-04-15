@@ -173,7 +173,8 @@ async def guardar_db():
     """
     from db import (
         insertar_negocio, insertar_noticia, insertar_alerta,
-        insertar_empleo, actualizar_grupo_stats,
+        insertar_empleo, insertar_mascota, insertar_perdido,
+        actualizar_grupo_stats,
         upsert_autor_completo, registrar_actividad,
     )
 
@@ -201,15 +202,17 @@ async def guardar_db():
         "alertas_nuevas":  0, "alertas_dup":  0,
         "mascotas_nuevas": 0, "mascotas_dup": 0,
         "empleos_nuevos":  0, "empleos_dup":  0,
+        "perdidos_nuevos": 0, "perdidos_dup": 0,
         "errores": [],
     }
 
     BUCKETS = [
         ("negocios",  insertar_negocio,  "negocios_nuevos",  "negocios_dup"),
-        ("mascotas",  insertar_negocio,  "mascotas_nuevas",  "mascotas_dup"),
+        ("mascotas",  insertar_mascota,  "mascotas_nuevas",  "mascotas_dup"),
         ("noticias",  insertar_noticia,  "noticias_nuevas",  "noticias_dup"),
         ("alertas",   insertar_alerta,   "alertas_nuevas",   "alertas_dup"),
         ("empleos",   insertar_empleo,   "empleos_nuevos",   "empleos_dup"),
+        ("perdidos",  insertar_perdido,  "perdidos_nuevos",  "perdidos_dup"),
     ]
 
     for bucket, fn_insertar, key_nuevo, key_dup in BUCKETS:
@@ -227,6 +230,7 @@ async def guardar_db():
     tipo_map = {
         "negocios": "negocio", "mascotas": "mascota",
         "noticias": "noticia", "alertas": "alerta", "empleos": "empleo",
+        "perdidos": "perdido",
     }
     for bucket, tipo_str in tipo_map.items():
         for p in resultados.get(bucket, []):
@@ -250,7 +254,7 @@ async def guardar_db():
     conteo["total_nuevos"] = (
         conteo["negocios_nuevos"] + conteo["noticias_nuevas"] +
         conteo["alertas_nuevas"] + conteo["mascotas_nuevas"] +
-        conteo["empleos_nuevos"]
+        conteo["empleos_nuevos"] + conteo["perdidos_nuevos"]
     )
 
     return conteo
