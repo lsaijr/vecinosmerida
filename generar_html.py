@@ -49,6 +49,8 @@ def generar_html_resultados(resultados, meta, config_grupo, cats_negocios, cats_
         "empleos": len(resultados.get("empleos", [])),
         "perdidos": len(resultados.get("perdidos", [])),
         "ignorados": len(resultados.get("ignorados", [])),
+        "perdidos_perdido": sum(1 for p in resultados.get("perdidos",[]) if p.get("perdido_estado")=="perdido"),
+        "perdidos_encontrado": sum(1 for p in resultados.get("perdidos",[]) if p.get("perdido_estado")=="encontrado"),
     }
 
     cats_neg_map = _cat_map(cats_negocios)
