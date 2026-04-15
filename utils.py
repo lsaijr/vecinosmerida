@@ -1652,6 +1652,146 @@ def generar_titulo_noticia_fallback(post):
     return limpiar_titulo(base, max_chars=88) or 'Noticia local en Mérida'
 
 
+def generar_titulo_perdido(post):
+    """
+    Genera título SEO para objetos perdidos/encontrados.
+    Formato: "[Objeto] [perdido/encontrado] en [ubicación]"
+    Ejemplos:
+      "INE perdida en el centro de Mérida"
+      "iPhone encontrado en Galerías Mérida"
+      "Llaves perdidas por Pensiones — ofrece recompensa"
+    """
+    txt = post.get('texto_limpio') or post.get('texto') or ''
+    estado = post.get('perdido_estado')  # 'perdido' | 'encontrado' | None
+    categoria = post.get('perdido_categoria', 'otro')
+    recompensa = post.get('perdido_recompensa', False)
+
+    # Mapeo de categoría a nombre legible
+    _cat_nombres = {
+        'documento':     'Documento',
+        'electronico':   'Celular',
+        'llaves':        'Llaves',
+        'cartera_bolsa': 'Cartera',
+        'vehiculo':      'Vehículo',
+        'mascota':       'Mascota',
+        'lentes':        'Lentes',
+        'ropa':          'Prenda de ropa',
+        'otro':          'Objeto',
+    }
+
+    # Intentar extraer objeto específico del texto
+    _objetos_especificos = [
+        (r'\bINE\b', 'INE'),
+        (r'\bcredencial\b', 'Credencial'),
+        (r'\bpasaporte\b', 'Pasaporte'),
+        (r'\blicencia\b', 'Licencia'),
+        (r'\biphone\s*\d*', None),  # captura "iPhone 15"
+        (r'\bsamsung\s*\w*', None),
+        (r'\bcelular\b', 'Celular'),
+        (r'\bcartera\b', 'Cartera'),
+        (r'\bbilletera\b', 'Billetera'),
+        (r'\bmochila\b', 'Mochila'),
+        (r'\bbolsa\b', 'Bolsa'),
+        (r'\bllaves?\b', 'Llaves'),
+        (r'\bllavero\b', 'Llavero'),
+        (r'\blentes\b', 'Lentes'),
+        (r'\bgafas\b', 'Gafas'),
+        (r'\bbicicleta\b', 'Bicicleta'),
+        (r'\bmoto\b', 'Moto'),
+        (r'\bplacas?\b', 'Placas'),
+        (r'\blaptop\b', 'Laptop'),
+        (r'\btablet\b', 'Tablet'),
+    ]
+
+    objeto = _cat_nombres.get(categoria, 'Objeto')
+    for patron, nombre_fijo in _objetos_especificos:
+        m = re.search(patron, txt, re.IGNORECASE)
+        if m:
+            objeto = nombre_fijo or m.group(0).strip().title()
+            break
+
+    # Estado con concordancia de género
+    if estado == 'encontrado':
+        # Femeninos
+        if objeto.lower() in ('cartera','billetera','mochila','bolsa','moto','bicicleta',
+                                'ine','credencial','licencia','laptop','tablet','prenda de ropa'):
+            estado_txt = 'encontrada'
+        elif objeto.lower() in ('llaves','gafas','placas'):
+            estado_txt = 'encontradas'
+        elif objeto.lower() == 'lentes':
+            estado_txt = 'encontrados'
+        else:
+            estado_txt = 'encontrado'
+    elif estado == 'perdido':
+        if objeto.lower() in ('cartera','billetera','mochila','bolsa','moto','bicicleta',
+                                'ine','credencial','licencia','laptop','tablet','prenda de ropa'):
+            estado_txt = 'perdida'
+        elif objeto.lower() in ('llaves','gafas','placas'):
+            estado_txt = 'perdidas'
+        elif objeto.lower() == 'lentes':
+            estado_txt = 'perdidos'
+        else:
+            estado_txt = 'perdido'
+    else:
+        estado_txt = 'perdido'  # fallback
+
+    ubic = extraer_ubicacion_simple(txt)
+    titulo = f"{objeto} {estado_txt}"
+    if ubic:
+        titulo += f" en {ubic}"
+    else:
+        titulo += " en Mérida"
+    if recompensa:
+        titulo += " — ofrece recompensa"
+
+    return limpiar_titulo(titulo, max_chars=72) or 'Objeto perdido en Mérida'
+
+
+def generar_titulo_empleo(post):
+    """
+    Genera título SEO para posts de empleo.
+    Formato: "[Puesto] — [oferta/búsqueda] en Mérida"
+    """
+    txt = post.get('texto_limpio') or post.get('texto') or ''
+    tipo_empleo = post.get('tipo_empleo', 'oferta')
+    puesto = post.get('puesto') or ''
+
+    if not puesto:
+        # Intentar extraer puesto del texto
+        _puestos = [
+            r'\b(cocinero|cocinera|chef)\b',
+            r'\b(mesero|mesera|camarero)\b',
+            r'\b(chofer|conductor)\b',
+            r'\b(cajero|cajera)\b',
+            r'\b(vendedor|vendedora)\b',
+            r'\b(guardia|seguridad|vigilante)\b',
+            r'\b(limpieza|intendente)\b',
+            r'\b(secretaria|recepcionista|administrativo)\b',
+            r'\b(electricista|plomero|albañil|soldador)\b',
+            r'\b(enfermero|enfermera|médico)\b',
+            r'\b(programador|desarrollador|diseñador)\b',
+            r'\b(maestro|maestra|profesor)\b',
+        ]
+        for pat in _puestos:
+            m = re.search(pat, txt, re.IGNORECASE)
+            if m:
+                puesto = m.group(0).strip().title()
+                break
+
+    if tipo_empleo == 'busqueda':
+        if puesto:
+            titulo = f"Busco trabajo de {puesto} en Mérida"
+        else:
+            titulo = "Busco empleo en Mérida"
+    else:
+        if puesto:
+            titulo = f"Vacante de {puesto} en Mérida"
+        else:
+            titulo = "Vacante de empleo en Mérida"
+
+    return limpiar_titulo(titulo, max_chars=68) or 'Empleo en Mérida'
+
+
 def generar_alt_imagen(post, config_grupo=None, idx=0, total=1):
     """
     Genera alt text para una imagen.
@@ -1671,11 +1811,17 @@ def generar_alt_imagen(post, config_grupo=None, idx=0, total=1):
     elif tipo == 'noticia':
         titulo = post.get('titulo') or generar_titulo_noticia_fallback(post)
         alt = f"Imagen relacionada con {titulo.lower()}"
+    elif tipo == 'perdido':
+        titulo = generar_titulo_perdido(post)
+        alt = f"Imagen de {titulo.lower()}"
+    elif tipo == 'empleo':
+        titulo = generar_titulo_empleo(post)
+        alt = f"Imagen de {titulo.lower()}"
     else:
         titulo = post.get('titulo') or generar_titulo_negocio(post, categoria_nombre='')
         alt = f"Imagen de {titulo.lower()}"
 
-    # NUEVO: numerar cuando hay más de una foto
+    # Numerar cuando hay más de una foto
     if total > 1:
         alt = f"Foto {idx + 1} de {total} — {alt}"
 
@@ -1685,7 +1831,19 @@ def generar_alt_imagen(post, config_grupo=None, idx=0, total=1):
 def construir_public_id(post, img, meta=None, config_grupo=None, idx=0):
     tipo = post.get('tipo') or post.get('_tipo_final') or post.get('tipo_detectado') or 'general'
     txt = post.get('texto_limpio') or post.get('texto') or post.get('descripcion') or post.get('texto_alerta') or ''
-    tema = slugify(post.get('titulo') or generar_titulo_negocio(post, categoria_nombre=''), max_words=8, max_len=55)
+
+    # Título según tipo
+    if tipo == 'perdido':
+        tema = slugify(generar_titulo_perdido(post), max_words=8, max_len=55)
+    elif tipo == 'empleo':
+        tema = slugify(generar_titulo_empleo(post), max_words=8, max_len=55)
+    elif tipo == 'mascota':
+        tema = slugify(generar_titulo_mascota(post, post.get('categoria_id', 11)), max_words=8, max_len=55)
+    elif tipo == 'alerta':
+        tema = slugify(generar_titulo_alerta(post), max_words=8, max_len=55)
+    else:
+        tema = slugify(post.get('titulo') or generar_titulo_negocio(post, categoria_nombre=''), max_words=8, max_len=55)
+
     ciudad = slugify((meta or {}).get('city') or 'merida', max_words=3, max_len=20)
     estado = slugify((meta or {}).get('state') or 'yucatan', max_words=3, max_len=20)
     zona = slugify(extraer_ubicacion_simple(txt) or 'general', max_words=5, max_len=30)

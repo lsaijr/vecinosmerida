@@ -94,6 +94,18 @@ def _build_tags(post, meta=None, config_grupo=None) -> List[str]:
         tags.add("seo-ready")
         if post.get("noticia_permitida"):
             tags.add("apto-noticia")
+    elif tipo == "perdido":
+        estado = post.get("perdido_estado") or "sin-estado"
+        cat_perdido = post.get("perdido_categoria") or "otro"
+        tags.update({estado, cat_perdido})
+        if post.get("perdido_recompensa"):
+            tags.add("recompensa")
+        tags.add("seo-ready")
+    elif tipo == "empleo":
+        tipo_empleo = post.get("tipo_empleo") or "oferta"
+        tags.add(tipo_empleo)
+        area = post.get("area") or "general"
+        tags.add(slugify(area, 3, 20))
 
     if post.get("requiere_revision_manual"):
         tags.add("revision-manual")
@@ -110,6 +122,20 @@ def _build_structured_metadata(post, meta=None, config_grupo=None, img=None) -> 
     subtipo = ""
     if tipo == "mascota":
         subtipo = {14: "perdido", 15: "encontrado", 16: "adopcion"}.get(post.get("categoria_id"), "general")
+    elif tipo == "perdido":
+        subtipo = post.get("perdido_estado") or "sin-estado"
+    elif tipo == "empleo":
+        subtipo = post.get("tipo_empleo") or "oferta"
+
+    # Headline SEO por tipo
+    headline = post.get("titulo") or ""
+    if not headline:
+        if tipo == "perdido":
+            from utils import generar_titulo_perdido
+            headline = generar_titulo_perdido(post)
+        elif tipo == "empleo":
+            from utils import generar_titulo_empleo
+            headline = generar_titulo_empleo(post)
 
     values = {
         "post_tipo": tipo,
@@ -120,7 +146,7 @@ def _build_structured_metadata(post, meta=None, config_grupo=None, img=None) -> 
         "fecha_captura": (meta or {}).get("fecha_captura") or "",
         "fbid_post": str(post.get("fbid_post") or ""),
         "fbid_image": str((img or {}).get("fbid") or ""),
-        "headline_seo": (post.get("titulo") or "")[:120],
+        "headline_seo": (headline or post.get("titulo") or "")[:120],
         "alt_status": "auto",
         "tiene_revision_manual": "true" if post.get("requiere_revision_manual") else "false",
         "apto_noticia": "true" if post.get("noticia_permitida") else "false",
