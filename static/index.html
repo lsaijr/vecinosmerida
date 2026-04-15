@@ -371,11 +371,12 @@ function mostrarResultado(data){
     {n: r.alertas||0,    l:'Alertas'},
     {n: r.mascotas||0,   l:'Mascotas'},
     {n: r.empleos||0,    l:'Empleos'},
-    {n: r.perdidos||0,   l:'Perdidos'},
+    {n: r.perdidos||0,   l:'Perdidos', sub: r.perdidos ? ('🔍 '+(r.perdidos_perdido||0)+' perdidos · 📦 '+(r.perdidos_encontrado||0)+' encontrados') : ''},
     {n: r.ignorados||0,  l:'Ignorados'}
   ];
   document.getElementById('resultStats').innerHTML = stats.map(function(s){
-    return '<div class="stat-box"><div class="stat-num">'+s.n+'</div><div class="stat-lbl">'+s.l+'</div></div>';
+    var sub = s.sub ? '<div style="font-size:.65rem;color:#6b7280;margin-top:2px">'+s.sub+'</div>' : '';
+    return '<div class="stat-box"><div class="stat-num">'+s.n+'</div><div class="stat-lbl">'+s.l+'</div>'+sub+'</div>';
   }).join('');
   document.getElementById('resultBtns').insertAdjacentHTML('beforebegin','<div class="result-extra">Tiempo total: <strong>'+formatTime(elapsed)+'</strong></div>');
   if(data.archivo_html){
