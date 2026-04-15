@@ -218,6 +218,8 @@
   .tipo-alerta  { background: rgba(245,158,11,.2);  color: #fcd34d; }
   .tipo-mascota { background: rgba(16,185,129,.2);  color: #6ee7b7; }
   .tipo-ignorar { background: rgba(100,116,139,.2); color: #94a3b8; }
+  .tipo-empleo  { background: rgba(16,185,129,.2);  color: #34d399; }
+  .tipo-perdido { background: rgba(244,114,182,.2); color: #f472b6; }
 
   .token-info { font-size: .72rem; color: var(--muted); font-family: 'Space Mono', monospace; margin-bottom: .5rem; }
 
@@ -262,7 +264,7 @@
   <div class="header">
     <div class="badge">🏷️ VecinosMérida · Etapa 2</div>
     <h1>Groq <span>Clasificador</span></h1>
-    <p class="subtitle">Asigna tipo a cada post · negocio · noticia · alerta · mascota · ignorar</p>
+    <p class="subtitle">Asigna tipo a cada post · negocio · noticia · alerta · mascota · empleo · perdido · ignorar</p>
   </div>
 
   <!-- Config -->
@@ -493,7 +495,20 @@ const MODELS = {
   sn_llama4:  { name: 'Llama-4-Maverick-17B-128E-Instruct',   label: 'SN · Llama 4 Maverick', provider: 'sambanova', chunk: 20, pause: 1000,  maxTokens: 4000, color: 'var(--m6)' },
 };
 
-const PROMPT = `Eres un clasificador de posts de Facebook para VecinosMérida.com (Mérida, Yucatán).
+// ── Dynamic prompt builder — adapts to grupo_tipo from Etapa 1 ──
+function buildPrompt(grupoTipo) {
+  const contextos = {
+    vecinos:  'grupo de vecinos de una colonia en Mérida. Mezcla de negocios, alertas, noticias y mascotas.',
+    noticias: 'grupo de noticias locales de Mérida y Yucatán. La mayoría son noticias; pocos negocios.',
+    mascotas: 'grupo de mascotas perdidas, encontradas y en adopción. Mayoría son mascotas; también hay denuncias de maltrato (→alerta) y ventas de accesorios (→negocio).',
+    empleo:   'grupo de empleo y trabajo en Mérida. Todo post válido es empleo o ignorar.',
+    ventas:   'grupo de compra-venta. La gran mayoría son negocios.',
+    perdidos: 'grupo de objetos perdidos y encontrados en Mérida. Documentos, celulares, llaves, carteras, vehículos. También mascotas perdidas.',
+  };
+  const contexto = contextos[grupoTipo] || contextos.vecinos;
+
+  return `Eres un clasificador de posts de Facebook para VecinosMérida.com (Mérida, Yucatán).
+CONTEXTO: Es un ${contexto}
 
 INSTRUCCIÓN CRÍTICA: Devuelve ÚNICAMENTE este JSON, sin texto antes ni después, sin markdown:
 {"posts": [{"fbid_post": "...", "tipo": "..."}]}
@@ -504,45 +519,71 @@ TIPOS — definiciones exactas:
 
 "negocio"
   Venta de productos/servicios, precios, ofertas, anuncios comerciales, entregas a domicilio,
-  promociones, horarios de atención, hashtags de negocio o veterinaria.
-  Ejemplos: "Vendo tamales", "#veterinaria #medicinacanina", "Servicio de herrería disponible"
+  promociones, horarios, hashtags de negocio o veterinaria.
+  Ejemplos: "Vendo tamales", "Servicio de herrería disponible", "#veterinaria consultas"
 
 "noticia"
   Evento, hecho o información de interés general ocurrido en Mérida/Yucatán.
   ⚠ LEY ABSOLUTA: SOLO puede ser "noticia" si el texto tiene 70 palabras o más.
   Un post de 69 palabras o menos JAMÁS puede ser "noticia", sin importar el contenido.
-  Esta es la ÚNICA restricción de longitud en todo el sistema — aplica SOLO a "noticia".
-  Los demás tipos (negocio, alerta, mascota, ignorar) NO tienen restricción de longitud.
-  Ejemplos: "Autoridades reportan accidente en periférico...", "Ayuntamiento comunica..."
+  Los demás tipos NO tienen restricción de longitud.
 
 "alerta"
-  Incidente, peligro o denuncia que afecta a la comunidad local: robos, accidentes, baches,
-  fugas de agua, sospechosos, maltrato animal, estafas, fraudes, advertencias de peligro.
-  Ejemplos: "Cuidado, están robando en la zona", "Denuncio maltrato a este perro",
-            "Estaban tratando de estafarme pidiéndome depósitos", "Perro encadenado sin agua"
+  Incidente, peligro o denuncia que afecta a la comunidad: robos, accidentes, baches, fugas,
+  sospechosos, maltrato animal, estafas, fraudes, advertencias de peligro.
+  ⚠ INCLUYE denuncias implícitas: "Hasta cuándo vamos a entender que maltratar animales..."
+  → si hay indignación por un hecho concreto aunque no nombre la ubicación, es alerta.
+  Ejemplos: "Cuidado están robando", "Denuncio maltrato a este perro", "Perro encadenado sin agua"
 
 "mascota"
   Mascota perdida, encontrada, en adopción, en rescate o que necesita ayuda médica/hogar.
-  Puede ser texto corto si menciona animal, colonia, descripción o contacto.
-  Ejemplos: "Se perdió mi perro en Caucel", "Doy en adopción a esta gatita", "Ayuda a Mamoy"
+  ⚠ "Apoya a [nombre] para su cirugía/amputación/tratamiento" → ES mascota (ayuda médica), NO negocio.
+  ⚠ Campañas de donación para un animal específico → "mascota", no "negocio".
+  Ejemplos: "Se perdió mi perro en Caucel", "Doy en adopción", "Apoya a Mamoy para su operación"
+
+"empleo"
+  Oferta o búsqueda de trabajo. Vacantes, solicitudes de personal, personas buscando empleo.
+  Ejemplos: "Se solicita cocinero", "Busco trabajo de chofer", "Vacante disponible"
+
+"perdido"
+  Objeto perdido o encontrado: documentos (INE, pasaporte, licencia), celulares, carteras,
+  llaves, lentes, bicicletas, mochilas. Incluye los que ofrecen recompensa.
+  ⚠ Si es una MASCOTA perdida/encontrada → usar "mascota", no "perdido".
+  ⚠ "Perdido" es solo para OBJETOS, no para animales.
+  Ejemplos: "Perdí mi INE en el centro", "Encontré un celular en Galerías", "Se me cayeron las llaves"
 
 "ignorar"
   Todo lo que NO aporta valor local concreto:
   - Spam o cadenas ("Las primeras X personas que digan HOLA...")
-  - Reflexiones filosóficas o morales sin acción ni denuncia concreta
-    ("Los animales son seres sintientes y no deberíamos tratarlos así...")
+  - Reflexiones filosóficas o morales SIN acción ni denuncia concreta
+  ⚠ "Los animales son seres sintientes..." sin denuncia de un caso → "ignorar", NO "mascota"
   - Posts que hablan de OTRA publicación sin contenido propio
-    ("Me pregunto por qué eliminaron esta publicación...")
-  - Saludos, agradecimientos generales, contenido sin información útil
+  - Saludos, agradecimientos generales, memes sin información útil
 
 ════════════════════════════════════════
 REGLAS DE ORO — nunca violarlas:
 ════════════════════════════════════════
-1. ÚNICA LEY DE LONGITUD: texto < 70 palabras → JAMÁS "noticia". Los demás tipos no tienen restricción de longitud.
-2. Una reflexión filosófica sobre animales SIN denuncia concreta → "ignorar", no "alerta" ni "mascota"
-3. Una denuncia de maltrato animal, estafa o fraude → "alerta", no "mascota"
-4. Un post que habla de otro post sin contenido propio → "ignorar"
-5. Clasifica TODOS los posts del input sin omitir ninguno`;
+1. ÚNICA LEY DE LONGITUD: texto < 70 palabras → JAMÁS "noticia". Los demás tipos no tienen restricción.
+2. Reflexión filosófica sobre animales SIN denuncia concreta → "ignorar", no "mascota" ni "alerta"
+3. Denuncia de maltrato animal, estafa o fraude (explícita O implícita) → "alerta", no "mascota"
+4. "Apoya/ayuda a [animal] para cirugía/tratamiento" → "mascota" (ayuda médica), no "negocio"
+5. Objeto perdido/encontrado (NO animal) → "perdido"
+6. Mascota perdida/encontrada → "mascota" (no "perdido")
+7. Post que habla de otro post sin contenido propio → "ignorar"
+8. Clasifica TODOS los posts del input sin omitir ninguno
+
+════════════════════════════════════════
+PISTAS DE ETAPA 1 (si están presentes):
+════════════════════════════════════════
+Cada post puede traer un campo "pre_tipo" con una clasificación sugerida por keywords.
+- Si pre_tipo es "negocio", "alerta", "mascota", "empleo" o "perdido" con pre_score ≥ 3 → confía en la pista, es muy probable correcta.
+- Si pre_tipo es "ambiguo" → usa tu juicio para clasificar.
+- Si pre_score es 1-2 → la pista es débil, verifica con el contenido.
+- SIEMPRE puedes corregir pre_tipo si el contenido contradice la pista.`;
+}
+
+// Static prompt for backward compat
+const PROMPT = buildPrompt('vecinos');
 
 let rawData = null;
 let results = {};
@@ -677,14 +718,22 @@ function log(msg, type = '') {
 
 // ─── API call ───
 async function callGroq(modelName, posts, apiKey, maxTokens = 4000) {
-  const payload = posts.map(p => ({ fbid_post: p.fbid_post, texto: (p.texto || '').slice(0, 500) }));
+  const grupoTipo = rawData?.meta?.grupo_tipo || 'vecinos';
+  const prompt = buildPrompt(grupoTipo);
+  const payload = posts.map(p => {
+    const item = { fbid_post: p.fbid_post, texto: (p.texto_limpio || p.texto || '').slice(0, 500) };
+    if (p.pre_tipo && p.pre_tipo !== 'ambiguo') { item.pre_tipo = p.pre_tipo; item.pre_score = p.pre_score; }
+    if (p.perdido_estado) item.perdido_estado = p.perdido_estado;
+    if (p.perdido_categoria && p.perdido_categoria !== 'otro') item.perdido_categoria = p.perdido_categoria;
+    return item;
+  });
   const resp = await fetch('https://api.groq.com/openai/v1/chat/completions', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${apiKey}` },
     body: JSON.stringify({
       model: modelName,
       messages: [
-        { role: 'system', content: PROMPT },
+        { role: 'system', content: prompt },
         { role: 'user', content: `Clasifica estos posts:\n${JSON.stringify(payload)}` }
       ],
       temperature: 0.1,
@@ -708,7 +757,15 @@ async function callGroq(modelName, posts, apiKey, maxTokens = 4000) {
 
 // ─── SambaNova API call (OpenAI-compatible) ───
 async function callSambaNova(modelName, posts, apiKey) {
-  const payload = posts.map(p => ({ fbid_post: p.fbid_post, texto: (p.texto || '').slice(0, 500) }));
+  const grupoTipo = rawData?.meta?.grupo_tipo || 'vecinos';
+  const prompt = buildPrompt(grupoTipo);
+  const payload = posts.map(p => {
+    const item = { fbid_post: p.fbid_post, texto: (p.texto_limpio || p.texto || '').slice(0, 500) };
+    if (p.pre_tipo && p.pre_tipo !== 'ambiguo') { item.pre_tipo = p.pre_tipo; item.pre_score = p.pre_score; }
+    if (p.perdido_estado) item.perdido_estado = p.perdido_estado;
+    if (p.perdido_categoria && p.perdido_categoria !== 'otro') item.perdido_categoria = p.perdido_categoria;
+    return item;
+  });
   const resp = await fetch('https://api.sambanova.ai/v1/chat/completions', {
     method: 'POST',
     headers: {
@@ -718,7 +775,7 @@ async function callSambaNova(modelName, posts, apiKey) {
     body: JSON.stringify({
       model: modelName,
       messages: [
-        { role: 'system', content: PROMPT },
+        { role: 'system', content: prompt },
         { role: 'user', content: `Clasifica estos posts:\n${JSON.stringify(payload)}` }
       ],
       temperature: 0.1,
@@ -741,7 +798,15 @@ async function callSambaNova(modelName, posts, apiKey) {
 
 // ─── Gemini API call ───
 async function callGemini(modelName, posts, apiKey) {
-  const payload = posts.map(p => ({ fbid_post: p.fbid_post, texto: (p.texto || '').slice(0, 500) }));
+  const grupoTipo = rawData?.meta?.grupo_tipo || 'vecinos';
+  const prompt = buildPrompt(grupoTipo);
+  const payload = posts.map(p => {
+    const item = { fbid_post: p.fbid_post, texto: (p.texto_limpio || p.texto || '').slice(0, 500) };
+    if (p.pre_tipo && p.pre_tipo !== 'ambiguo') { item.pre_tipo = p.pre_tipo; item.pre_score = p.pre_score; }
+    if (p.perdido_estado) item.perdido_estado = p.perdido_estado;
+    if (p.perdido_categoria && p.perdido_categoria !== 'otro') item.perdido_categoria = p.perdido_categoria;
+    return item;
+  });
   const url = `https://generativelanguage.googleapis.com/v1beta/models/${modelName}:generateContent?key=${apiKey}`;
 
   const resp = await fetch(url, {
@@ -751,7 +816,7 @@ async function callGemini(modelName, posts, apiKey) {
       'x-goog-api-key': apiKey,
     },
     body: JSON.stringify({
-      systemInstruction: { parts: [{ text: PROMPT }] },
+      systemInstruction: { parts: [{ text: prompt }] },
       contents: [{ role: 'user', parts: [{ text: `Clasifica estos posts:\n${JSON.stringify(payload)}` }] }],
       generationConfig: {
         temperature: 0.1,
@@ -835,7 +900,21 @@ async function processModel(modelId) {
 
     // Build final JSON
     const finalPosts = allPosts.map(p => ({ ...p, tipo: classified[p.fbid_post] || 'ignorar' }));
-    results[modelId] = { ...rawData, posts: finalPosts };
+    const displayLabel = m.provider === 'gemini'
+      ? `Gemini · ${getGeminiModelName().replace('gemini-','').replace('-preview','')}`
+      : m.label;
+    results[modelId] = {
+      ...rawData,
+      posts: finalPosts,
+      meta: {
+        ...rawData.meta,
+        modelo_clasificador: m.name,
+        modelo_label: displayLabel,
+        modelo_provider: m.provider,
+        clasificado_en: new Date().toISOString(),
+        total_clasificados: finalPosts.length,
+      }
+    };
 
     // Count tipos
     const counts = {};
@@ -904,6 +983,8 @@ TIPOS VÁLIDOS:
 "noticia" — evento o hecho informativo de Mérida/Yucatán (SOLO ≥70 palabras)
 "alerta"  — incidente, denuncia, maltrato animal, estafa, fraude, peligro comunitario
 "mascota" — mascota perdida/encontrada/adopción/rescate/ayuda médica
+"empleo"  — oferta o búsqueda de trabajo, vacantes
+"perdido" — objeto perdido o encontrado (documentos, celulares, llaves, carteras, NO mascotas)
 "ignorar" — spam, reflexión filosófica sin denuncia concreta, post sobre otro post, saludos
 
 ════════════════════════════════════════
@@ -911,10 +992,12 @@ REGLAS DE AUDITORÍA:
 ════════════════════════════════════════
 1. Si el tipo asignado ES correcto → mantenlo sin cambiar
 2. Si el tipo asignado ES incorrecto → corrígelo con el tipo adecuado
-3. Una reflexión filosófica sobre animales SIN denuncia concreta → "ignorar"
-4. Una denuncia de maltrato, estafa o peligro → "alerta", no "mascota"
-5. "Apoya a [nombre] para [cirugía/tratamiento]" → "mascota", no "negocio"
-6. ÚNICA LEY DE LONGITUD: texto < 70 palabras → JAMÁS "noticia". negocio/alerta/mascota/ignorar no tienen mínimo de palabras.
+3. Reflexión filosófica sobre animales SIN denuncia concreta → "ignorar"
+4. Denuncia de maltrato, estafa o peligro (explícita O implícita) → "alerta", no "mascota"
+5. "Apoya a [nombre] para [cirugía/tratamiento]" → "mascota" (ayuda médica), no "negocio"
+6. Objeto perdido/encontrado (NO animal) → "perdido"
+7. Mascota perdida/encontrada → "mascota" (no "perdido")
+8. ÚNICA LEY DE LONGITUD: texto < 70 palabras → JAMÁS "noticia". Los demás tipos no tienen mínimo.
 
 Sé crítico. Corrige cuando sea necesario. Confía en tu propio juicio.`;
 
@@ -995,7 +1078,7 @@ async function startChain() {
                     : document.getElementById('apiKey').value.trim();
           const payload = chunk.map(p => ({
             fbid_post:  p.fbid_post,
-            texto:      (p.texto||'').slice(0, 500),
+            texto:      (p.texto_limpio || p.texto||'').slice(0, 500),
             tipo_actual: currentTipos[p.fbid_post] || 'ignorar'
           }));
           const auditMsg = `Audita estas clasificaciones:\n${JSON.stringify(payload)}`;
@@ -1100,7 +1183,7 @@ function buildChainTable(finalPosts, chain) {
     <th style="padding:.4rem .5rem;color:var(--success);border-bottom:1px solid var(--border);font-size:.7rem">Final</th>
   </tr>`;
 
-  const TIPO_COLOR = { mascota:'#a78bfa', negocio:'#34d399', alerta:'#f87171', noticia:'#60a5fa', ignorar:'#6b7280' };
+  const TIPO_COLOR = { mascota:'#a78bfa', negocio:'#34d399', alerta:'#f87171', noticia:'#60a5fa', ignorar:'#6b7280', empleo:'#10b981', perdido:'#f472b6' };
 
   // Table body
   const body = document.getElementById('chainBody');
