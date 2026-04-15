@@ -15,6 +15,7 @@ def _color_por_tipo(tipo):
         "alerta":  ("#dc2626", "rgba(220,38,38,.12)",  "⚠️"),
         "mascota": ("#059669", "rgba(5,150,105,.12)",  "🐾"),
         "empleo":  ("#0ea5e9", "rgba(14,165,233,.12)", "💼"),
+        "perdido": ("#9333ea", "rgba(147,51,234,.12)", "🔍"),
     }
     return mapa.get(tipo, ("#495057", "rgba(108,117,125,.1)", "📌"))
 
@@ -46,6 +47,7 @@ def generar_html_resultados(resultados, meta, config_grupo, cats_negocios, cats_
         "alertas": len(resultados.get("alertas", [])),
         "mascotas": len(resultados.get("mascotas", [])),
         "empleos": len(resultados.get("empleos", [])),
+        "perdidos": len(resultados.get("perdidos", [])),
         "ignorados": len(resultados.get("ignorados", [])),
     }
 
@@ -90,22 +92,29 @@ def generar_html_resultados(resultados, meta, config_grupo, cats_negocios, cats_
         error = p.get("_error_visible", "")
 
         if tipo == "noticia":
-            titulo = p.get("titulo", p.get("texto_limpio", "")[:80])
-            texto_completo = p.get("texto", p.get("texto_limpio", ""))
+            titulo = p.get("titulo") or (p.get("texto_limpio") or "")[:80] or "Noticia"
+            texto_completo = p.get("texto") or p.get("texto_limpio") or ""
         elif tipo == "alerta":
-            titulo = p.get("titulo", cat_nombre)
-            texto_completo = p.get("texto_alerta", p.get("texto_limpio", ""))
+            titulo = p.get("titulo") or cat_nombre or "Alerta"
+            texto_completo = p.get("texto_alerta") or p.get("texto_limpio") or ""
         elif tipo == "mascota":
-            titulo = p.get("titulo", cat_nombre)
-            texto_completo = p.get("descripcion", p.get("texto_limpio", ""))
+            titulo = p.get("titulo") or cat_nombre or "Mascota"
+            texto_completo = p.get("descripcion") or p.get("texto_limpio") or ""
         elif tipo == "empleo":
             tipo_emp = p.get("tipo_empleo", "oferta")
             puesto   = p.get("puesto") or ("Vacante disponible" if tipo_emp == "oferta" else "Busca empleo")
-            titulo   = puesto
-            texto_completo = p.get("descripcion", p.get("texto_limpio", ""))
+            titulo   = p.get("titulo") or puesto
+            texto_completo = p.get("descripcion") or p.get("texto_limpio") or ""
+        elif tipo == "perdido":
+            estado = p.get("perdido_estado") or "perdido"
+            emoji_estado = "🔍" if estado == "perdido" else "📦"
+            titulo = p.get("titulo") or f"Objeto {estado}"
+            texto_completo = p.get("descripcion") or p.get("texto_limpio") or ""
+            if p.get("perdido_recompensa"):
+                titulo += " — 💰 Recompensa"
         else:
-            titulo = p.get("titulo", p.get("nombre", p.get("texto_limpio", "")[:60]))
-            texto_completo = p.get("descripcion", p.get("texto_limpio", ""))
+            titulo = p.get("titulo") or p.get("nombre") or (p.get("texto_limpio") or "")[:60] or "Publicación"
+            texto_completo = p.get("descripcion") or p.get("texto_limpio") or ""
 
         direccion = p.get("direccion_aprox", "")
 
@@ -181,7 +190,7 @@ def generar_html_resultados(resultados, meta, config_grupo, cats_negocios, cats_
         # desc-short muestra los primeros 180 chars + botón "Ver más"
         # desc-full muestra el texto COMPLETO + botón "Ver menos"
         LIMITE = 180
-        uid = abs(hash(titulo + texto_completo)) % 999999
+        uid = abs(hash((titulo or '') + (texto_completo or ''))) % 999999
         tiene_mas = len(texto_completo) > LIMITE
 
         if tiene_mas:
@@ -219,8 +228,9 @@ def generar_html_resultados(resultados, meta, config_grupo, cats_negocios, cats_
     tipos_presentes = list({p["_tipo_final"] for p in todos})
     filtros_html = '<button class="fb on r" data-tipo="todos" onclick="filtrar(this)">Todos</button>\n'
     etiquetas = {"negocio": "🏪 Negocios", "noticia": "📰 Noticias",
-                 "alerta": "⚠️ Alertas", "mascota": "🐾 Mascotas", "empleo": "💼 Empleos"}
-    for t in ["negocio", "noticia", "alerta", "mascota"]:
+                 "alerta": "⚠️ Alertas", "mascota": "🐾 Mascotas", "empleo": "💼 Empleos",
+                 "perdido": "🔍 Perdidos"}
+    for t in ["negocio", "noticia", "alerta", "mascota", "empleo", "perdido"]:
         if t in tipos_presentes:
             cnt = resumen.get(t + "s", 0)
             filtros_html += f'<button class="fb" data-tipo="{t}" onclick="filtrar(this)">{etiquetas[t]} ({cnt})</button>\n'
@@ -328,6 +338,7 @@ body{{font-family:'DM Sans',sans-serif;background:var(--crema);color:var(--carbo
     <div><div class="stat-n">{resumen['alertas']}</div><div class="stat-l">Alertas</div></div>
     <div><div class="stat-n">{resumen['mascotas']}</div><div class="stat-l">Mascotas</div></div>
     <div><div class="stat-n">{resumen['empleos']}</div><div class="stat-l">Empleos</div></div>
+    <div><div class="stat-n">{resumen['perdidos']}</div><div class="stat-l">Perdidos</div></div>
     <div><div class="stat-n">{resumen['ignorados']}</div><div class="stat-l">Ignorados</div></div>
   </div>
 </section>
