@@ -1,0 +1,227 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1.0">
+<title>Publicar — VecinosMérida</title>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:wght@700;900&family=DM+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+:root{--rojo:#e63946;--crema:#fdf6ec;--carbon:#1a1a2e;--gris:#6b7280;--borde:#e8e0d5;--verde:#059669;}
+*{margin:0;padding:0;box-sizing:border-box;}
+body{font-family:'DM Sans',sans-serif;background:var(--crema);color:var(--carbon);min-height:100vh;}
+.hero{background:var(--carbon);padding:40px 24px 32px;text-align:center;position:relative;overflow:hidden;}
+.hero::before{content:'';position:absolute;inset:0;background:radial-gradient(ellipse 80% 60% at 50% 0%,rgba(5,150,105,.2),transparent 70%);}
+.hero-badge{display:inline-block;background:rgba(5,150,105,.15);border:1px solid rgba(5,150,105,.35);color:#6ee7b7;font-size:11px;font-weight:600;letter-spacing:.12em;text-transform:uppercase;padding:5px 14px;border-radius:20px;margin-bottom:16px;}
+.hero h1{font-family:'Fraunces',serif;font-size:clamp(1.6rem,5vw,2.5rem);font-weight:900;color:#fff;line-height:1.1;margin-bottom:8px;}
+.hero h1 span{color:var(--verde);}
+.hero p{color:rgba(255,255,255,.5);font-size:.9rem;max-width:480px;margin:0 auto;}
+.main{max-width:640px;margin:0 auto;padding:32px 20px 60px;}
+.card{background:#fff;border-radius:16px;box-shadow:0 4px 24px rgba(26,26,46,.08);padding:28px;margin-bottom:20px;}
+.card h2{font-family:'Fraunces',serif;font-size:1.2rem;font-weight:700;margin-bottom:16px;}
+.drop{border:2px dashed var(--borde);border-radius:12px;padding:40px 20px;text-align:center;cursor:pointer;transition:all .2s;}
+.drop:hover,.drop.over{border-color:var(--verde);background:rgba(5,150,105,.04);}
+.drop-icon{font-size:2.5rem;margin-bottom:8px;}
+.drop-text{font-weight:600;margin-bottom:4px;}
+.drop-sub{font-size:.8rem;color:var(--gris);}
+.file-info{margin-top:12px;font-size:.85rem;color:var(--verde);font-weight:600;display:none;}
+.btn{display:block;width:100%;padding:14px;border:none;border-radius:12px;font-family:'DM Sans',sans-serif;font-size:1rem;font-weight:600;cursor:pointer;transition:all .2s;margin-top:16px;}
+.btn-pub{background:var(--verde);color:#fff;}
+.btn-pub:hover{background:#047857;}
+.btn-pub:disabled{background:#d1d5db;color:#9ca3af;cursor:not-allowed;}
+.progress{display:none;margin-top:16px;}
+.progress-bar{height:8px;background:#e5e7eb;border-radius:4px;overflow:hidden;}
+.progress-fill{height:100%;background:var(--verde);border-radius:4px;transition:width .3s;width:0%;}
+.progress-text{font-size:.82rem;color:var(--gris);margin-top:8px;text-align:center;}
+.results{display:none;}
+.stat-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:10px;margin-bottom:16px;}
+.stat{background:var(--crema);border-radius:10px;padding:14px;text-align:center;}
+.stat-num{font-family:'Fraunces',serif;font-size:1.6rem;font-weight:700;}
+.stat-lbl{font-size:.72rem;color:var(--gris);text-transform:uppercase;letter-spacing:.06em;margin-top:2px;}
+.stat-ok .stat-num{color:var(--verde);}
+.stat-err .stat-num{color:var(--rojo);}
+.err-list{margin-top:12px;font-size:.8rem;color:var(--rojo);background:#fef2f2;border:1px solid #fecaca;border-radius:8px;padding:12px;max-height:200px;overflow-y:auto;}
+.back{display:block;text-align:center;margin-top:20px;color:var(--gris);font-size:.85rem;text-decoration:none;}
+.back:hover{color:var(--carbon);}
+</style>
+</head>
+<body>
+
+<div class="hero">
+  <div class="hero-badge">VecinosMérida.com</div>
+  <h1>Publicar <span>Contenido</span></h1>
+  <p>Sube un JSON pre-clasificado → Cloudinary + Base de datos</p>
+</div>
+
+<div class="main">
+  <div class="card" id="cardUpload">
+    <h2>📦 Subir JSON clasificado</h2>
+    <div class="drop" id="dropZone" onclick="document.getElementById('fileIn').click()">
+      <div class="drop-icon">📄</div>
+      <div class="drop-text">Arrastra tu JSON aquí</div>
+      <div class="drop-sub">o haz clic para seleccionar</div>
+    </div>
+    <input type="file" id="fileIn" accept=".json" style="display:none">
+    <div class="file-info" id="fileInfo"></div>
+    <button class="btn btn-pub" id="btnPublicar" disabled onclick="publicar()">🚀 Publicar → Cloudinary + DB</button>
+    
+    <div class="progress" id="progress">
+      <div class="progress-bar"><div class="progress-fill" id="progressFill"></div></div>
+      <div class="progress-text" id="progressText">Subiendo imágenes y guardando...</div>
+    </div>
+  </div>
+
+  <div class="card results" id="cardResults">
+    <h2>✅ Resultado</h2>
+    <div class="stat-grid" id="statGrid"></div>
+    <div class="err-list" id="errList" style="display:none"></div>
+    <button class="btn" style="background:var(--carbon);color:#fff" onclick="reset()">📦 Publicar otro archivo</button>
+  </div>
+
+  <a href="/" class="back">← Volver al Pipeline</a>
+</div>
+
+<script>
+var jsonData = null;
+
+// File input
+document.getElementById('fileIn').addEventListener('change', function(e) {
+  var file = e.target.files[0];
+  if (!file) return;
+  loadFile(file);
+});
+
+// Drag & drop
+var dz = document.getElementById('dropZone');
+dz.addEventListener('dragover', function(e) { e.preventDefault(); dz.classList.add('over'); });
+dz.addEventListener('dragleave', function() { dz.classList.remove('over'); });
+dz.addEventListener('drop', function(e) {
+  e.preventDefault(); dz.classList.remove('over');
+  if (e.dataTransfer.files.length) loadFile(e.dataTransfer.files[0]);
+});
+
+function loadFile(file) {
+  var reader = new FileReader();
+  reader.onload = function(ev) {
+    try {
+      jsonData = JSON.parse(ev.target.result);
+      var n = (jsonData.posts || []).length;
+      var grupo = (jsonData.meta || {}).group_name || 'Grupo';
+      var tipo = (jsonData.meta || {}).grupo_tipo || '?';
+      
+      // Count tipos
+      var tipos = {};
+      (jsonData.posts || []).forEach(function(p) {
+        var t = p.tipo || 'sin_tipo';
+        tipos[t] = (tipos[t] || 0) + 1;
+      });
+      var tiposStr = Object.entries(tipos).map(function(e) { return e[0] + ': ' + e[1]; }).join(' · ');
+      
+      var info = document.getElementById('fileInfo');
+      info.style.display = 'block';
+      info.innerHTML = '✓ ' + file.name + '<br>' +
+        '<span style="color:var(--carbon);font-weight:400">' + n + ' posts · ' + grupo + ' · tipo: ' + tipo + '</span><br>' +
+        '<span style="color:var(--gris);font-size:.78rem;font-weight:400">' + tiposStr + '</span>';
+      document.getElementById('btnPublicar').disabled = false;
+    } catch(e) {
+      alert('JSON inválido: ' + e.message);
+    }
+  };
+  reader.readAsText(file);
+}
+
+function publicar() {
+  if (!jsonData) return;
+  
+  var btn = document.getElementById('btnPublicar');
+  btn.disabled = true;
+  btn.textContent = '⏳ Publicando...';
+  
+  var prog = document.getElementById('progress');
+  prog.style.display = 'block';
+  document.getElementById('progressFill').style.width = '30%';
+  document.getElementById('progressText').textContent = 'Subiendo imágenes a Cloudinary...';
+
+  var blob = new Blob([JSON.stringify(jsonData)], {type: 'application/json'});
+  var form = new FormData();
+  form.append('file', blob, 'clasificado.json');
+
+  // Animate progress
+  var pct = 30;
+  var interval = setInterval(function() {
+    pct = Math.min(pct + 2, 90);
+    document.getElementById('progressFill').style.width = pct + '%';
+    if (pct > 60) document.getElementById('progressText').textContent = 'Guardando en base de datos...';
+  }, 1000);
+
+  fetch('/publicar', { method: 'POST', body: form })
+    .then(function(r) { return r.json(); })
+    .then(function(d) {
+      clearInterval(interval);
+      document.getElementById('progressFill').style.width = '100%';
+      document.getElementById('progressText').textContent = 'Completado';
+      
+      setTimeout(function() {
+        prog.style.display = 'none';
+        document.getElementById('cardUpload').style.display = 'none';
+        showResults(d);
+      }, 500);
+    })
+    .catch(function(e) {
+      clearInterval(interval);
+      btn.textContent = '❌ Error';
+      document.getElementById('progressText').textContent = 'Error: ' + e.message;
+    });
+}
+
+function showResults(d) {
+  var card = document.getElementById('cardResults');
+  card.style.display = 'block';
+  
+  var stats = [
+    {n: d.total_posts || 0, l: 'Total posts', cls: ''},
+    {n: d.total_nuevos || 0, l: 'Guardados', cls: 'stat-ok'},
+    {n: d.negocios_nuevos || 0, l: 'Negocios', cls: d.negocios_nuevos ? 'stat-ok' : ''},
+    {n: d.noticias_nuevas || 0, l: 'Noticias', cls: d.noticias_nuevas ? 'stat-ok' : ''},
+    {n: d.alertas_nuevas || 0, l: 'Alertas', cls: d.alertas_nuevas ? 'stat-ok' : ''},
+    {n: d.mascotas_nuevas || 0, l: 'Mascotas', cls: d.mascotas_nuevas ? 'stat-ok' : ''},
+    {n: d.empleos_nuevos || 0, l: 'Empleos', cls: d.empleos_nuevos ? 'stat-ok' : ''},
+    {n: d.perdidos_nuevos || 0, l: 'Perdidos', cls: d.perdidos_nuevos ? 'stat-ok' : ''},
+    {n: d.imagenes_ok || 0, l: 'Imágenes OK', cls: 'stat-ok'},
+    {n: d.imagenes_fail || 0, l: 'Imágenes fail', cls: d.imagenes_fail ? 'stat-err' : ''},
+    {n: d.ignorados || 0, l: 'Ignorados', cls: ''},
+  ];
+  
+  document.getElementById('statGrid').innerHTML = stats
+    .filter(function(s) { return s.n > 0 || ['Total posts','Guardados'].includes(s.l); })
+    .map(function(s) {
+      return '<div class="stat ' + s.cls + '"><div class="stat-num">' + s.n + '</div><div class="stat-lbl">' + s.l + '</div></div>';
+    }).join('');
+
+  // Duplicados
+  var dups = (d.negocios_dup||0) + (d.noticias_dup||0) + (d.alertas_dup||0) + 
+             (d.mascotas_dup||0) + (d.empleos_dup||0) + (d.perdidos_dup||0);
+  if (dups > 0) {
+    document.getElementById('statGrid').innerHTML += 
+      '<div class="stat"><div class="stat-num">' + dups + '</div><div class="stat-lbl">Duplicados (ya existían)</div></div>';
+  }
+
+  if (d.errores && d.errores.length) {
+    var el = document.getElementById('errList');
+    el.style.display = 'block';
+    el.innerHTML = '<strong>Errores (' + d.errores.length + '):</strong><br>' +
+      d.errores.map(function(e) { return e.tipo + ': ' + e.error; }).join('<br>');
+  }
+}
+
+function reset() {
+  jsonData = null;
+  document.getElementById('cardUpload').style.display = 'block';
+  document.getElementById('cardResults').style.display = 'none';
+  document.getElementById('fileInfo').style.display = 'none';
+  document.getElementById('btnPublicar').disabled = true;
+  document.getElementById('btnPublicar').textContent = '🚀 Publicar → Cloudinary + DB';
+  document.getElementById('fileIn').value = '';
+}
+</script>
+</body>
+</html>
