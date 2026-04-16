@@ -10,7 +10,7 @@ from pipeline import ejecutar_pipeline
 from utils import match_colonias, detectar_tipo_por_nombre
 from db import buscar_grupo, registrar_grupo, obtener_colonias, obtener_potenciales_clientes
 
-APP_VERSION = "2026-04-10-v3"
+APP_VERSION = "2026-04-16-v4"
 print(f"🚀 VecinosMérida Pipeline arrancando — versión {APP_VERSION}")
 
 app = FastAPI()
