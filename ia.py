@@ -18,6 +18,14 @@ from utils import (
 
 def _get_groq_keys():
     keys = []
+    # Prioridad 1: fallback en código (para cuando Railway no propaga variables)
+    try:
+        from config_keys import GROQ_FALLBACK_KEY
+        if GROQ_FALLBACK_KEY:
+            keys.append(GROQ_FALLBACK_KEY)
+    except ImportError:
+        pass
+    # Prioridad 2: variables de entorno
     for var in ["GROQ_KEY_MAIN", "GROQ_API_KEY_VM", "GROQ_API_KEY_VM_2", "GROQ_API_KEY_VM_3", "GROQ_API_KEY"]:
         k = os.getenv(var)
         if k and k not in keys:

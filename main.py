@@ -653,9 +653,17 @@ async def groq_limpiar(request: Request):
     """
     import httpx
 
-    groq_key = os.environ.get("GROQ_KEY_MAIN") or os.environ.get("GROQ_API_KEY_VM") or os.environ.get("GROQ_API_KEY") or ""
+    groq_key = os.environ.get("GROQ_KEY_MAIN") or os.environ.get("GROQ_API_KEY_VM") or ""
     if not groq_key:
-        return JSONResponse({"error": "Groq API key no configurada (GROQ_KEY_MAIN / GROQ_API_KEY_VM)"}, status_code=500)
+        try:
+            from config_keys import GROQ_FALLBACK_KEY
+            groq_key = GROQ_FALLBACK_KEY or ""
+        except ImportError:
+            pass
+    if not groq_key:
+        groq_key = os.environ.get("GROQ_API_KEY") or ""
+    if not groq_key:
+        return JSONResponse({"error": "Groq API key no configurada"}, status_code=500)
 
     try:
         body = await request.json()
