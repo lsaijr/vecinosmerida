@@ -3,7 +3,7 @@ import os
 from typing import Dict, List, Tuple
 
 import cloudinary
-import cloudinary.uploader
+import cloudinary.uploader 
 
 from utils import construir_public_id, generar_alt_imagen, slugify
 
