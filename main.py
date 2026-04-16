@@ -289,6 +289,145 @@ async def guardar_db():
     return conteo
 
 
+# ═══════════════════════════════════════════════════════════════
+# ENDPOINT: /publicar — Importar JSON pre-clasificado
+# Solo hace: Cloudinary + DB (sin limpieza ni clasificación IA)
+# ═══════════════════════════════════════════════════════════════
+
+@app.post("/publicar")
+async def publicar(file: UploadFile = File(...)):
+    """
+    Recibe un JSON ya clasificado (output de procesamiento manual/Claude).
+    Solo sube imágenes a Cloudinary e inserta en DB.
+    """
+    from db import (
+        insertar_negocio, insertar_noticia, insertar_alerta,
+        insertar_empleo, insertar_mascota, insertar_perdido,
+        actualizar_grupo_stats,
+        upsert_autor_completo, registrar_actividad,
+    )
+    from cloudinary_service import subir_imagenes
+    from utils import generar_alt_imagen, construir_public_id
+
+    contenido = await file.read()
+    try:
+        data = json.loads(contenido)
+    except Exception:
+        return JSONResponse({"error": "JSON inválido"}, status_code=400)
+
+    meta = data.get("meta", {})
+    posts = data.get("posts", [])
+    if not posts:
+        return JSONResponse({"error": "No hay posts en el JSON"}, status_code=400)
+
+    group_id = meta.get("group_id", "")
+    group_name = meta.get("group_name", "")
+    grupo_tipo = meta.get("grupo_tipo", "vecinos")
+    fecha = meta.get("fecha_captura", "")
+
+    config_grupo = {
+        "tipo": grupo_tipo,
+        "colonia_ids": [None],
+        "colonia_nombres": ["General"],
+    }
+
+    # Organizar por tipo
+    buckets = {
+        "negocios": [], "noticias": [], "alertas": [],
+        "mascotas": [], "empleos": [], "perdidos": [], "ignorados": [],
+    }
+    _tipo_to_bucket = {
+        "negocio": "negocios", "noticia": "noticias", "alerta": "alertas",
+        "mascota": "mascotas", "empleo": "empleos", "perdido": "perdidos",
+        "ignorar": "ignorados",
+    }
+
+    for p in posts:
+        tipo = p.get("tipo", "ignorar")
+        bucket = _tipo_to_bucket.get(tipo, "ignorados")
+        p["tipo"] = tipo
+        buckets[bucket].append(p)
+
+    # ── Subir imágenes a Cloudinary ──
+    imgs_ok = imgs_fail = 0
+    publicables = []
+    for bucket_name in ["negocios", "noticias", "alertas", "mascotas", "empleos", "perdidos"]:
+        for p in buckets[bucket_name]:
+            if p.get("imagenes"):
+                res_imgs, ok, fail = subir_imagenes(p, meta=meta, config_grupo=config_grupo)
+                p["imagenes_cloudinary"] = res_imgs
+                imgs_ok += ok
+                imgs_fail += fail
+            else:
+                p["imagenes_cloudinary"] = []
+            publicables.append(p)
+
+    # ── Insertar en DB ──
+    INSERTERS = {
+        "negocios": insertar_negocio,
+        "mascotas": insertar_mascota,
+        "noticias": insertar_noticia,
+        "alertas":  insertar_alerta,
+        "empleos":  insertar_empleo,
+        "perdidos": insertar_perdido,
+    }
+
+    conteo = {
+        "negocios_nuevos": 0, "negocios_dup": 0,
+        "noticias_nuevas": 0, "noticias_dup": 0,
+        "alertas_nuevas": 0, "alertas_dup": 0,
+        "mascotas_nuevas": 0, "mascotas_dup": 0,
+        "empleos_nuevos": 0, "empleos_dup": 0,
+        "perdidos_nuevos": 0, "perdidos_dup": 0,
+        "errores": [],
+    }
+
+    for bucket_name, fn_insertar in INSERTERS.items():
+        key_nuevo = bucket_name.rstrip("s") + ("as_nuevas" if bucket_name.endswith("as") else "os_nuevos")
+        key_dup = bucket_name.rstrip("s") + ("as_dup" if bucket_name.endswith("as") else "os_dup")
+        # Fix keys
+        if bucket_name == "negocios": key_nuevo, key_dup = "negocios_nuevos", "negocios_dup"
+        elif bucket_name == "noticias": key_nuevo, key_dup = "noticias_nuevas", "noticias_dup"
+        elif bucket_name == "alertas": key_nuevo, key_dup = "alertas_nuevas", "alertas_dup"
+        elif bucket_name == "mascotas": key_nuevo, key_dup = "mascotas_nuevas", "mascotas_dup"
+        elif bucket_name == "empleos": key_nuevo, key_dup = "empleos_nuevos", "empleos_dup"
+        elif bucket_name == "perdidos": key_nuevo, key_dup = "perdidos_nuevos", "perdidos_dup"
+
+        for p in buckets[bucket_name]:
+            try:
+                # Registrar autor
+                autor_id_fb = p.get("autor_id")
+                if autor_id_fb:
+                    try:
+                        autor_db_id, _ = upsert_autor_completo(autor_id_fb, p.get("autor", ""))
+                        p["_autor_db_id"] = autor_db_id
+                        registrar_actividad(autor_db_id, group_id, group_name,
+                                            bucket_name.rstrip("s") if not bucket_name.endswith("os") else bucket_name[:-1],
+                                            p.get("fbid_post"), fecha)
+                    except Exception:
+                        pass
+
+                _, st = fn_insertar(p, None)
+                if st == "nuevo":
+                    conteo[key_nuevo] += 1
+                else:
+                    conteo[key_dup] += 1
+            except Exception as e:
+                conteo["errores"].append({"tipo": bucket_name, "error": str(e)[:120], "fbid": p.get("fbid_post")})
+
+    try:
+        actualizar_grupo_stats(group_id, len(posts))
+    except Exception:
+        pass
+
+    conteo["total_nuevos"] = sum(v for k, v in conteo.items() if k.endswith("_nuevos") or k.endswith("_nuevas"))
+    conteo["total_posts"] = len(posts)
+    conteo["ignorados"] = len(buckets["ignorados"])
+    conteo["imagenes_ok"] = imgs_ok
+    conteo["imagenes_fail"] = imgs_fail
+
+    return conteo
+
 
 def descargar(nombre: str):
     ruta = os.path.join("static", "resultados", nombre)
