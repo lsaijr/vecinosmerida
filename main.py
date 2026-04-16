@@ -20,6 +20,21 @@ app = FastAPI()
 def version():
     return {"version": APP_VERSION, "ok": True}
 
+
+@app.get("/api/debug-keys")
+def debug_keys():
+    """Temporal — verificar que las keys estén disponibles. BORRAR después."""
+    import os
+    groq_vm = os.environ.get("GROQ_API_KEY_VM", "")
+    groq_plain = os.environ.get("GROQ_API_KEY", "")
+    gpt_key = os.environ.get("GPT_API_KEY", "")
+    return {
+        "GROQ_API_KEY_VM": f"{groq_vm[:8]}...{groq_vm[-4:]}" if len(groq_vm) > 12 else f"(len={len(groq_vm)})",
+        "GROQ_API_KEY": f"{groq_plain[:8]}...{groq_plain[-4:]}" if len(groq_plain) > 12 else f"(len={len(groq_plain)})",
+        "GPT_API_KEY": f"{gpt_key[:8]}..." if len(gpt_key) > 12 else f"(len={len(gpt_key)})",
+        "total_env_vars": len(os.environ),
+    }
+
 # ── Lock: garantiza un solo pipeline activo a la vez ─────────────────────────
 _pipeline_lock = threading.Lock()
 
