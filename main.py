@@ -25,10 +25,12 @@ def version():
 def debug_keys():
     """Temporal — verificar que las keys estén disponibles. BORRAR después."""
     import os
+    groq_main = os.environ.get("GROQ_KEY_MAIN", "")
     groq_vm = os.environ.get("GROQ_API_KEY_VM", "")
     groq_plain = os.environ.get("GROQ_API_KEY", "")
     gpt_key = os.environ.get("GPT_API_KEY", "")
     return {
+        "GROQ_KEY_MAIN": f"{groq_main[:8]}...{groq_main[-4:]}" if len(groq_main) > 12 else f"(len={len(groq_main)})",
         "GROQ_API_KEY_VM": f"{groq_vm[:8]}...{groq_vm[-4:]}" if len(groq_vm) > 12 else f"(len={len(groq_vm)})",
         "GROQ_API_KEY": f"{groq_plain[:8]}...{groq_plain[-4:]}" if len(groq_plain) > 12 else f"(len={len(groq_plain)})",
         "GPT_API_KEY": f"{gpt_key[:8]}..." if len(gpt_key) > 12 else f"(len={len(gpt_key)})",
@@ -651,9 +653,9 @@ async def groq_limpiar(request: Request):
     """
     import httpx
 
-    groq_key = os.environ.get("GROQ_API_KEY_VM", "")
+    groq_key = os.environ.get("GROQ_KEY_MAIN") or os.environ.get("GROQ_API_KEY_VM") or os.environ.get("GROQ_API_KEY") or ""
     if not groq_key:
-        return JSONResponse({"error": "GROQ_API_KEY_VM no configurada en el servidor"}, status_code=500)
+        return JSONResponse({"error": "Groq API key no configurada (GROQ_KEY_MAIN / GROQ_API_KEY_VM)"}, status_code=500)
 
     try:
         body = await request.json()
