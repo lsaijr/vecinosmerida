@@ -1,5 +1,5 @@
 from fastapi import FastAPI, UploadFile, File, Request
-from fastapi.staticfiles import StaticFiles
+from fastapi.staticfiles import StaticFiles 
 from fastapi.responses import JSONResponse, Response
 import json
 import threading
