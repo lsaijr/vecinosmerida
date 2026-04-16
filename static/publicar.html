@@ -28,10 +28,15 @@ body{font-family:'DM Sans',sans-serif;background:var(--crema);color:var(--carbon
 .btn-pub{background:var(--verde);color:#fff;}
 .btn-pub:hover{background:#047857;}
 .btn-pub:disabled{background:#d1d5db;color:#9ca3af;cursor:not-allowed;}
-.progress{display:none;margin-top:16px;}
-.progress-bar{height:8px;background:#e5e7eb;border-radius:4px;overflow:hidden;}
-.progress-fill{height:100%;background:var(--verde);border-radius:4px;transition:width .3s;width:0%;}
-.progress-text{font-size:.82rem;color:var(--gris);margin-top:8px;text-align:center;}
+.progress{display:none;margin-top:20px;}
+.progress-bar{height:10px;background:#e5e7eb;border-radius:6px;overflow:hidden;}
+.progress-fill{height:100%;background:linear-gradient(90deg,var(--verde),#10b981);border-radius:6px;transition:width .4s ease;width:0%;}
+.progress-text{font-size:.85rem;color:var(--carbon);margin-top:10px;text-align:center;font-weight:500;}
+.progress-sub{font-size:.75rem;color:var(--gris);margin-top:4px;text-align:center;}
+.progress-mini-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-top:16px;font-size:.72rem;}
+.mini-stat{background:var(--crema);border-radius:8px;padding:8px;text-align:center;}
+.mini-stat-num{font-weight:700;color:var(--verde);font-size:1.1rem;}
+.mini-stat-lbl{color:var(--gris);margin-top:2px;}
 .results{display:none;}
 .stat-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:10px;margin-bottom:16px;}
 .stat{background:var(--crema);border-radius:10px;padding:14px;text-align:center;}
@@ -40,6 +45,9 @@ body{font-family:'DM Sans',sans-serif;background:var(--crema);color:var(--carbon
 .stat-ok .stat-num{color:var(--verde);}
 .stat-err .stat-num{color:var(--rojo);}
 .err-list{margin-top:12px;font-size:.8rem;color:var(--rojo);background:#fef2f2;border:1px solid #fecaca;border-radius:8px;padding:12px;max-height:200px;overflow-y:auto;}
+.err-list strong{color:var(--rojo);}
+.err-item{margin-top:6px;padding-top:6px;border-top:1px dashed #fecaca;}
+.err-item:first-of-type{border:none;padding-top:0;margin-top:4px;}
 .back{display:block;text-align:center;margin-top:20px;color:var(--gris);font-size:.85rem;text-decoration:none;}
 .back:hover{color:var(--carbon);}
 </style>
@@ -63,10 +71,12 @@ body{font-family:'DM Sans',sans-serif;background:var(--crema);color:var(--carbon
     <input type="file" id="fileIn" accept=".json" style="display:none">
     <div class="file-info" id="fileInfo"></div>
     <button class="btn btn-pub" id="btnPublicar" disabled onclick="publicar()">🚀 Publicar → Cloudinary + DB</button>
-    
+
     <div class="progress" id="progress">
       <div class="progress-bar"><div class="progress-fill" id="progressFill"></div></div>
-      <div class="progress-text" id="progressText">Subiendo imágenes y guardando...</div>
+      <div class="progress-text" id="progressText">Iniciando...</div>
+      <div class="progress-sub" id="progressSub"></div>
+      <div class="progress-mini-grid" id="miniGrid" style="display:none"></div>
     </div>
   </div>
 
@@ -74,7 +84,7 @@ body{font-family:'DM Sans',sans-serif;background:var(--crema);color:var(--carbon
     <h2>✅ Resultado</h2>
     <div class="stat-grid" id="statGrid"></div>
     <div class="err-list" id="errList" style="display:none"></div>
-    <button class="btn" style="background:var(--carbon);color:#fff" onclick="reset()">📦 Publicar otro archivo</button>
+    <button class="btn" style="background:var(--carbon);color:#fff" onclick="resetForm()">📦 Publicar otro archivo</button>
   </div>
 
   <a href="/" class="back">← Volver al Pipeline</a>
@@ -82,12 +92,13 @@ body{font-family:'DM Sans',sans-serif;background:var(--crema);color:var(--carbon
 
 <script>
 var jsonData = null;
+var pollInterval = null;
+var currentJobId = null;
 
 // File input
 document.getElementById('fileIn').addEventListener('change', function(e) {
   var file = e.target.files[0];
-  if (!file) return;
-  loadFile(file);
+  if (file) loadFile(file);
 });
 
 // Drag & drop
@@ -107,15 +118,14 @@ function loadFile(file) {
       var n = (jsonData.posts || []).length;
       var grupo = (jsonData.meta || {}).group_name || 'Grupo';
       var tipo = (jsonData.meta || {}).grupo_tipo || '?';
-      
-      // Count tipos
+
       var tipos = {};
       (jsonData.posts || []).forEach(function(p) {
         var t = p.tipo || 'sin_tipo';
         tipos[t] = (tipos[t] || 0) + 1;
       });
-      var tiposStr = Object.entries(tipos).map(function(e) { return e[0] + ': ' + e[1]; }).join(' · ');
-      
+      var tiposStr = Object.entries(tipos).map(function(e){return e[0]+': '+e[1];}).join(' · ');
+
       var info = document.getElementById('fileInfo');
       info.style.display = 'block';
       info.innerHTML = '✓ ' + file.name + '<br>' +
@@ -131,93 +141,177 @@ function loadFile(file) {
 
 function publicar() {
   if (!jsonData) return;
-  
+
   var btn = document.getElementById('btnPublicar');
   btn.disabled = true;
-  btn.textContent = '⏳ Publicando...';
-  
+  btn.textContent = '⏳ Enviando...';
+
   var prog = document.getElementById('progress');
   prog.style.display = 'block';
-  document.getElementById('progressFill').style.width = '30%';
-  document.getElementById('progressText').textContent = 'Subiendo imágenes a Cloudinary...';
+  document.getElementById('progressFill').style.width = '5%';
+  document.getElementById('progressText').textContent = 'Subiendo JSON al servidor...';
 
   var blob = new Blob([JSON.stringify(jsonData)], {type: 'application/json'});
   var form = new FormData();
   form.append('file', blob, 'clasificado.json');
 
-  // Animate progress
-  var pct = 30;
-  var interval = setInterval(function() {
-    pct = Math.min(pct + 2, 90);
-    document.getElementById('progressFill').style.width = pct + '%';
-    if (pct > 60) document.getElementById('progressText').textContent = 'Guardando en base de datos...';
-  }, 1000);
-
+  // POST inicial: recibe job_id
   fetch('/publicar', { method: 'POST', body: form })
-    .then(function(r) { return r.json(); })
+    .then(function(r) {
+      if (!r.ok) {
+        return r.text().then(function(txt) {
+          // Si vino HTML (error de Cloudflare u otro), mostrar mensaje útil
+          if (txt.indexOf('<') === 0) {
+            throw new Error('El servidor devolvió HTML (posible error de infraestructura). Código: ' + r.status);
+          }
+          try { return Promise.reject(JSON.parse(txt)); }
+          catch(e) { throw new Error('Error ' + r.status + ': ' + txt.slice(0, 200)); }
+        });
+      }
+      return r.json();
+    })
     .then(function(d) {
-      clearInterval(interval);
-      document.getElementById('progressFill').style.width = '100%';
-      document.getElementById('progressText').textContent = 'Completado';
-      
-      setTimeout(function() {
-        prog.style.display = 'none';
-        document.getElementById('cardUpload').style.display = 'none';
-        showResults(d);
-      }, 500);
+      if (d.error) throw new Error(d.error);
+      currentJobId = d.job_id;
+      document.getElementById('progressText').textContent = 'Procesando ' + d.total + ' posts...';
+      document.getElementById('miniGrid').style.display = 'grid';
+      // Iniciar polling
+      startPolling(currentJobId);
     })
     .catch(function(e) {
-      clearInterval(interval);
-      btn.textContent = '❌ Error';
+      stopPolling();
+      btn.textContent = '❌ Error — reintentar';
+      btn.disabled = false;
       document.getElementById('progressText').textContent = 'Error: ' + e.message;
+      document.getElementById('progressFill').style.background = 'var(--rojo)';
     });
 }
 
-function showResults(d) {
+function startPolling(jobId) {
+  pollInterval = setInterval(function() {
+    fetch('/publicar-status/' + jobId)
+      .then(function(r) { return r.json(); })
+      .then(function(status) {
+        if (status.error) {
+          throw new Error(status.error);
+        }
+        updateProgress(status);
+        if (status.listo) {
+          stopPolling();
+          setTimeout(function() { showFinalResults(status); }, 400);
+        }
+      })
+      .catch(function(e) {
+        stopPolling();
+        document.getElementById('progressText').textContent = 'Error consultando estado: ' + e.message;
+        document.getElementById('progressFill').style.background = 'var(--rojo)';
+      });
+  }, 2000);
+}
+
+function stopPolling() {
+  if (pollInterval) {
+    clearInterval(pollInterval);
+    pollInterval = null;
+  }
+}
+
+function updateProgress(s) {
+  var pct = Math.max(s.progreso || 0, 5);
+  document.getElementById('progressFill').style.width = pct + '%';
+  document.getElementById('progressText').textContent = s.paso || 'Procesando...';
+
+  var sub = '';
+  if (s.procesados && s.total) {
+    sub = s.procesados + ' / ' + s.total + ' posts';
+    if (s.elapsed) sub += ' · ' + s.elapsed + 's';
+  }
+  document.getElementById('progressSub').textContent = sub;
+
+  // Stats en vivo (solo si hay algún valor)
+  var totalNuevos = (s.negocios_nuevos||0) + (s.noticias_nuevas||0) + (s.alertas_nuevas||0) +
+                    (s.mascotas_nuevas||0) + (s.empleos_nuevos||0) + (s.perdidos_nuevos||0);
+  var totalDup = (s.negocios_dup||0) + (s.noticias_dup||0) + (s.alertas_dup||0) +
+                 (s.mascotas_dup||0) + (s.empleos_dup||0) + (s.perdidos_dup||0);
+
+  document.getElementById('miniGrid').innerHTML =
+    '<div class="mini-stat"><div class="mini-stat-num">' + totalNuevos + '</div><div class="mini-stat-lbl">Guardados</div></div>' +
+    '<div class="mini-stat"><div class="mini-stat-num">' + totalDup + '</div><div class="mini-stat-lbl">Duplicados</div></div>' +
+    '<div class="mini-stat"><div class="mini-stat-num">' + (s.imagenes_ok||0) + '</div><div class="mini-stat-lbl">Imgs OK</div></div>' +
+    '<div class="mini-stat"><div class="mini-stat-num">' + (s.errores ? s.errores.length : 0) + '</div><div class="mini-stat-lbl">Errores</div></div>';
+}
+
+function showFinalResults(s) {
+  if (s.error_fatal) {
+    document.getElementById('progressText').textContent = 'Error fatal: ' + s.error_fatal;
+    document.getElementById('progressFill').style.background = 'var(--rojo)';
+    document.getElementById('btnPublicar').disabled = false;
+    document.getElementById('btnPublicar').textContent = '🔄 Reintentar';
+    return;
+  }
+
+  document.getElementById('progressFill').style.width = '100%';
+  document.getElementById('progressText').textContent = '✅ Completado en ' + (s.elapsed || '?') + 's';
+  document.getElementById('miniGrid').style.display = 'none';
+
+  setTimeout(function() {
+    document.getElementById('progress').style.display = 'none';
+    document.getElementById('cardUpload').style.display = 'none';
+    renderResults(s);
+  }, 800);
+}
+
+function renderResults(d) {
   var card = document.getElementById('cardResults');
   card.style.display = 'block';
-  
-  var stats = [
-    {n: d.total_posts || 0, l: 'Total posts', cls: ''},
-    {n: d.total_nuevos || 0, l: 'Guardados', cls: 'stat-ok'},
-    {n: d.negocios_nuevos || 0, l: 'Negocios', cls: d.negocios_nuevos ? 'stat-ok' : ''},
-    {n: d.noticias_nuevas || 0, l: 'Noticias', cls: d.noticias_nuevas ? 'stat-ok' : ''},
-    {n: d.alertas_nuevas || 0, l: 'Alertas', cls: d.alertas_nuevas ? 'stat-ok' : ''},
-    {n: d.mascotas_nuevas || 0, l: 'Mascotas', cls: d.mascotas_nuevas ? 'stat-ok' : ''},
-    {n: d.empleos_nuevos || 0, l: 'Empleos', cls: d.empleos_nuevos ? 'stat-ok' : ''},
-    {n: d.perdidos_nuevos || 0, l: 'Perdidos', cls: d.perdidos_nuevos ? 'stat-ok' : ''},
-    {n: d.imagenes_ok || 0, l: 'Imágenes OK', cls: 'stat-ok'},
-    {n: d.imagenes_fail || 0, l: 'Imágenes fail', cls: d.imagenes_fail ? 'stat-err' : ''},
-    {n: d.ignorados || 0, l: 'Ignorados', cls: ''},
-  ];
-  
-  document.getElementById('statGrid').innerHTML = stats
-    .filter(function(s) { return s.n > 0 || ['Total posts','Guardados'].includes(s.l); })
-    .map(function(s) {
-      return '<div class="stat ' + s.cls + '"><div class="stat-num">' + s.n + '</div><div class="stat-lbl">' + s.l + '</div></div>';
-    }).join('');
 
-  // Duplicados
-  var dups = (d.negocios_dup||0) + (d.noticias_dup||0) + (d.alertas_dup||0) + 
+  var stats = [
+    {n: d.total_posts||0, l: 'Total posts', cls: ''},
+    {n: d.total_nuevos||0, l: 'Guardados', cls: 'stat-ok'},
+    {n: d.negocios_nuevos||0, l: 'Negocios', cls: d.negocios_nuevos ? 'stat-ok' : ''},
+    {n: d.noticias_nuevas||0, l: 'Noticias', cls: d.noticias_nuevas ? 'stat-ok' : ''},
+    {n: d.alertas_nuevas||0, l: 'Alertas', cls: d.alertas_nuevas ? 'stat-ok' : ''},
+    {n: d.mascotas_nuevas||0, l: 'Mascotas', cls: d.mascotas_nuevas ? 'stat-ok' : ''},
+    {n: d.empleos_nuevos||0, l: 'Empleos', cls: d.empleos_nuevos ? 'stat-ok' : ''},
+    {n: d.perdidos_nuevos||0, l: 'Perdidos', cls: d.perdidos_nuevos ? 'stat-ok' : ''},
+    {n: d.imagenes_ok||0, l: 'Imágenes OK', cls: 'stat-ok'},
+    {n: d.imagenes_fail||0, l: 'Imgs fail', cls: d.imagenes_fail ? 'stat-err' : ''},
+    {n: d.ignorados||0, l: 'Ignorados', cls: ''},
+  ];
+
+  var dups = (d.negocios_dup||0) + (d.noticias_dup||0) + (d.alertas_dup||0) +
              (d.mascotas_dup||0) + (d.empleos_dup||0) + (d.perdidos_dup||0);
-  if (dups > 0) {
-    document.getElementById('statGrid').innerHTML += 
-      '<div class="stat"><div class="stat-num">' + dups + '</div><div class="stat-lbl">Duplicados (ya existían)</div></div>';
-  }
+  if (dups > 0) stats.push({n: dups, l: 'Duplicados', cls: ''});
+
+  document.getElementById('statGrid').innerHTML = stats
+    .filter(function(s){ return s.n > 0 || ['Total posts','Guardados'].indexOf(s.l) >= 0; })
+    .map(function(s){
+      return '<div class="stat '+s.cls+'"><div class="stat-num">'+s.n+'</div><div class="stat-lbl">'+s.l+'</div></div>';
+    }).join('');
 
   if (d.errores && d.errores.length) {
     var el = document.getElementById('errList');
     el.style.display = 'block';
-    el.innerHTML = '<strong>Errores (' + d.errores.length + '):</strong><br>' +
-      d.errores.map(function(e) { return e.tipo + ': ' + e.error; }).join('<br>');
+    el.innerHTML = '<strong>Errores ('+d.errores.length+'):</strong>' +
+      d.errores.map(function(e){
+        return '<div class="err-item">' +
+          (e.tipo||'?') + (e.etapa ? ' ['+e.etapa+']' : '') +
+          (e.fbid ? ' · fbid '+e.fbid : '') +
+          '<br>' + (e.error||'') + '</div>';
+      }).join('');
   }
 }
 
-function reset() {
+function resetForm() {
   jsonData = null;
+  currentJobId = null;
+  stopPolling();
   document.getElementById('cardUpload').style.display = 'block';
   document.getElementById('cardResults').style.display = 'none';
   document.getElementById('fileInfo').style.display = 'none';
+  document.getElementById('progress').style.display = 'none';
+  document.getElementById('progressFill').style.background = '';
+  document.getElementById('progressFill').style.width = '0%';
   document.getElementById('btnPublicar').disabled = true;
   document.getElementById('btnPublicar').textContent = '🚀 Publicar → Cloudinary + DB';
   document.getElementById('fileIn').value = '';
