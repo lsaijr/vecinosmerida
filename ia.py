@@ -18,19 +18,31 @@ from utils import (
 
 def _get_groq_keys():
     keys = []
-    # Prioridad 1: fallback en código (para cuando Railway no propaga variables)
+    # Prioridad 1: fallback en código
     try:
         from config_keys import GROQ_FALLBACK_KEY
         if GROQ_FALLBACK_KEY:
             keys.append(GROQ_FALLBACK_KEY)
     except ImportError:
         pass
-    # Prioridad 2: variables de entorno
-    for var in ["GROQ_KEY_MAIN", "GROQ_API_KEY_VM", "GROQ_API_KEY_VM_2", "GROQ_API_KEY_VM_3", "GROQ_API_KEY"]:
+    # Prioridad 2: variables de entorno (sin GROQ_API_KEY — está corrupta en Railway)
+    for var in ["GROQ_KEY_MAIN", "GROQ_API_KEY_VM", "GROQ_API_KEY_VM_2", "GROQ_API_KEY_VM_3"]:
         k = os.getenv(var)
         if k and k not in keys:
             keys.append(k)
     return keys if keys else [None]
+
+
+def _get_sambanova_key():
+    """Obtiene la key de SambaNova para usar como fallback."""
+    k = os.getenv("SAMNV_API_KEY") or os.getenv("SAMBANOVA_API_KEY") or ""
+    if not k:
+        try:
+            from config_keys import SAMBANOVA_FALLBACK_KEY
+            k = SAMBANOVA_FALLBACK_KEY or ""
+        except (ImportError, AttributeError):
+            pass
+    return k or None
 
 
 def _get_gemini_keys():
@@ -333,7 +345,8 @@ def _esperar_key(last_calls, key, intervalo):
 # ═══════════════════════════════════════════════════════════════
 _GROQ_MODEL_DEFAULT = "llama-3.3-70b-versatile"
 
-def _llamar_groq(prompt, temperatura=0.3, modelo=None):
+def _llamar_groq_raw(prompt, temperatura=0.3, modelo=None):
+    """Llama a Groq directamente (sin fallback)."""
     if modelo is None:
         modelo = _GROQ_MODEL_DEFAULT
     ultimo_error = None
@@ -362,6 +375,66 @@ def _llamar_groq(prompt, temperatura=0.3, modelo=None):
                 continue
             raise e
     raise ultimo_error
+
+
+def _llamar_groq(prompt, temperatura=0.3, modelo=None):
+    """Llama a Groq, si falla intenta SambaNova como fallback."""
+    try:
+        return _llamar_groq_raw(prompt, temperatura=temperatura, modelo=modelo)
+    except Exception as e_groq:
+        sn_key = _get_sambanova_key()
+        if sn_key:
+            try:
+                return _llamar_sambanova(prompt, temperatura=temperatura)
+            except Exception as e_sn:
+                raise Exception(f"Groq: {e_groq} | SambaNova: {e_sn}")
+        raise e_groq
+
+
+# ═══════════════════════════════════════════════════════════════
+# SAMBANOVA — DeepSeek V3.1 (OpenAI-compatible, fallback de Groq)
+# ═══════════════════════════════════════════════════════════════
+_SAMBANOVA_MODEL = "DeepSeek-V3.1"
+_sambanova_last_call = {}
+
+def _llamar_sambanova(prompt, temperatura=0.3, modelo=None):
+    """Llama a SambaNova como fallback cuando Groq falla."""
+    import json as _json
+    import urllib.request
+    import urllib.error
+
+    key = _get_sambanova_key()
+    if not key:
+        raise Exception("SambaNova API key no configurada (SAMNV_API_KEY)")
+
+    if modelo is None:
+        modelo = _SAMBANOVA_MODEL
+
+    _esperar_key(_sambanova_last_call, key, 1.0)
+
+    body = _json.dumps({
+        "model": modelo,
+        "messages": [{"role": "user", "content": prompt}],
+        "temperature": temperatura,
+        "max_tokens": 1200,
+    }).encode("utf-8")
+
+    req = urllib.request.Request(
+        "https://api.sambanova.ai/v1/chat/completions",
+        data=body,
+        headers={
+            "Content-Type": "application/json",
+            "Authorization": f"Bearer {key}",
+        },
+    )
+
+    try:
+        with urllib.request.urlopen(req, timeout=30) as resp:
+            data = _json.loads(resp.read().decode("utf-8"))
+        return data["choices"][0]["message"]["content"].strip()
+    except urllib.error.HTTPError as e:
+        error_body = e.read().decode("utf-8", errors="ignore")
+        raise Exception(f"SambaNova HTTP {e.code}: {error_body[:200]}")
 
 
 # ═══════════════════════════════════════════════════════════════
@@ -454,7 +527,7 @@ def clasificar_tipo(texto, grupo_tipo="vecinos", grupo_nombre=""):
         _CACHE_CLASIFICAR[key] = tipo
         return tipo, None
     except Exception as e:
-        return "ignorar", interpretar_error("Groq", e)
+        return "ignorar", interpretar_error("IA", e)
 
 
 # ═══════════════════════════════════════════════════════════════
