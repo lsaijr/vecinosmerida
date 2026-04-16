@@ -29,6 +29,7 @@ def debug_keys():
     groq_vm = os.environ.get("GROQ_API_KEY_VM", "")
     groq_plain = os.environ.get("GROQ_API_KEY", "")
     gpt_key = os.environ.get("GPT_API_KEY", "")
+    samnv_key = os.environ.get("SAMNV_API_KEY", "")
     # Check config_keys.py fallback
     fallback = ""
     try:
@@ -43,6 +44,7 @@ def debug_keys():
         "GROQ_API_KEY_VM": f"{groq_vm[:8]}...{groq_vm[-4:]}" if len(groq_vm) > 12 else f"(len={len(groq_vm)})",
         "GROQ_API_KEY": f"{groq_plain[:8]}...{groq_plain[-4:]}" if len(groq_plain) > 12 else f"(len={len(groq_plain)})",
         "GPT_API_KEY": f"{gpt_key[:8]}..." if len(gpt_key) > 12 else f"(len={len(gpt_key)})",
+        "SAMNV_API_KEY": f"{samnv_key[:8]}...{samnv_key[-4:]}" if len(samnv_key) > 12 else f"(len={len(samnv_key)})",
         "config_keys_fallback": f"{fallback[:8]}...{fallback[-4:]}" if len(fallback) > 12 else fallback,
         "total_env_vars": len(os.environ),
     }
