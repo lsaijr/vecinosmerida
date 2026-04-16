@@ -6,4 +6,4 @@ cloudinary
 rapidfuzz
 groq
 google-genai
-
+python-multipart
