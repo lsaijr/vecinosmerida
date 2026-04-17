@@ -433,6 +433,17 @@ async def publicar(file: UploadFile = File(...)):
                         p["categoria_id"]   = p.get("categoria_id", 11)
                         p["descripcion"]    = p.get("texto", "")
                         p["nombre"]         = p.get("autor", "")
+                        
+                        # 2.1. Campos específicos NOT NULL por tipo
+                        if bucket_name == "perdidos":
+                            if not p.get("perdido_estado"):
+                                p["perdido_estado"] = "perdido"
+                        
+                        if bucket_name == "mascotas":
+                            if not p.get("tipo_mascota"):
+                                p["tipo_mascota"] = "perdida"
+                            if not p.get("especie"):
+                                p["especie"] = "perro"
 
                         # 3. Upsert autor
                         autor_id_fb = p.get("autor_id")
