@@ -1,0 +1,388 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Publicar Posts (Batches) - VecinosMérida</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { 
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+        .container {
+            max-width: 800px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 12px;
+            padding: 30px;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+        }
+        h1 { color: #2d3748; margin-bottom: 10px; }
+        .subtitle { color: #718096; margin-bottom: 30px; }
+        .upload-area {
+            border: 3px dashed #cbd5e0;
+            border-radius: 8px;
+            padding: 40px;
+            text-align: center;
+            cursor: pointer;
+            transition: all 0.3s;
+            margin-bottom: 20px;
+        }
+        .upload-area:hover { border-color: #667eea; background: #f7fafc; }
+        .upload-area.dragover { border-color: #667eea; background: #edf2f7; }
+        input[type="file"] { display: none; }
+        .config {
+            display: grid;
+            gap: 15px;
+            margin-bottom: 20px;
+        }
+        label { display: block; color: #4a5568; font-weight: 600; margin-bottom: 5px; }
+        input[type="number"], select {
+            width: 100%;
+            padding: 10px;
+            border: 2px solid #e2e8f0;
+            border-radius: 6px;
+            font-size: 16px;
+        }
+        button {
+            width: 100%;
+            padding: 15px;
+            background: #667eea;
+            color: white;
+            border: none;
+            border-radius: 8px;
+            font-size: 16px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s;
+        }
+        button:hover { background: #5a67d8; transform: translateY(-2px); }
+        button:disabled { background: #cbd5e0; cursor: not-allowed; transform: none; }
+        .progress {
+            display: none;
+            margin-top: 20px;
+        }
+        .progress-bar {
+            height: 30px;
+            background: #edf2f7;
+            border-radius: 15px;
+            overflow: hidden;
+            margin-bottom: 10px;
+        }
+        .progress-fill {
+            height: 100%;
+            background: linear-gradient(90deg, #667eea, #764ba2);
+            width: 0%;
+            transition: width 0.3s;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: white;
+            font-weight: 600;
+        }
+        .batch-log {
+            background: #f7fafc;
+            border-radius: 6px;
+            padding: 15px;
+            max-height: 300px;
+            overflow-y: auto;
+            font-family: 'Courier New', monospace;
+            font-size: 13px;
+        }
+        .batch-log div { padding: 5px 0; border-bottom: 1px solid #e2e8f0; }
+        .batch-log div:last-child { border-bottom: none; }
+        .log-batch { color: #4299e1; }
+        .log-success { color: #48bb78; }
+        .log-error { color: #f56565; }
+        .results {
+            display: none;
+            margin-top: 20px;
+            padding: 20px;
+            background: #f0fff4;
+            border: 2px solid #48bb78;
+            border-radius: 8px;
+        }
+        .results h3 { color: #22543d; margin-bottom: 10px; }
+        .stats {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 10px;
+            margin-top: 10px;
+        }
+        .stat {
+            background: white;
+            padding: 10px;
+            border-radius: 6px;
+            border-left: 4px solid #48bb78;
+        }
+        .stat-label { color: #718096; font-size: 12px; }
+        .stat-value { color: #2d3748; font-size: 24px; font-weight: 700; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>📤 Publicar Posts en Batches</h1>
+        <p class="subtitle">Sube JSONs grandes dividiéndolos en lotes pequeños para evitar timeouts</p>
+
+        <div class="upload-area" id="uploadArea">
+            <p style="font-size: 48px; margin-bottom: 10px;">📁</p>
+            <p style="color: #4a5568; font-weight: 600;">Arrastra tu JSON aquí o haz clic para seleccionar</p>
+            <input type="file" id="fileInput" accept=".json">
+        </div>
+
+        <div id="jsonInfo" style="display: none; background: #edf2f7; padding: 15px; border-radius: 8px; margin-bottom: 20px;">
+            <div style="color: #2d3748; font-weight: 600; margin-bottom: 5px;">📊 Análisis del JSON</div>
+            <div style="color: #4a5568; font-size: 14px;">
+                <div>Total de posts: <strong id="totalPosts">0</strong></div>
+                <div>Total de imágenes: <strong id="totalImages">0</strong></div>
+                <div>Batches calculados: <strong id="calculatedBatches">0</strong> batches de ~<strong id="batchSize">0</strong> posts cada uno</div>
+                <div style="margin-top: 5px; color: #718096; font-size: 12px;">
+                    ℹ️ Batch size automático basado en cantidad de imágenes
+                </div>
+            </div>
+        </div>
+
+        <button id="uploadBtn" disabled>Procesar en Batches</button>
+
+        <div class="progress" id="progress">
+            <div class="progress-bar">
+                <div class="progress-fill" id="progressFill">0%</div>
+            </div>
+            <div class="batch-log" id="batchLog"></div>
+        </div>
+
+        <div class="results" id="results">
+            <h3>✅ Procesamiento Completado</h3>
+            <div class="stats" id="stats"></div>
+        </div>
+    </div>
+
+    <script>
+        const uploadArea = document.getElementById('uploadArea');
+        const fileInput = document.getElementById('fileInput');
+        const uploadBtn = document.getElementById('uploadBtn');
+        const jsonInfo = document.getElementById('jsonInfo');
+        const progress = document.getElementById('progress');
+        const progressFill = document.getElementById('progressFill');
+        const batchLog = document.getElementById('batchLog');
+        const results = document.getElementById('results');
+        const stats = document.getElementById('stats');
+
+        let jsonData = null;
+        let calculatedBatchSize = 20;
+
+        // Drag & drop
+        uploadArea.addEventListener('click', () => fileInput.click());
+        uploadArea.addEventListener('dragover', (e) => {
+            e.preventDefault();
+            uploadArea.classList.add('dragover');
+        });
+        uploadArea.addEventListener('dragleave', () => uploadArea.classList.remove('dragover'));
+        uploadArea.addEventListener('drop', (e) => {
+            e.preventDefault();
+            uploadArea.classList.remove('dragover');
+            if (e.dataTransfer.files.length) {
+                fileInput.files = e.dataTransfer.files;
+                handleFileSelect();
+            }
+        });
+
+        fileInput.addEventListener('change', handleFileSelect);
+
+        function handleFileSelect() {
+            const file = fileInput.files[0];
+            if (!file) return;
+
+            const reader = new FileReader();
+            reader.onload = (e) => {
+                try {
+                    jsonData = JSON.parse(e.target.result);
+                    const totalPosts = jsonData.posts?.length || 0;
+                    
+                    // Calcular total de imágenes
+                    const totalImages = jsonData.posts?.reduce((sum, post) => {
+                        return sum + (post.num_imgs || 0);
+                    }, 0) || 0;
+
+                    // Calcular batch size óptimo
+                    calculatedBatchSize = calcularBatchSize(totalPosts, totalImages);
+                    const numBatches = Math.ceil(totalPosts / calculatedBatchSize);
+
+                    // Mostrar info
+                    document.getElementById('totalPosts').textContent = totalPosts;
+                    document.getElementById('totalImages').textContent = totalImages;
+                    document.getElementById('calculatedBatches').textContent = numBatches;
+                    document.getElementById('batchSize').textContent = calculatedBatchSize;
+                    jsonInfo.style.display = 'block';
+
+                    uploadBtn.disabled = false;
+                    uploadBtn.textContent = `✅ Procesar ${numBatches} batches de ~${calculatedBatchSize} posts`;
+                } catch (err) {
+                    alert('Error: El archivo no es un JSON válido');
+                    jsonData = null;
+                    uploadBtn.disabled = true;
+                    jsonInfo.style.display = 'none';
+                }
+            };
+            reader.readAsText(file);
+        }
+
+        function calcularBatchSize(totalPosts, totalImages) {
+            // Estrategia: limitar cada batch a ~20-30 imágenes para evitar timeout
+            // Target: ~10 segundos por batch (2-3 seg por imagen en Cloudinary)
+            
+            const avgImagesPerPost = totalPosts > 0 ? totalImages / totalPosts : 1;
+            
+            // Si hay muchas imágenes por post, reducir batch size
+            if (avgImagesPerPost >= 3) {
+                return 10; // 10 posts × 3 imgs = ~30 imágenes por batch
+            } else if (avgImagesPerPost >= 2) {
+                return 15; // 15 posts × 2 imgs = ~30 imágenes por batch
+            } else if (avgImagesPerPost >= 1) {
+                return 20; // 20 posts × 1 img = ~20 imágenes por batch
+            } else {
+                return 30; // Posts sin imágenes, podemos procesar más
+            }
+        }
+
+        uploadBtn.addEventListener('click', async () => {
+            if (!jsonData) return;
+            
+            uploadBtn.disabled = true;
+            progress.style.display = 'block';
+            results.style.display = 'none';
+            batchLog.innerHTML = '';
+
+            await procesarEnBatches(jsonData, calculatedBatchSize);
+        });
+
+        async function procesarEnBatches(data, batchSize) {
+            const posts = data.posts;
+            const batches = [];
+
+            // Dividir en batches
+            for (let i = 0; i < posts.length; i += batchSize) {
+                batches.push(posts.slice(i, i + batchSize));
+            }
+
+            addLog(`📦 JSON dividido en ${batches.length} batches de ~${batchSize} posts`, 'batch');
+            
+            const totalStats = {
+                negocios_nuevos: 0,
+                empleos_nuevos: 0,
+                noticias_nuevas: 0,
+                alertas_nuevas: 0,
+                mascotas_nuevas: 0,
+                imagenes_ok: 0,
+                imagenes_fail: 0,
+                batches_completados: 0,
+                batches_fallidos: 0
+            };
+
+            // Procesar batch por batch
+            for (let i = 0; i < batches.length; i++) {
+                const batchData = {
+                    meta: data.meta,
+                    posts: batches[i]
+                };
+
+                const batchNum = i + 1;
+                const progress = Math.round((i / batches.length) * 100);
+                
+                progressFill.style.width = `${progress}%`;
+                progressFill.textContent = `${progress}%`;
+
+                addLog(`⏳ Procesando batch ${batchNum}/${batches.length} (${batches[i].length} posts)...`, 'batch');
+
+                try {
+                    const formData = new FormData();
+                    const blob = new Blob([JSON.stringify(batchData)], {type: 'application/json'});
+                    formData.append('file', blob, `batch_${batchNum}.json`);
+
+                    const response = await fetch('https://vecinos.enmerida.mx/publicar', {
+                        method: 'POST',
+                        body: formData
+                    });
+
+                    if (!response.ok) {
+                        throw new Error(`HTTP ${response.status}`);
+                    }
+
+                    const result = await response.json();
+                    
+                    // Acumular estadísticas
+                    totalStats.negocios_nuevos += result.negocios_nuevos || 0;
+                    totalStats.empleos_nuevos += result.empleos_nuevos || 0;
+                    totalStats.noticias_nuevas += result.noticias_nuevas || 0;
+                    totalStats.alertas_nuevas += result.alertas_nuevas || 0;
+                    totalStats.mascotas_nuevas += result.mascotas_nuevas || 0;
+                    totalStats.imagenes_ok += result.imagenes_ok || 0;
+                    totalStats.imagenes_fail += result.imagenes_fail || 0;
+                    totalStats.batches_completados++;
+
+                    addLog(`✅ Batch ${batchNum} completado: ${result.empleos_nuevos || 0} empleos, ${result.imagenes_ok || 0} imágenes`, 'success');
+
+                } catch (error) {
+                    totalStats.batches_fallidos++;
+                    addLog(`❌ Batch ${batchNum} falló: ${error.message}`, 'error');
+                }
+
+                // Pausa breve entre batches para no saturar el servidor
+                if (i < batches.length - 1) {
+                    await sleep(500);
+                }
+            }
+
+            // Completado
+            progressFill.style.width = '100%';
+            progressFill.textContent = '100%';
+            addLog(`🎉 Procesamiento completado: ${totalStats.batches_completados}/${batches.length} batches exitosos`, 'success');
+
+            mostrarResultados(totalStats);
+            uploadBtn.disabled = false;
+            uploadBtn.textContent = 'Procesar otro JSON';
+        }
+
+        function addLog(message, type = '') {
+            const div = document.createElement('div');
+            div.textContent = message;
+            if (type) div.className = `log-${type}`;
+            batchLog.appendChild(div);
+            batchLog.scrollTop = batchLog.scrollHeight;
+        }
+
+        function mostrarResultados(stats) {
+            results.style.display = 'block';
+            stats.innerHTML = `
+                <div class="stat">
+                    <div class="stat-label">Batches Exitosos</div>
+                    <div class="stat-value">${stats.batches_completados}</div>
+                </div>
+                <div class="stat">
+                    <div class="stat-label">Empleos Nuevos</div>
+                    <div class="stat-value">${stats.empleos_nuevos}</div>
+                </div>
+                <div class="stat">
+                    <div class="stat-label">Negocios Nuevos</div>
+                    <div class="stat-value">${stats.negocios_nuevos}</div>
+                </div>
+                <div class="stat">
+                    <div class="stat-label">Imágenes Subidas</div>
+                    <div class="stat-value">${stats.imagenes_ok}</div>
+                </div>
+                <div class="stat">
+                    <div class="stat-label">Imágenes Fallidas</div>
+                    <div class="stat-value">${stats.imagenes_fail}</div>
+                </div>
+            `;
+        }
+
+        function sleep(ms) {
+            return new Promise(resolve => setTimeout(resolve, ms));
+        }
+    </script>
+</body>
+</html>
