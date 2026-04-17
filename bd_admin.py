@@ -13,7 +13,7 @@ import json as json_lib
 from typing import Optional, List, Dict, Any
 from db import get_conn
 
-router = APIRouter(prefix="/BD", tags=["Database Admin"])
+router = APIRouter(prefix="/phpmyadmin", tags=["Database Admin"])
 
 
 # ═══════════════════════════════════════════════════════════════════════════
