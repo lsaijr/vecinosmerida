@@ -415,7 +415,7 @@ async def publicar(file: UploadFile = File(...), debug: str = Query("false")):
     # ══════════════════════════════════════════════════════════════════════════
     # MODO DEBUG: Retornar DESPUÉS de Cloudinary pero ANTES del INSERT
     # ══════════════════════════════════════════════════════════════════════════
-    if debug:
+    if debug_mode:
         debug_posts = []
         for p in publicables:
             debug_posts.append({
