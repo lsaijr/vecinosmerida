@@ -327,7 +327,7 @@ async def guardar_db():
 # ╚════════════════════════════════════════════════════════════════════╝
 
 @app.post("/publicar")
-async def publicar(file: UploadFile = File(...), debug: bool = Query(False)):
+async def publicar(file: UploadFile = File(...), debug: str = Query("false")):
     """
     Recibe un JSON ya clasificado (output de procesamiento manual/Claude).
     Solo sube imágenes a Cloudinary e inserta en DB.
@@ -343,8 +343,11 @@ async def publicar(file: UploadFile = File(...), debug: bool = Query(False)):
     from cloudinary_service import subir_imagenes
     from utils import generar_alt_imagen, construir_public_id
 
+    # Convertir debug string a boolean
+    debug_mode = debug.lower() in ("true", "1", "yes", "t")
+    
     contenido = await file.read()
-    print(f"🔍 DEBUG PARAM RECIBIDO: {debug}")
+    print(f"🔍 DEBUG PARAM RECIBIDO: {debug} → {debug_mode}")
     try:
         data = json.loads(contenido)
     except Exception as e:
@@ -356,7 +359,7 @@ async def publicar(file: UploadFile = File(...), debug: bool = Query(False)):
         return JSONResponse({"error": "No hay posts en el JSON"}, status_code=400)
 
     # 🔧 MODO DEBUG: Retornar inmediatamente sin procesar nada
-    if debug:
+    if debug_mode:
         return {
             "ok": True,
             "debug_mode": True,
