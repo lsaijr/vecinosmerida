@@ -324,21 +324,20 @@ async def publicar(file: UploadFile = File(...), debug: bool = False):
     
     Si debug=True: procesa Cloudinary pero NO inserta en BD, retorna debug JSON.
     """
-    try:
-        from db import (
-            insertar_negocio, insertar_noticia, insertar_alerta,
-            insertar_empleo, insertar_mascota, insertar_perdido,
-            actualizar_grupo_stats,
-            upsert_autor_completo, registrar_actividad,
-        )
-        from cloudinary_service import subir_imagenes
-        from utils import generar_alt_imagen, construir_public_id
+    from db import (
+        insertar_negocio, insertar_noticia, insertar_alerta,
+        insertar_empleo, insertar_mascota, insertar_perdido,
+        actualizar_grupo_stats,
+        upsert_autor_completo, registrar_actividad,
+    )
+    from cloudinary_service import subir_imagenes
+    from utils import generar_alt_imagen, construir_public_id
 
-        contenido = await file.read()
-        try:
-            data = json.loads(contenido)
-        except Exception as e:
-            return JSONResponse({"error": f"JSON inválido: {str(e)}"}, status_code=400)
+    contenido = await file.read()
+    try:
+        data = json.loads(contenido)
+    except Exception as e:
+        return JSONResponse({"error": f"JSON inválido: {str(e)}"}, status_code=400)
 
     meta = data.get("meta", {})
     posts = data.get("posts", [])
@@ -486,17 +485,7 @@ async def publicar(file: UploadFile = File(...), debug: bool = False):
     conteo["imagenes_ok"] = imgs_ok
     conteo["imagenes_fail"] = imgs_fail
 
-        return conteo
-    
-    except Exception as e:
-        import traceback
-        error_detail = traceback.format_exc()
-        print(f"❌ ERROR EN /publicar: {str(e)}")
-        print(error_detail)
-        return JSONResponse({
-            "error": str(e),
-            "detail": error_detail[:500]
-        }, status_code=500)
+    return conteo
 
 
 def descargar(nombre: str):
