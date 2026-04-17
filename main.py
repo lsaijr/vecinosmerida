@@ -446,7 +446,10 @@ async def publicar(file: UploadFile = File(...), debug: bool = False):
         elif bucket_name == "empleos": key_nuevo, key_dup = "empleos_nuevos", "empleos_dup"
         elif bucket_name == "perdidos": key_nuevo, key_dup = "perdidos_nuevos", "perdidos_dup"
 
-        for p in buckets[bucket_name]:
+        # Filtrar publicables por tipo
+        posts_de_tipo = [p for p in publicables if p.get("tipo") == bucket_name.rstrip("s")]
+        
+        for p in posts_de_tipo:
             try:
                 # Registrar autor
                 autor_id_fb = p.get("autor_id")
