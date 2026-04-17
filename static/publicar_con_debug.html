@@ -1,0 +1,519 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Publicar JSON - VecinosMérida</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+        .container {
+            max-width: 800px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 12px;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+            padding: 40px;
+        }
+        h1 {
+            color: #2d3748;
+            margin-bottom: 30px;
+            text-align: center;
+        }
+        .upload-area {
+            border: 3px dashed #cbd5e0;
+            border-radius: 8px;
+            padding: 40px;
+            text-align: center;
+            cursor: pointer;
+            transition: all 0.3s;
+            margin-bottom: 20px;
+        }
+        .upload-area:hover {
+            border-color: #667eea;
+            background: #f7fafc;
+        }
+        .upload-area.dragover {
+            border-color: #667eea;
+            background: #edf2f7;
+        }
+        input[type="file"] {
+            display: none;
+        }
+        .btn {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border: none;
+            padding: 12px 30px;
+            border-radius: 6px;
+            font-size: 16px;
+            cursor: pointer;
+            transition: transform 0.2s;
+            margin: 10px 5px;
+        }
+        .btn:hover {
+            transform: translateY(-2px);
+        }
+        .btn:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+        .btn-debug {
+            background: linear-gradient(135deg, #f6ad55 0%, #ed8936 100%);
+        }
+        .progress-container {
+            display: none;
+            margin: 20px 0;
+        }
+        .progress-bar {
+            width: 100%;
+            height: 30px;
+            background: #e2e8f0;
+            border-radius: 15px;
+            overflow: hidden;
+        }
+        .progress-fill {
+            height: 100%;
+            background: linear-gradient(90deg, #667eea 0%, #764ba2 100%);
+            transition: width 0.3s;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: white;
+            font-weight: bold;
+        }
+        .status {
+            margin-top: 20px;
+            padding: 15px;
+            border-radius: 6px;
+            display: none;
+        }
+        .status.success {
+            background: #c6f6d5;
+            color: #22543d;
+            border: 1px solid #9ae6b4;
+        }
+        .status.error {
+            background: #fed7d7;
+            color: #742a2a;
+            border: 1px solid #fc8181;
+        }
+        .status.info {
+            background: #bee3f8;
+            color: #2c5282;
+            border: 1px solid #90cdf4;
+        }
+        .results {
+            margin-top: 20px;
+            padding: 20px;
+            background: #f7fafc;
+            border-radius: 6px;
+            display: none;
+        }
+        .results h3 {
+            margin-bottom: 15px;
+            color: #2d3748;
+        }
+        .stat-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+            gap: 15px;
+        }
+        .stat-card {
+            background: white;
+            padding: 15px;
+            border-radius: 6px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        .stat-label {
+            font-size: 12px;
+            color: #718096;
+            margin-bottom: 5px;
+        }
+        .stat-value {
+            font-size: 24px;
+            font-weight: bold;
+            color: #2d3748;
+        }
+        .debug-section {
+            margin-top: 20px;
+            padding: 15px;
+            background: #fff5e1;
+            border-left: 4px solid #f6ad55;
+            border-radius: 4px;
+        }
+        .debug-section h4 {
+            color: #7c2d12;
+            margin-bottom: 10px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>📤 Publicar JSON Clasificado</h1>
+        
+        <div class="upload-area" id="uploadArea">
+            <p>📁 Arrastra aquí tu archivo JSON o haz clic para seleccionar</p>
+            <input type="file" id="fileInput" accept=".json">
+        </div>
+
+        <div class="debug-section">
+            <h4>🔍 Modo Debug</h4>
+            <p>Primero genera un archivo de depuración para ver exactamente qué se enviará a la BD</p>
+        </div>
+
+        <div style="text-align: center;">
+            <button class="btn btn-debug" id="btnDebug" disabled>
+                🔍 Generar Archivo Debug
+            </button>
+            <button class="btn" id="btnPublicar" disabled>
+                🚀 Publicar en BD
+            </button>
+        </div>
+
+        <div class="progress-container" id="progressContainer">
+            <div class="progress-bar">
+                <div class="progress-fill" id="progressFill">0%</div>
+            </div>
+        </div>
+
+        <div class="status" id="status"></div>
+        <div class="results" id="results"></div>
+    </div>
+
+    <script>
+        let jsonData = null;
+        const uploadArea = document.getElementById('uploadArea');
+        const fileInput = document.getElementById('fileInput');
+        const btnDebug = document.getElementById('btnDebug');
+        const btnPublicar = document.getElementById('btnPublicar');
+        const progressContainer = document.getElementById('progressContainer');
+        const progressFill = document.getElementById('progressFill');
+        const status = document.getElementById('status');
+        const results = document.getElementById('results');
+
+        // Drag & Drop
+        uploadArea.addEventListener('click', () => fileInput.click());
+        uploadArea.addEventListener('dragover', (e) => {
+            e.preventDefault();
+            uploadArea.classList.add('dragover');
+        });
+        uploadArea.addEventListener('dragleave', () => {
+            uploadArea.classList.remove('dragover');
+        });
+        uploadArea.addEventListener('drop', (e) => {
+            e.preventDefault();
+            uploadArea.classList.remove('dragover');
+            if (e.dataTransfer.files.length > 0) {
+                handleFile(e.dataTransfer.files[0]);
+            }
+        });
+        fileInput.addEventListener('change', (e) => {
+            if (e.target.files.length > 0) {
+                handleFile(e.target.files[0]);
+            }
+        });
+
+        async function handleFile(file) {
+            if (!file.name.endsWith('.json')) {
+                showStatus('error', 'Por favor selecciona un archivo JSON válido');
+                return;
+            }
+
+            try {
+                const text = await file.text();
+                jsonData = JSON.parse(text);
+                
+                uploadArea.innerHTML = `<p>✅ Archivo cargado: ${file.name}</p>`;
+                btnDebug.disabled = false;
+                btnPublicar.disabled = false;
+                showStatus('success', `JSON cargado: ${jsonData.posts?.length || 0} posts encontrados`);
+            } catch (error) {
+                showStatus('error', 'Error al leer el archivo JSON: ' + error.message);
+            }
+        }
+
+        // 🔍 GENERAR ARCHIVO DEBUG
+        btnDebug.addEventListener('click', async () => {
+            if (!jsonData) {
+                showStatus('error', 'No hay JSON cargado');
+                return;
+            }
+
+            showStatus('info', '🔍 Generando archivo de depuración...');
+            btnDebug.disabled = true;
+
+            try {
+                const debugData = await generateDebugData(jsonData);
+                
+                // Crear archivo para descargar
+                const blob = new Blob([JSON.stringify(debugData, null, 2)], { type: 'application/json' });
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = `debug_publicar_${new Date().toISOString().slice(0,19).replace(/:/g,'-')}.json`;
+                a.click();
+                URL.revokeObjectURL(url);
+
+                showStatus('success', '✅ Archivo debug generado y descargado. Revísalo antes de publicar.');
+                
+                // Mostrar resumen
+                showDebugSummary(debugData);
+            } catch (error) {
+                showStatus('error', 'Error al generar debug: ' + error.message);
+            } finally {
+                btnDebug.disabled = false;
+            }
+        });
+
+        async function generateDebugData(data) {
+            const meta = data.meta || {};
+            const posts = data.posts || [];
+
+            const debug = {
+                meta_archivo: {
+                    fecha_generacion: new Date().toISOString(),
+                    group_id: meta.group_id,
+                    group_name: meta.group_name,
+                    grupo_tipo: meta.grupo_tipo,
+                    fecha_captura: meta.fecha_captura,
+                    total_posts_archivo: posts.length
+                },
+                
+                organizacion_por_tipo: {},
+                
+                posts_procesados: [],
+                
+                resumen: {
+                    total_posts: posts.length,
+                    por_tipo: {},
+                    con_imagen: 0,
+                    sin_imagen: 0,
+                    con_telefono: 0,
+                    errores_potenciales: []
+                }
+            };
+
+            // Organizar posts por tipo
+            const buckets = {
+                negocios: [], noticias: [], alertas: [],
+                mascotas: [], empleos: [], perdidos: [], ignorados: []
+            };
+            
+            const tipoMap = {
+                negocio: 'negocios', noticia: 'noticias', alerta: 'alertas',
+                mascota: 'mascotas', empleo: 'empleos', perdido: 'perdidos',
+                ignorar: 'ignorados'
+            };
+
+            for (const p of posts) {
+                const tipo = p.tipo || 'ignorar';
+                const bucket = tipoMap[tipo] || 'ignorados';
+                buckets[bucket].push(p);
+
+                // Validar campos requeridos
+                const errores = [];
+                if (!p.fbid_post) errores.push('falta fbid_post');
+                if (!p.autor) errores.push('falta autor');
+                if (!p.texto && !p.descripcion) errores.push('falta texto/descripcion');
+
+                // Preparar objeto que se enviará a la BD
+                const postParaBD = {
+                    // Campos originales
+                    fbid_post: p.fbid_post,
+                    autor: p.autor,
+                    autor_id: p.autor_id,
+                    texto: p.texto,
+                    tipo: tipo,
+                    fecha_post: p.fecha_post,
+                    url_post: p.url_post,
+                    telefono: p.telefono,
+                    
+                    // Campos que se agregarán en el backend
+                    fecha_captura: meta.fecha_captura,
+                    categoria_id: p.categoria_id || 11,
+                    
+                    // Imágenes
+                    num_imagenes: p.imagenes?.length || 0,
+                    imagenes_cloudinary: p.imagenes_cloudinary || [],
+                    
+                    // Validación
+                    errores_detectados: errores,
+                    sera_insertado: errores.length === 0
+                };
+
+                debug.posts_procesados.push(postParaBD);
+
+                // Estadísticas
+                if (p.imagenes?.length > 0) debug.resumen.con_imagen++;
+                else debug.resumen.sin_imagen++;
+                
+                if (p.telefono) debug.resumen.con_telefono++;
+                
+                if (errores.length > 0) {
+                    debug.resumen.errores_potenciales.push({
+                        fbid_post: p.fbid_post,
+                        autor: p.autor,
+                        errores: errores
+                    });
+                }
+            }
+
+            // Contar por tipo
+            for (const [bucket, lista] of Object.entries(buckets)) {
+                debug.organizacion_por_tipo[bucket] = lista.length;
+                debug.resumen.por_tipo[bucket] = lista.length;
+            }
+
+            return debug;
+        }
+
+        function showDebugSummary(debugData) {
+            results.style.display = 'block';
+            results.innerHTML = `
+                <h3>📊 Resumen del Archivo Debug</h3>
+                <div class="stat-grid">
+                    <div class="stat-card">
+                        <div class="stat-label">Total Posts</div>
+                        <div class="stat-value">${debugData.resumen.total_posts}</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-label">Con Imagen</div>
+                        <div class="stat-value">${debugData.resumen.con_imagen}</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-label">Sin Imagen</div>
+                        <div class="stat-value">${debugData.resumen.sin_imagen}</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-label">Con Teléfono</div>
+                        <div class="stat-value">${debugData.resumen.con_telefono}</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-label">⚠️ Errores</div>
+                        <div class="stat-value" style="color: #c53030;">${debugData.resumen.errores_potenciales.length}</div>
+                    </div>
+                </div>
+                ${debugData.resumen.errores_potenciales.length > 0 ? `
+                    <div style="margin-top: 20px; padding: 15px; background: #fed7d7; border-radius: 6px;">
+                        <strong>⚠️ Posts con errores potenciales:</strong>
+                        <ul style="margin-top: 10px;">
+                            ${debugData.resumen.errores_potenciales.slice(0, 5).map(e => 
+                                `<li>${e.autor} - ${e.errores.join(', ')}</li>`
+                            ).join('')}
+                        </ul>
+                        ${debugData.resumen.errores_potenciales.length > 5 ? 
+                            `<p style="margin-top: 10px; font-size: 12px;">... y ${debugData.resumen.errores_potenciales.length - 5} más (ver archivo debug)</p>` 
+                        : ''}
+                    </div>
+                ` : ''}
+            `;
+        }
+
+        // 🚀 PUBLICAR EN BD (original)
+        btnPublicar.addEventListener('click', async () => {
+            if (!jsonData) {
+                showStatus('error', 'No hay JSON cargado');
+                return;
+            }
+
+            if (!confirm('¿Confirmas que deseas publicar este JSON en la base de datos?')) {
+                return;
+            }
+
+            btnPublicar.disabled = true;
+            btnDebug.disabled = true;
+            progressContainer.style.display = 'block';
+            showStatus('info', 'Subiendo archivo al servidor...');
+
+            try {
+                const formData = new FormData();
+                const blob = new Blob([JSON.stringify(jsonData)], { type: 'application/json' });
+                formData.append('file', blob, 'data.json');
+
+                const response = await fetch('/publicar', {
+                    method: 'POST',
+                    body: formData
+                });
+
+                const result = await response.json();
+
+                if (!response.ok) {
+                    throw new Error(result.error || 'Error en el servidor');
+                }
+
+                progressFill.style.width = '100%';
+                progressFill.textContent = '100%';
+                
+                showStatus('success', '✅ Publicación completada exitosamente');
+                showResults(result);
+
+            } catch (error) {
+                showStatus('error', '❌ Error: ' + error.message);
+                console.error(error);
+            } finally {
+                btnPublicar.disabled = false;
+                btnDebug.disabled = false;
+            }
+        });
+
+        function showStatus(type, message) {
+            status.className = `status ${type}`;
+            status.textContent = message;
+            status.style.display = 'block';
+        }
+
+        function showResults(data) {
+            results.style.display = 'block';
+            results.innerHTML = `
+                <h3>📊 Resultados de la Publicación</h3>
+                <div class="stat-grid">
+                    <div class="stat-card">
+                        <div class="stat-label">Total Posts</div>
+                        <div class="stat-value">${data.total_posts || 0}</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-label">✅ Nuevos</div>
+                        <div class="stat-value" style="color: #38a169;">${data.total_nuevos || 0}</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-label">⚠️ Duplicados</div>
+                        <div class="stat-value" style="color: #d69e2e;">${
+                            (data.negocios_dup || 0) + (data.noticias_dup || 0) + 
+                            (data.alertas_dup || 0) + (data.mascotas_dup || 0) + 
+                            (data.empleos_dup || 0) + (data.perdidos_dup || 0)
+                        }</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-label">🚫 Ignorados</div>
+                        <div class="stat-value">${data.ignorados || 0}</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-label">🖼️ Imágenes OK</div>
+                        <div class="stat-value">${data.imagenes_ok || 0}</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-label">❌ Imgs Error</div>
+                        <div class="stat-value" style="color: #c53030;">${data.imagenes_fail || 0}</div>
+                    </div>
+                </div>
+                ${data.errores?.length > 0 ? `
+                    <div style="margin-top: 20px; padding: 15px; background: #fed7d7; border-radius: 6px;">
+                        <strong>Errores encontrados:</strong>
+                        <ul style="margin-top: 10px;">
+                            ${data.errores.slice(0, 5).map(e => 
+                                `<li>${e.tipo}: ${e.error}</li>`
+                            ).join('')}
+                        </ul>
+                    </div>
+                ` : ''}
+            `;
+        }
+    </script>
+</body>
+</html>
