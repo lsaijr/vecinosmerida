@@ -20,15 +20,8 @@
             box-shadow: 0 20px 60px rgba(0,0,0,0.3);
             padding: 40px;
         }
-        h1 {
-            color: #2d3748;
-            margin-bottom: 10px;
-        }
-        .subtitle {
-            color: #718096;
-            font-size: 14px;
-            margin-bottom: 30px;
-        }
+        h1 { color: #2d3748; margin-bottom: 10px; }
+        .subtitle { color: #718096; font-size: 14px; margin-bottom: 30px; }
         .upload-area {
             border: 3px dashed #cbd5e0;
             border-radius: 8px;
@@ -38,17 +31,8 @@
             transition: all 0.3s;
             margin-bottom: 20px;
         }
-        .upload-area:hover {
-            border-color: #667eea;
-            background: #f7fafc;
-        }
-        .upload-area.dragover {
-            border-color: #667eea;
-            background: #edf2f7;
-        }
-        input[type="file"] {
-            display: none;
-        }
+        .upload-area:hover { border-color: #667eea; background: #f7fafc; }
+        input[type="file"] { display: none; }
         .btn {
             background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
             color: white;
@@ -61,120 +45,47 @@
             transition: all 0.2s;
             margin: 10px 5px;
         }
-        .btn:hover {
-            transform: translateY(-2px);
-            box-shadow: 0 4px 12px rgba(0,0,0,0.15);
-        }
-        .btn:disabled {
-            opacity: 0.5;
-            cursor: not-allowed;
-            transform: none;
-        }
-        .btn-warning {
-            background: linear-gradient(135deg, #f6ad55 0%, #ed8936 100%);
-        }
-        .info-box {
-            background: #e6fffa;
-            border-left: 4px solid #38b2ac;
-            padding: 15px 20px;
-            margin: 20px 0;
-            border-radius: 6px;
-        }
-        .info-box h3 {
-            color: #234e52;
-            margin-bottom: 10px;
-            font-size: 16px;
-        }
-        .info-box p {
-            margin-left: 0px;
-            color: #2c7a7b;
-            font-size: 14px;
-            margin-top: 5px;
-        }
+        .btn:hover { transform: translateY(-2px); }
+        .btn:disabled { opacity: 0.5; cursor: not-allowed; }
+        .btn-warning { background: linear-gradient(135deg, #f6ad55 0%, #ed8936 100%); }
         .status {
             margin-top: 20px;
             padding: 15px;
             border-radius: 6px;
             display: none;
         }
-        .status.success {
-            background: #c6f6d5;
-            color: #22543d;
-            border: 1px solid #9ae6b4;
-        }
-        .status.error {
-            background: #fed7d7;
-            color: #742a2a;
-            border: 1px solid #fc8181;
-        }
-        .status.info {
-            background: #bee3f8;
-            color: #2c5282;
-            border: 1px solid #90cdf4;
-        }
-        .results {
-            display: none;
-            margin-top: 20px;
-            padding: 20px;
-            background: #f7fafc;
-            border-radius: 8px;
-        }
-        .stat-grid {
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
-            gap: 15px;
-            margin-top: 15px;
-        }
-        .stat-card {
-            background: white;
-            padding: 15px;
-            border-radius: 8px;
-            text-align: center;
-            box-shadow: 0 2px 8px rgba(0,0,0,0.08);
-        }
-        .stat-value {
-            font-size: 28px;
-            font-weight: 700;
-            color: #2d3748;
-        }
-        .stat-label {
+        .status.success { background: #c6f6d5; color: #22543d; border: 1px solid #9ae6b4; }
+        .status.error { background: #fed7d7; color: #742a2a; border: 1px solid #fc8181; }
+        .status.info { background: #bee3f8; color: #2c5282; border: 1px solid #90cdf4; }
+        .error-detail {
+            margin-top: 10px;
+            padding: 10px;
+            background: #fff;
+            border-radius: 4px;
+            max-height: 300px;
+            overflow: auto;
+            font-family: monospace;
             font-size: 12px;
-            color: #718096;
-            margin-top: 5px;
         }
     </style>
 </head>
 <body>
     <div class="container">
-        <h1>🔬 Publicar con Debug Mejorado</h1>
-        <p class="subtitle">Usa parámetro debug=true para capturar estado ANTES del INSERT</p>
-
-        <div class="info-box">
-            <h3>📋 Nuevo modo de debug</h3>
-            <p>✅ El backend procesa TODO (Cloudinary + queries SQL)</p>
-            <p>✅ Retorna JSON con URLs de Cloudinary y queries</p>
-            <p>❌ NO inserta en BD si usas el parámetro debug=true</p>
-            <p style="margin-top: 10px; font-weight: 600;">Esto muestra exactamente qué fallaría al hacer el INSERT.</p>
-        </div>
+        <h1>🔬 Publicar con Debug</h1>
+        <p class="subtitle">Captura errores completos para análisis</p>
 
         <div class="upload-area" id="uploadArea">
             <input type="file" id="fileInput" accept=".json">
             <h3>📂 Arrastra tu JSON aquí</h3>
-            <p style="color: #718096; margin-top: 10px;">o haz click para seleccionar</p>
             <p id="fileName" style="color: #667eea; margin-top: 15px; font-weight: 600;"></p>
         </div>
 
         <div style="text-align: center;">
-            <button class="btn btn-warning" id="btnDebug" disabled>
-                🔬 Modo Debug (sin INSERT)
-            </button>
-            <button class="btn" id="btnPublicar" disabled>
-                🚀 Publicar en BD
-            </button>
+            <button class="btn btn-warning" id="btnDebug" disabled>🔬 Modo Debug</button>
+            <button class="btn" id="btnPublicar" disabled>🚀 Publicar en BD</button>
         </div>
 
         <div class="status" id="status"></div>
-        <div class="results" id="results"></div>
     </div>
 
     <script>
@@ -184,38 +95,23 @@
         const btnDebug = document.getElementById('btnDebug');
         const btnPublicar = document.getElementById('btnPublicar');
         const status = document.getElementById('status');
-        const results = document.getElementById('results');
-
         let jsonData = null;
 
         uploadArea.addEventListener('click', () => fileInput.click());
-        
         uploadArea.addEventListener('dragover', (e) => {
             e.preventDefault();
             uploadArea.style.borderColor = '#667eea';
-            uploadArea.style.background = '#edf2f7';
         });
-
         uploadArea.addEventListener('dragleave', () => {
             uploadArea.style.borderColor = '#cbd5e0';
-            uploadArea.style.background = 'white';
         });
-
         uploadArea.addEventListener('drop', (e) => {
             e.preventDefault();
             uploadArea.style.borderColor = '#cbd5e0';
-            uploadArea.style.background = 'white';
-            
-            const files = e.dataTransfer.files;
-            if (files.length > 0) {
-                handleFile(files[0]);
-            }
+            if (e.dataTransfer.files.length > 0) handleFile(e.dataTransfer.files[0]);
         });
-
         fileInput.addEventListener('change', (e) => {
-            if (e.target.files.length > 0) {
-                handleFile(e.target.files[0]);
-            }
+            if (e.target.files.length > 0) handleFile(e.target.files[0]);
         });
 
         async function handleFile(file) {
@@ -223,17 +119,13 @@
                 showStatus('error', 'Por favor sube un archivo JSON');
                 return;
             }
-
             fileName.textContent = `📄 ${file.name}`;
-            
             try {
                 const text = await file.text();
                 jsonData = JSON.parse(text);
-                
                 btnDebug.disabled = false;
                 btnPublicar.disabled = false;
                 showStatus('success', `✅ JSON cargado: ${jsonData.posts?.length || 0} posts`);
-                
             } catch (error) {
                 showStatus('error', '❌ Error al leer JSON: ' + error.message);
                 jsonData = null;
@@ -242,62 +134,76 @@
             }
         }
 
-        // 🔬 MODO DEBUG (sin INSERT)
-        btnDebug.addEventListener('click', async () => {
-            await publicarConDebug(true);
-        });
-
-        // 🚀 PUBLICAR NORMAL
-        btnPublicar.addEventListener('click', async () => {
-            if (!confirm('¿Confirmas que deseas publicar este JSON en la base de datos?')) {
-                return;
+        btnDebug.addEventListener('click', () => publicarConDebug(true));
+        btnPublicar.addEventListener('click', () => {
+            if (confirm('¿Confirmas que deseas publicar en BD?')) {
+                publicarConDebug(false);
             }
-            await publicarConDebug(false);
         });
 
         async function publicarConDebug(debugMode) {
-            if (!jsonData) {
-                showStatus('error', 'No hay JSON cargado');
-                return;
-            }
-
+            if (!jsonData) return;
             btnDebug.disabled = true;
             btnPublicar.disabled = true;
-            results.style.display = 'none';
 
-            const mensaje = debugMode 
-                ? '🔄 Generando debug (puede tomar varios minutos)...'
-                : '🔄 Publicando en BD...';
-            
-            showStatus('info', mensaje);
+            showStatus('info', debugMode ? '🔄 Generando debug...' : '🔄 Publicando...');
 
             try {
                 const formData = new FormData();
                 const blob = new Blob([JSON.stringify(jsonData)], { type: 'application/json' });
                 formData.append('file', blob, 'data.json');
-
-                // Agregar parámetro debug a la URL si está en modo debug
                 const url = debugMode ? '/publicar?debug=true' : '/publicar';
-
-                const response = await fetch(url, {
-                    method: 'POST',
-                    body: formData
-                });
-
-                const result = await response.json();
+                
+                const response = await fetch(url, { method: 'POST', body: formData });
+                
+                // CAPTURAR EL TEXTO RAW PRIMERO
+                const rawText = await response.text();
+                console.log('📥 RESPUESTA RAW DEL SERVIDOR:', rawText);
+                
+                // Intentar parsear como JSON
+                let result;
+                try {
+                    result = JSON.parse(rawText);
+                } catch (parseError) {
+                    // NO es JSON, es HTML de error
+                    console.error('❌ El servidor retornó HTML en vez de JSON');
+                    
+                    // Descargar el HTML completo
+                    const blob = new Blob([rawText], { type: 'text/html' });
+                    const url = URL.createObjectURL(blob);
+                    const a = document.createElement('a');
+                    a.href = url;
+                    a.download = `error_servidor_${new Date().toISOString().replace(/:/g, '-')}.html`;
+                    document.body.appendChild(a);
+                    a.click();
+                    document.body.removeChild(a);
+                    URL.revokeObjectURL(url);
+                    
+                    showStatus('error', '❌ Error del servidor (HTML descargado). Revisa la consola del navegador.');
+                    
+                    // Mostrar preview del error
+                    const preview = rawText.substring(0, 500);
+                    status.innerHTML += `<div class="error-detail">${preview.replace(/</g, '&lt;').replace(/>/g, '&gt;')}</div>`;
+                    return;
+                }
 
                 if (!response.ok) {
                     throw new Error(result.error || 'Error en el servidor');
                 }
 
-                // Si es modo debug, descargar el JSON
                 if (debugMode && result.debug_data) {
-                    descargarJSON(result.debug_data, `debug_cloudinary_${new Date().toISOString().replace(/:/g, '-')}.json`);
-                    showStatus('success', '✅ Debug generado y descargado');
-                    showDebugResults(result);
+                    const blob = new Blob([JSON.stringify(result.debug_data, null, 2)], { type: 'application/json' });
+                    const url = URL.createObjectURL(blob);
+                    const a = document.createElement('a');
+                    a.href = url;
+                    a.download = `debug_${new Date().toISOString().replace(/:/g, '-')}.json`;
+                    document.body.appendChild(a);
+                    a.click();
+                    document.body.removeChild(a);
+                    URL.revokeObjectURL(url);
+                    showStatus('success', '✅ Debug descargado');
                 } else {
-                    showStatus('success', '✅ Publicación completada exitosamente');
-                    showResults(result);
+                    showStatus('success', `✅ Publicado: ${result.total_nuevos} nuevos`);
                 }
 
             } catch (error) {
@@ -309,101 +215,10 @@
             }
         }
 
-        function descargarJSON(data, filename) {
-            const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
-            const url = URL.createObjectURL(blob);
-            const a = document.createElement('a');
-            a.href = url;
-            a.download = filename;
-            document.body.appendChild(a);
-            a.click();
-            document.body.removeChild(a);
-            URL.revokeObjectURL(url);
-        }
-
         function showStatus(type, message) {
             status.className = `status ${type}`;
-            status.textContent = message;
+            status.innerHTML = message;
             status.style.display = 'block';
-        }
-
-        function showDebugResults(data) {
-            results.style.display = 'block';
-            results.innerHTML = `
-                <h3>📊 Resultados del Debug</h3>
-                <div class="stat-grid">
-                    <div class="stat-card">
-                        <div class="stat-value">${data.total_posts || 0}</div>
-                        <div class="stat-label">Total Posts</div>
-                    </div>
-                    <div class="stat-card">
-                        <div class="stat-value" style="color: #38a169;">${data.imagenes_ok || 0}</div>
-                        <div class="stat-label">✅ Imgs Cloudinary</div>
-                    </div>
-                    <div class="stat-card">
-                        <div class="stat-value" style="color: #c53030;">${data.imagenes_fail || 0}</div>
-                        <div class="stat-label">❌ Imgs Error</div>
-                    </div>
-                    <div class="stat-card">
-                        <div class="stat-value" style="color: #4299e1;">${data.queries_generados || 0}</div>
-                        <div class="stat-label">Queries SQL</div>
-                    </div>
-                </div>
-                <div style="margin-top: 20px; padding: 15px; background: #fff5f5; border-left: 4px solid #fc8181; border-radius: 6px;">
-                    <strong>⚠️ MODO DEBUG ACTIVO:</strong>
-                    <p style="margin-top: 10px; font-size: 14px;">
-                        El JSON descargado incluye las URLs de Cloudinary Y los queries SQL completos.
-                        NO se insertó nada en la base de datos.
-                    </p>
-                </div>
-            `;
-        }
-
-        function showResults(data) {
-            results.style.display = 'block';
-            results.innerHTML = `
-                <h3>📊 Resultados de la Publicación</h3>
-                <div class="stat-grid">
-                    <div class="stat-card">
-                        <div class="stat-value">${data.total_posts || 0}</div>
-                        <div class="stat-label">Total Posts</div>
-                    </div>
-                    <div class="stat-card">
-                        <div class="stat-value" style="color: #38a169;">${data.total_nuevos || 0}</div>
-                        <div class="stat-label">✅ Nuevos</div>
-                    </div>
-                    <div class="stat-card">
-                        <div class="stat-value" style="color: #d69e2e;">${
-                            (data.negocios_dup || 0) + (data.noticias_dup || 0) + 
-                            (data.alertas_dup || 0) + (data.mascotas_dup || 0) + 
-                            (data.empleos_dup || 0) + (data.perdidos_dup || 0)
-                        }</div>
-                        <div class="stat-label">⚠️ Duplicados</div>
-                    </div>
-                    <div class="stat-card">
-                        <div class="stat-value">${data.ignorados || 0}</div>
-                        <div class="stat-label">🚫 Ignorados</div>
-                    </div>
-                    <div class="stat-card">
-                        <div class="stat-value">${data.imagenes_ok || 0}</div>
-                        <div class="stat-label">🖼️ Imágenes OK</div>
-                    </div>
-                    <div class="stat-card">
-                        <div class="stat-value" style="color: #c53030;">${data.imagenes_fail || 0}</div>
-                        <div class="stat-label">❌ Imgs Error</div>
-                    </div>
-                </div>
-                ${data.errores?.length > 0 ? `
-                    <div style="margin-top: 20px; padding: 15px; background: #fed7d7; border-radius: 6px;">
-                        <strong>Errores encontrados:</strong>
-                        <ul style="margin-top: 10px;">
-                            ${data.errores.slice(0, 5).map(e => 
-                                `<li>${e.tipo}: ${e.error}</li>`
-                            ).join('')}
-                        </ul>
-                    </div>
-                ` : ''}
-            `;
         }
     </script>
 </body>
