@@ -1,7 +1,7 @@
 """
 Administrador de Base de Datos Web - VecinosMérida
 Clon simplificado de phpMyAdmin para acceso rápido a MySQL
-Ruta: /BD
+Ruta: /phpmyadmin
 """
 from fastapi import APIRouter, HTTPException, Request, Depends
 from fastapi.responses import HTMLResponse, JSONResponse, StreamingResponse
