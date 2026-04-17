@@ -11,20 +11,32 @@ from utils import match_colonias, detectar_tipo_por_nombre
 from db import buscar_grupo, registrar_grupo, obtener_colonias, obtener_potenciales_clientes
 
 # ══════════════════════════════════════════════════════════════════════
-# ✨ LÍNEA 1 AGREGADA: Import del administrador BD
+# ✨ IMPORT DEL ADMINISTRADOR BD CON MANEJO DE ERRORES
 # ══════════════════════════════════════════════════════════════════════
-from bd_admin import router as bd_router
+try:
+    from bd_admin import router as bd_router
+    BD_ADMIN_LOADED = True
+    print("✅ bd_admin importado correctamente")
+except Exception as e:
+    BD_ADMIN_LOADED = False
+    print(f"❌ ERROR al importar bd_admin: {e}")
+    print(f"❌ Tipo de error: {type(e).__name__}")
+    import traceback
+    traceback.print_exc()
 
-APP_VERSION = "2026-04-16-v6-with-bd-admin"
+APP_VERSION = "2026-04-16-v7-debug"
 print(f"🚀 VecinosMérida Pipeline arrancando — versión {APP_VERSION}")
 
 app = FastAPI()
 
 # ══════════════════════════════════════════════════════════════════════
-# ✨ LÍNEA 2 AGREGADA: Registrar router del administrador BD
+# ✨ REGISTRAR ROUTER SOLO SI SE IMPORTÓ CORRECTAMENTE
 # ══════════════════════════════════════════════════════════════════════
-app.include_router(bd_router)
-
+if BD_ADMIN_LOADED:
+    app.include_router(bd_router)
+    print("✅ Router /BD registrado correctamente")
+else:
+    print("⚠️ Router /BD NO se pudo registrar debido a error de importación")
 
 @app.get("/api/version")
 def version():
