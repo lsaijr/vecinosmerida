@@ -24,7 +24,7 @@ except Exception as e:
     import traceback
     traceback.print_exc()
 
-APP_VERSION = "2026-04-17-v8-phpmyadmin"
+APP_VERSION = "2026-04-16-v7-debug"
 print(f"🚀 VecinosMérida Pipeline arrancando — versión {APP_VERSION}")
 
 app = FastAPI()
@@ -317,10 +317,12 @@ async def guardar_db():
 # ╚════════════════════════════════════════════════════════════════════╝
 
 @app.post("/publicar")
-async def publicar(file: UploadFile = File(...)):
+async def publicar(file: UploadFile = File(...), debug: bool = False):
     """
     Recibe un JSON ya clasificado (output de procesamiento manual/Claude).
     Solo sube imágenes a Cloudinary e inserta en DB.
+    
+    Si debug=True: procesa Cloudinary pero NO inserta en BD, retorna debug JSON.
     """
     from db import (
         insertar_negocio, insertar_noticia, insertar_alerta,
@@ -383,6 +385,35 @@ async def publicar(file: UploadFile = File(...)):
             else:
                 p["imagenes_cloudinary"] = []
             publicables.append(p)
+
+    # ══════════════════════════════════════════════════════════════════════════
+    # MODO DEBUG: Retornar DESPUÉS de Cloudinary pero ANTES del INSERT
+    # ══════════════════════════════════════════════════════════════════════════
+    if debug:
+        debug_posts = []
+        for p in publicables:
+            debug_posts.append({
+                "fbid_post": p.get('fbid_post'),
+                "tipo": p.get('tipo'),
+                "autor": p.get('autor'),
+                "imagenes_cloudinary": p.get('imagenes_cloudinary', []),
+                "tiene_cloudinary": len(p.get('imagenes_cloudinary', [])) > 0
+            })
+        
+        return {
+            "debug_mode": True,
+            "mensaje": "Debug generado - NO se insertó nada en BD",
+            "total_posts": len(posts),
+            "imagenes_ok": imgs_ok,
+            "imagenes_fail": imgs_fail,
+            "debug_data": {
+                "posts_procesados": debug_posts
+            }
+        }
+
+    # ══════════════════════════════════════════════════════════════════════════
+    # MODO NORMAL: Continuar con INSERT en BD
+    # ══════════════════════════════════════════════════════════════════════════
 
     # ── Insertar en DB ──
     INSERTERS = {
