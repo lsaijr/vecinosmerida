@@ -24,7 +24,7 @@ except Exception as e:
     import traceback
     traceback.print_exc()
 
-APP_VERSION = "2026-04-16-v7-debug"
+APP_VERSION = "2026-04-17-v8-phpmyadmin"
 print(f"🚀 VecinosMérida Pipeline arrancando — versión {APP_VERSION}")
 
 app = FastAPI()
