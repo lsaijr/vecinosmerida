@@ -373,7 +373,14 @@ async def publicar(file: UploadFile = File(...)):
         _publicar_lock.acquire()
         try:
             job = _publicar_jobs[job_id]
-            colonia_id = None
+            # Obtener colonia "General" para posts sin colonia específica
+            try:
+                from db import obtener_colonias
+                todas = obtener_colonias()
+                colonia_general = next((c["id"] for c in todas if c["nombre"].lower() == "general"), None)
+                colonia_id = colonia_general or 1  # fallback a ID 1
+            except:
+                colonia_id = 1  # fallback si falla la query
             total = len(posts)
 
             # ── Organizar por tipo ──
