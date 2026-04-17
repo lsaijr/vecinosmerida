@@ -6,7 +6,7 @@
     <title>Publicar Posts (Batches) - VecinosMérida</title>
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
-        body { 
+        body {
             font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
             background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
             min-height: 100vh;
@@ -34,19 +34,7 @@
         .upload-area:hover { border-color: #667eea; background: #f7fafc; }
         .upload-area.dragover { border-color: #667eea; background: #edf2f7; }
         input[type="file"] { display: none; }
-        .config {
-            display: grid;
-            gap: 15px;
-            margin-bottom: 20px;
-        }
         label { display: block; color: #4a5568; font-weight: 600; margin-bottom: 5px; }
-        input[type="number"], select {
-            width: 100%;
-            padding: 10px;
-            border: 2px solid #e2e8f0;
-            border-radius: 6px;
-            font-size: 16px;
-        }
         button {
             width: 100%;
             padding: 15px;
@@ -61,17 +49,8 @@
         }
         button:hover { background: #5a67d8; transform: translateY(-2px); }
         button:disabled { background: #cbd5e0; cursor: not-allowed; transform: none; }
-        .progress {
-            display: none;
-            margin-top: 20px;
-        }
-        .progress-bar {
-            height: 30px;
-            background: #edf2f7;
-            border-radius: 15px;
-            overflow: hidden;
-            margin-bottom: 10px;
-        }
+        .progress { display: none; margin-top: 20px; }
+        .progress-bar { height: 30px; background: #edf2f7; border-radius: 15px; overflow: hidden; margin-bottom: 10px; }
         .progress-fill {
             height: 100%;
             background: linear-gradient(90deg, #667eea, #764ba2);
@@ -106,283 +85,552 @@
             border-radius: 8px;
         }
         .results h3 { color: #22543d; margin-bottom: 10px; }
-        .stats {
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-            gap: 10px;
-            margin-top: 10px;
-        }
-        .stat {
-            background: white;
-            padding: 10px;
-            border-radius: 6px;
-            border-left: 4px solid #48bb78;
-        }
+        .stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 10px; margin-top: 10px; }
+        .stat { background: white; padding: 10px; border-radius: 6px; border-left: 4px solid #48bb78; }
         .stat-label { color: #718096; font-size: 12px; }
         .stat-value { color: #2d3748; font-size: 24px; font-weight: 700; }
+
+        /* ── MODAL ───────────────────────────────────────────── */
+        .modal-overlay {
+            display: none;
+            position: fixed;
+            inset: 0;
+            background: rgba(0,0,0,0.55);
+            z-index: 1000;
+            align-items: center;
+            justify-content: center;
+            padding: 16px;
+        }
+        .modal-overlay.open { display: flex; }
+        .modal {
+            background: #fff;
+            border-radius: 16px;
+            width: 100%;
+            max-width: 500px;
+            max-height: 90vh;
+            overflow-y: auto;
+            box-shadow: 0 20px 80px rgba(0,0,0,0.3);
+        }
+        .modal-header {
+            padding: 22px 24px 14px;
+            border-bottom: 1px solid #e2e8f0;
+        }
+        .modal-header .badge-new {
+            display: inline-block;
+            background: #fef3c7;
+            color: #92400e;
+            border: 1px solid #fcd34d;
+            font-size: 11px;
+            font-weight: 700;
+            letter-spacing: .08em;
+            text-transform: uppercase;
+            padding: 3px 10px;
+            border-radius: 20px;
+            margin-bottom: 8px;
+        }
+        .modal-header .badge-ok {
+            display: inline-block;
+            background: #f0fff4;
+            color: #22543d;
+            border: 1px solid #9ae6b4;
+            font-size: 11px;
+            font-weight: 700;
+            letter-spacing: .08em;
+            text-transform: uppercase;
+            padding: 3px 10px;
+            border-radius: 20px;
+            margin-bottom: 8px;
+        }
+        .modal-header h3 { font-size: 1.1rem; font-weight: 700; color: #1a202c; }
+        .modal-header p { font-size: 13px; color: #718096; margin-top: 4px; }
+        .modal-body { padding: 20px 24px; }
+        .grupo-card {
+            background: #f8f9ff;
+            border: 1px solid #e2e8f0;
+            border-radius: 10px;
+            padding: 14px 16px;
+            margin-bottom: 18px;
+            display: flex;
+            align-items: flex-start;
+            gap: 12px;
+        }
+        .grupo-card .icon { font-size: 1.8rem; flex-shrink: 0; }
+        .grupo-card .group-name { font-weight: 600; font-size: 14px; color: #2d3748; margin-bottom: 2px; }
+        .grupo-card .group-id { font-size: 12px; color: #718096; }
+        .field { margin-bottom: 16px; }
+        .field label { font-size: 12px; font-weight: 700; color: #718096; letter-spacing: .06em; text-transform: uppercase; margin-bottom: 6px; }
+        .field select, .field input[type="text"] {
+            width: 100%;
+            padding: 10px 12px;
+            background: #f7fafc;
+            border: 1.5px solid #e2e8f0;
+            border-radius: 8px;
+            font-size: 14px;
+            outline: none;
+            transition: border-color .2s;
+        }
+        .field select:focus, .field input[type="text"]:focus { border-color: #667eea; }
+        .colonia-hint {
+            background: #f0fff4;
+            border: 1px solid #9ae6b4;
+            border-radius: 8px;
+            padding: 10px 14px;
+            font-size: 13px;
+            color: #276749;
+            margin-bottom: 16px;
+            display: none;
+        }
+        .colonia-hint.show { display: flex; align-items: center; gap: 8px; }
+        .check-row { display: flex; align-items: center; gap: 8px; font-size: 14px; color: #4a5568; cursor: pointer; }
+        .check-row input { width: 16px; height: 16px; accent-color: #667eea; cursor: pointer; }
+        .modal-footer {
+            padding: 16px 24px 20px;
+            display: flex;
+            gap: 10px;
+        }
+        .btn-cancel {
+            flex: 1;
+            padding: 12px;
+            background: #edf2f7;
+            color: #4a5568;
+            border: none;
+            border-radius: 8px;
+            font-size: 15px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: background .2s;
+            width: auto;
+            transform: none;
+        }
+        .btn-cancel:hover { background: #e2e8f0; transform: none; }
+        .btn-procesar {
+            flex: 2;
+            padding: 12px;
+            background: #667eea;
+            color: white;
+            border: none;
+            border-radius: 8px;
+            font-size: 15px;
+            font-weight: 700;
+            cursor: pointer;
+            transition: background .2s;
+            width: auto;
+        }
+        .btn-procesar:hover { background: #5a67d8; transform: none; }
+        .btn-procesar:disabled { background: #cbd5e0; cursor: not-allowed; }
+
+        /* Info del JSON */
+        #jsonInfo {
+            display: none;
+            background: #edf2f7;
+            padding: 15px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+        }
     </style>
 </head>
 <body>
-    <div class="container">
-        <h1>📤 Publicar Posts en Batches</h1>
-        <p class="subtitle">Sube JSONs grandes dividiéndolos en lotes pequeños para evitar timeouts</p>
+<div class="container">
+    <h1>📤 Publicar Posts en Batches</h1>
+    <p class="subtitle">Sube JSONs grandes dividiéndolos en lotes pequeños para evitar timeouts</p>
 
-        <div class="upload-area" id="uploadArea">
-            <p style="font-size: 48px; margin-bottom: 10px;">📁</p>
-            <p style="color: #4a5568; font-weight: 600;">Arrastra tu JSON aquí o haz clic para seleccionar</p>
-            <input type="file" id="fileInput" accept=".json">
-        </div>
+    <div class="upload-area" id="uploadArea">
+        <p style="font-size: 48px; margin-bottom: 10px;">📁</p>
+        <p style="color: #4a5568; font-weight: 600;">Arrastra tu JSON aquí o haz clic para seleccionar</p>
+        <input type="file" id="fileInput" accept=".json">
+    </div>
 
-        <div id="jsonInfo" style="display: none; background: #edf2f7; padding: 15px; border-radius: 8px; margin-bottom: 20px;">
-            <div style="color: #2d3748; font-weight: 600; margin-bottom: 5px;">📊 Análisis del JSON</div>
-            <div style="color: #4a5568; font-size: 14px;">
-                <div>Total de posts: <strong id="totalPosts">0</strong></div>
-                <div>Total de imágenes: <strong id="totalImages">0</strong></div>
-                <div>Batches calculados: <strong id="calculatedBatches">0</strong> batches de ~<strong id="batchSize">0</strong> posts cada uno</div>
-                <div style="margin-top: 5px; color: #718096; font-size: 12px;">
-                    ℹ️ Batch size automático basado en cantidad de imágenes
-                </div>
-            </div>
-        </div>
-
-        <button id="uploadBtn" disabled>Procesar en Batches</button>
-
-        <div class="progress" id="progress">
-            <div class="progress-bar">
-                <div class="progress-fill" id="progressFill">0%</div>
-            </div>
-            <div class="batch-log" id="batchLog"></div>
-        </div>
-
-        <div class="results" id="results">
-            <h3>✅ Procesamiento Completado</h3>
-            <div class="stats" id="stats"></div>
+    <div id="jsonInfo">
+        <div style="color: #2d3748; font-weight: 600; margin-bottom: 5px;">📊 Análisis del JSON</div>
+        <div style="color: #4a5568; font-size: 14px;">
+            <div>Total de posts: <strong id="totalPosts">0</strong></div>
+            <div>Total de imágenes: <strong id="totalImages">0</strong></div>
+            <div>Batches calculados: <strong id="calculatedBatches">0</strong> batches de ~<strong id="batchSize">0</strong> posts cada uno</div>
+            <div style="margin-top: 5px; color: #718096; font-size: 12px;">ℹ️ Batch size automático basado en cantidad de imágenes</div>
         </div>
     </div>
 
-    <script>
-        const uploadArea = document.getElementById('uploadArea');
-        const fileInput = document.getElementById('fileInput');
-        const uploadBtn = document.getElementById('uploadBtn');
-        const jsonInfo = document.getElementById('jsonInfo');
-        const progress = document.getElementById('progress');
-        const progressFill = document.getElementById('progressFill');
-        const batchLog = document.getElementById('batchLog');
-        const results = document.getElementById('results');
-        const stats = document.getElementById('stats');
+    <button id="uploadBtn" disabled>Procesar en Batches</button>
 
-        let jsonData = null;
-        let calculatedBatchSize = 20;
+    <div class="progress" id="progress">
+        <div class="progress-bar">
+            <div class="progress-fill" id="progressFill">0%</div>
+        </div>
+        <div class="batch-log" id="batchLog"></div>
+    </div>
 
-        // Drag & drop
-        uploadArea.addEventListener('click', () => fileInput.click());
-        uploadArea.addEventListener('dragover', (e) => {
-            e.preventDefault();
-            uploadArea.classList.add('dragover');
-        });
-        uploadArea.addEventListener('dragleave', () => uploadArea.classList.remove('dragover'));
-        uploadArea.addEventListener('drop', (e) => {
-            e.preventDefault();
-            uploadArea.classList.remove('dragover');
-            if (e.dataTransfer.files.length) {
-                fileInput.files = e.dataTransfer.files;
-                handleFileSelect();
+    <div class="results" id="results">
+        <h3>✅ Procesamiento Completado</h3>
+        <div class="stats" id="statsContainer"></div>
+    </div>
+</div>
+
+<!-- ── MODAL: Configuración del grupo ─────────────────────── -->
+<div class="modal-overlay" id="modalOverlay">
+    <div class="modal">
+        <div class="modal-header">
+            <div id="modalBadge" class="badge-new">🆕 Grupo nuevo detectado</div>
+            <h3 id="modalTitulo">Configurar grupo antes de publicar</h3>
+            <p id="modalSubtitulo">Selecciona el tipo y la colonia para este grupo</p>
+        </div>
+        <div class="modal-body">
+            <!-- Tarjeta del grupo -->
+            <div class="grupo-card">
+                <div class="icon">👥</div>
+                <div>
+                    <div class="group-name" id="modalGroupName">—</div>
+                    <div class="group-id" id="modalGroupId">—</div>
+                </div>
+            </div>
+
+            <!-- Colonia detectada automáticamente (grupo conocido) -->
+            <div class="colonia-hint" id="coloniaHint">
+                <span>📍</span>
+                <span id="coloniaHintTxt">Colonia detectada automáticamente</span>
+            </div>
+
+            <!-- Campos para grupo NUEVO -->
+            <div id="camposNuevo">
+                <div class="field">
+                    <label>Tipo de contenido</label>
+                    <select id="selTipo">
+                        <option value="vecinos">🏘️ Vecinos / Negocios</option>
+                        <option value="noticias">📰 Noticias</option>
+                        <option value="mascotas">🐾 Mascotas / Adopciones</option>
+                        <option value="empleo">💼 Empleo / Trabajo</option>
+                        <option value="ventas">🛍️ Ventas / Negocios</option>
+                        <option value="mixto">🔀 Mixto</option>
+                    </select>
+                </div>
+
+                <div class="field">
+                    <label>Colonia / Zona (Ctrl+clic para varias)</label>
+                    <select id="selColonia" multiple size="6" style="padding: 4px 0;">
+                        <option disabled>— Cargando colonias… —</option>
+                    </select>
+                </div>
+
+                <div class="field">
+                    <label class="check-row" style="text-transform:none; font-size:14px; font-weight:400;">
+                        <input type="checkbox" id="chkGuardar" checked>
+                        Guardar grupo para futuras cargas
+                    </label>
+                </div>
+            </div>
+        </div>
+        <div class="modal-footer">
+            <button class="btn-cancel" id="btnCancelarModal" onclick="cancelarModal()">Cancelar</button>
+            <button class="btn-procesar" id="btnConfirmarModal" onclick="confirmarModal()">Procesar →</button>
+        </div>
+    </div>
+</div>
+
+<script>
+    const uploadArea  = document.getElementById('uploadArea');
+    const fileInput   = document.getElementById('fileInput');
+    const uploadBtn   = document.getElementById('uploadBtn');
+    const jsonInfo    = document.getElementById('jsonInfo');
+    const progressEl  = document.getElementById('progress');
+    const progressFill= document.getElementById('progressFill');
+    const batchLog    = document.getElementById('batchLog');
+    const resultsEl   = document.getElementById('results');
+
+    let jsonData = null;
+    let calculatedBatchSize = 20;
+    let configGrupo = null; // { colonia_ids, tipo, group_id }
+
+    // ── Drag & drop ──────────────────────────────────────────
+    uploadArea.addEventListener('click', () => fileInput.click());
+    uploadArea.addEventListener('dragover', (e) => { e.preventDefault(); uploadArea.classList.add('dragover'); });
+    uploadArea.addEventListener('dragleave', () => uploadArea.classList.remove('dragover'));
+    uploadArea.addEventListener('drop', (e) => {
+        e.preventDefault();
+        uploadArea.classList.remove('dragover');
+        if (e.dataTransfer.files.length) { fileInput.files = e.dataTransfer.files; handleFileSelect(); }
+    });
+    fileInput.addEventListener('change', handleFileSelect);
+
+    function handleFileSelect() {
+        const file = fileInput.files[0];
+        if (!file) return;
+        const reader = new FileReader();
+        reader.onload = (e) => {
+            try {
+                jsonData = JSON.parse(e.target.result);
+                const totalPosts  = jsonData.posts?.length || 0;
+                const totalImages = jsonData.posts?.reduce((s, p) => s + (p.num_imgs || 0), 0) || 0;
+                calculatedBatchSize = calcularBatchSize(totalPosts, totalImages);
+                const numBatches = Math.ceil(totalPosts / calculatedBatchSize);
+
+                document.getElementById('totalPosts').textContent = totalPosts;
+                document.getElementById('totalImages').textContent = totalImages;
+                document.getElementById('calculatedBatches').textContent = numBatches;
+                document.getElementById('batchSize').textContent = calculatedBatchSize;
+                jsonInfo.style.display = 'block';
+
+                uploadBtn.disabled = false;
+                uploadBtn.textContent = `✅ Procesar ${numBatches} batches de ~${calculatedBatchSize} posts`;
+            } catch (err) {
+                alert('Error: El archivo no es un JSON válido');
+                jsonData = null;
+                uploadBtn.disabled = true;
+                jsonInfo.style.display = 'none';
             }
-        });
+        };
+        reader.readAsText(file);
+    }
 
-        fileInput.addEventListener('change', handleFileSelect);
+    function calcularBatchSize(totalPosts, totalImages) {
+        const avg = totalPosts > 0 ? totalImages / totalPosts : 1;
+        if (avg >= 3) return 10;
+        if (avg >= 2) return 15;
+        if (avg >= 1) return 20;
+        return 30;
+    }
 
-        function handleFileSelect() {
-            const file = fileInput.files[0];
-            if (!file) return;
+    // ── Click en "Procesar en Batches" → abrir modal ─────────
+    uploadBtn.addEventListener('click', async () => {
+        if (!jsonData) return;
+        await abrirModalGrupo();
+    });
 
-            const reader = new FileReader();
-            reader.onload = (e) => {
-                try {
-                    jsonData = JSON.parse(e.target.result);
-                    const totalPosts = jsonData.posts?.length || 0;
-                    
-                    // Calcular total de imágenes
-                    const totalImages = jsonData.posts?.reduce((sum, post) => {
-                        return sum + (post.num_imgs || 0);
-                    }, 0) || 0;
+    // ── MODAL: abrir y cargar info del grupo ─────────────────
+    async function abrirModalGrupo() {
+        const meta = jsonData.meta || {};
+        document.getElementById('modalGroupName').textContent = meta.group_name || 'Grupo desconocido';
+        document.getElementById('modalGroupId').textContent   = 'ID: ' + (meta.group_id || '—');
 
-                    // Calcular batch size óptimo
-                    calculatedBatchSize = calcularBatchSize(totalPosts, totalImages);
-                    const numBatches = Math.ceil(totalPosts / calculatedBatchSize);
+        // Llamar /analizar-limpio para saber si el grupo es conocido
+        try {
+            const fd = new FormData();
+            const blob = new Blob([JSON.stringify(jsonData)], { type: 'application/json' });
+            fd.append('file', blob, 'data.json');
+            const resp = await fetch('https://vecinos.enmerida.mx/analizar-limpio', { method: 'POST', body: fd });
+            const d = await resp.json();
 
-                    // Mostrar info
-                    document.getElementById('totalPosts').textContent = totalPosts;
-                    document.getElementById('totalImages').textContent = totalImages;
-                    document.getElementById('calculatedBatches').textContent = numBatches;
-                    document.getElementById('batchSize').textContent = calculatedBatchSize;
-                    jsonInfo.style.display = 'block';
+            if (d.error) throw new Error(d.error);
 
-                    uploadBtn.disabled = false;
-                    uploadBtn.textContent = `✅ Procesar ${numBatches} batches de ~${calculatedBatchSize} posts`;
-                } catch (err) {
-                    alert('Error: El archivo no es un JSON válido');
-                    jsonData = null;
-                    uploadBtn.disabled = true;
-                    jsonInfo.style.display = 'none';
-                }
-            };
-            reader.readAsText(file);
-        }
+            if (d.conocido) {
+                // Grupo ya registrado → mostrar colonia automática
+                document.getElementById('modalBadge').className = 'badge-ok';
+                document.getElementById('modalBadge').textContent = '✓ Grupo registrado';
+                document.getElementById('modalTitulo').textContent = 'Grupo conocido';
+                document.getElementById('modalSubtitulo').textContent = 'Colonia y tipo ya configurados. Puedes proceder.';
+                document.getElementById('camposNuevo').style.display = 'none';
 
-        function calcularBatchSize(totalPosts, totalImages) {
-            // Estrategia: limitar cada batch a ~20-30 imágenes para evitar timeout
-            // Target: ~10 segundos por batch (2-3 seg por imagen en Cloudinary)
-            
-            const avgImagesPerPost = totalPosts > 0 ? totalImages / totalPosts : 1;
-            
-            // Si hay muchas imágenes por post, reducir batch size
-            if (avgImagesPerPost >= 3) {
-                return 10; // 10 posts × 3 imgs = ~30 imágenes por batch
-            } else if (avgImagesPerPost >= 2) {
-                return 15; // 15 posts × 2 imgs = ~30 imágenes por batch
-            } else if (avgImagesPerPost >= 1) {
-                return 20; // 20 posts × 1 img = ~20 imágenes por batch
-            } else {
-                return 30; // Posts sin imágenes, podemos procesar más
-            }
-        }
+                const hint = document.getElementById('coloniaHint');
+                const colonias = d.colonia_nombres || ['General'];
+                document.getElementById('coloniaHintTxt').textContent =
+                    '📍 Colonia detectada automáticamente: ' + colonias.join(', ');
+                hint.classList.add('show');
 
-        uploadBtn.addEventListener('click', async () => {
-            if (!jsonData) return;
-            
-            uploadBtn.disabled = true;
-            progress.style.display = 'block';
-            results.style.display = 'none';
-            batchLog.innerHTML = '';
-
-            await procesarEnBatches(jsonData, calculatedBatchSize);
-        });
-
-        async function procesarEnBatches(data, batchSize) {
-            const posts = data.posts;
-            const batches = [];
-
-            // Dividir en batches
-            for (let i = 0; i < posts.length; i += batchSize) {
-                batches.push(posts.slice(i, i + batchSize));
-            }
-
-            addLog(`📦 JSON dividido en ${batches.length} batches de ~${batchSize} posts`, 'batch');
-            
-            const totalStats = {
-                negocios_nuevos: 0,
-                empleos_nuevos: 0,
-                noticias_nuevas: 0,
-                alertas_nuevas: 0,
-                mascotas_nuevas: 0,
-                imagenes_ok: 0,
-                imagenes_fail: 0,
-                batches_completados: 0,
-                batches_fallidos: 0
-            };
-
-            // Procesar batch por batch
-            for (let i = 0; i < batches.length; i++) {
-                const batchData = {
-                    meta: data.meta,
-                    posts: batches[i]
+                configGrupo = {
+                    colonia_ids: d.colonia_ids || [],
+                    tipo: d.tipo || 'vecinos',
+                    group_id: meta.group_id,
+                    conocido: true
                 };
+            } else {
+                // Grupo nuevo → mostrar campos de configuración
+                document.getElementById('modalBadge').className = 'badge-new';
+                document.getElementById('modalBadge').textContent = '🆕 Grupo nuevo detectado';
+                document.getElementById('modalTitulo').textContent = 'Configurar grupo antes de publicar';
+                document.getElementById('modalSubtitulo').textContent = 'Selecciona el tipo y la colonia para este grupo';
+                document.getElementById('camposNuevo').style.display = 'block';
+                document.getElementById('coloniaHint').classList.remove('show');
 
-                const batchNum = i + 1;
-                const progress = Math.round((i / batches.length) * 100);
-                
-                progressFill.style.width = `${progress}%`;
-                progressFill.textContent = `${progress}%`;
-
-                addLog(`⏳ Procesando batch ${batchNum}/${batches.length} (${batches[i].length} posts)...`, 'batch');
-
-                try {
-                    const formData = new FormData();
-                    const blob = new Blob([JSON.stringify(batchData)], {type: 'application/json'});
-                    formData.append('file', blob, `batch_${batchNum}.json`);
-
-                    const response = await fetch('https://vecinos.enmerida.mx/publicar', {
-                        method: 'POST',
-                        body: formData
-                    });
-
-                    if (!response.ok) {
-                        throw new Error(`HTTP ${response.status}`);
+                // Pre-seleccionar tipo sugerido
+                const selTipo = document.getElementById('selTipo');
+                for (let i = 0; i < selTipo.options.length; i++) {
+                    if (selTipo.options[i].value === d.tipo_sugerido) {
+                        selTipo.selectedIndex = i; break;
                     }
-
-                    const result = await response.json();
-                    
-                    // Acumular estadísticas
-                    totalStats.negocios_nuevos += result.negocios_nuevos || 0;
-                    totalStats.empleos_nuevos += result.empleos_nuevos || 0;
-                    totalStats.noticias_nuevas += result.noticias_nuevas || 0;
-                    totalStats.alertas_nuevas += result.alertas_nuevas || 0;
-                    totalStats.mascotas_nuevas += result.mascotas_nuevas || 0;
-                    totalStats.imagenes_ok += result.imagenes_ok || 0;
-                    totalStats.imagenes_fail += result.imagenes_fail || 0;
-                    totalStats.batches_completados++;
-
-                    addLog(`✅ Batch ${batchNum} completado: ${result.empleos_nuevos || 0} empleos, ${result.imagenes_ok || 0} imágenes`, 'success');
-
-                } catch (error) {
-                    totalStats.batches_fallidos++;
-                    addLog(`❌ Batch ${batchNum} falló: ${error.message}`, 'error');
                 }
 
-                // Pausa breve entre batches para no saturar el servidor
-                if (i < batches.length - 1) {
-                    await sleep(500);
+                // Cargar colonias
+                const sel = document.getElementById('selColonia');
+                sel.innerHTML = '';
+                const candidatasIds = (d.candidatas || []).map(c => c.id);
+
+                if (d.candidatas && d.candidatas.length > 0) {
+                    const og = document.createElement('optgroup');
+                    og.label = '⭐ Sugeridas';
+                    d.candidatas.forEach(c => {
+                        const o = document.createElement('option');
+                        o.value = c.id; o.textContent = c.nombre; o.selected = true;
+                        og.appendChild(o);
+                    });
+                    sel.appendChild(og);
                 }
+
+                const og2 = document.createElement('optgroup');
+                og2.label = 'Todas las colonias';
+                (d.todas_colonias || []).forEach(c => {
+                    if (!candidatasIds.includes(c.id)) {
+                        const o = document.createElement('option');
+                        o.value = c.id; o.textContent = c.nombre;
+                        og2.appendChild(o);
+                    }
+                });
+                sel.appendChild(og2);
+
+                configGrupo = { group_id: meta.group_id, conocido: false };
+            }
+        } catch (err) {
+            // Si /analizar-limpio falla (Railway down, etc.), mostrar modal mínimo igual
+            console.warn('analizar-limpio falló:', err.message);
+            document.getElementById('camposNuevo').style.display = 'block';
+            document.getElementById('coloniaHint').classList.remove('show');
+            // Cargar colonias hardcoded de fallback
+            const sel = document.getElementById('selColonia');
+            sel.innerHTML = '<option value="8" selected>General / Toda Mérida</option>';
+            configGrupo = { group_id: meta.group_id, conocido: false };
+        }
+
+        document.getElementById('modalOverlay').classList.add('open');
+    }
+
+    function cancelarModal() {
+        document.getElementById('modalOverlay').classList.remove('open');
+        configGrupo = null;
+    }
+
+    async function confirmarModal() {
+        const meta = jsonData.meta || {};
+
+        if (!configGrupo.conocido) {
+            // Leer selecciones del usuario
+            const selCol  = document.getElementById('selColonia');
+            const selTipo = document.getElementById('selTipo');
+            const seleccionadas = Array.from(selCol.selectedOptions);
+            if (seleccionadas.length === 0) { alert('Selecciona al menos una colonia.'); return; }
+
+            configGrupo.colonia_ids    = seleccionadas.map(o => parseInt(o.value));
+            configGrupo.colonia_nombres = seleccionadas.map(o => o.textContent.trim());
+            configGrupo.tipo           = selTipo.value;
+            configGrupo.guardar_grupo  = document.getElementById('chkGuardar').checked;
+
+            // Si hay que guardar el grupo, registrarlo vía /procesar-limpio
+            if (configGrupo.guardar_grupo) {
+                try {
+                    await fetch('https://vecinos.enmerida.mx/procesar-limpio', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            tipo: configGrupo.tipo,
+                            colonia_ids: configGrupo.colonia_ids,
+                            colonia_nombres: configGrupo.colonia_nombres,
+                            guardar_grupo: true
+                        })
+                    });
+                } catch (e) { /* no bloquear si falla */ }
+            }
+        }
+
+        // Inyectar colonia_id en el meta del JSON para que /publicar lo use
+        if (configGrupo.colonia_ids && configGrupo.colonia_ids.length > 0) {
+            jsonData.meta.colonia_id  = configGrupo.colonia_ids[0];
+            jsonData.meta.colonia_ids = configGrupo.colonia_ids;
+            jsonData.meta.grupo_tipo  = configGrupo.tipo || jsonData.meta.grupo_tipo;
+        }
+
+        document.getElementById('modalOverlay').classList.remove('open');
+        iniciarProcesamiento();
+    }
+
+    // ── PROCESAMIENTO EN BATCHES ─────────────────────────────
+    function iniciarProcesamiento() {
+        uploadBtn.disabled = true;
+        progressEl.style.display = 'block';
+        resultsEl.style.display = 'none';
+        batchLog.innerHTML = '';
+        procesarEnBatches(jsonData, calculatedBatchSize);
+    }
+
+    async function procesarEnBatches(data, batchSize) {
+        const posts = data.posts;
+        const batches = [];
+        for (let i = 0; i < posts.length; i += batchSize) batches.push(posts.slice(i, i + batchSize));
+
+        addLog(`📦 JSON dividido en ${batches.length} batches de ~${batchSize} posts`, 'batch');
+        if (configGrupo?.colonia_ids?.length) {
+            addLog(`📍 Colonia asignada: ${(configGrupo.colonia_nombres || ['id:' + configGrupo.colonia_ids[0]]).join(', ')}`, 'batch');
+        }
+
+        const totalStats = {
+            negocios_nuevos: 0, empleos_nuevos: 0, noticias_nuevas: 0,
+            alertas_nuevas: 0, mascotas_nuevas: 0, perdidos_nuevos: 0,
+            imagenes_ok: 0, imagenes_fail: 0,
+            batches_completados: 0, batches_fallidos: 0
+        };
+
+        for (let i = 0; i < batches.length; i++) {
+            const batchData = { meta: data.meta, posts: batches[i] };
+            const batchNum  = i + 1;
+            const pct = Math.round((i / batches.length) * 100);
+            progressFill.style.width = pct + '%';
+            progressFill.textContent = pct + '%';
+            addLog(`⏳ Procesando batch ${batchNum}/${batches.length} (${batches[i].length} posts)...`, 'batch');
+
+            try {
+                const fd = new FormData();
+                const blob = new Blob([JSON.stringify(batchData)], { type: 'application/json' });
+                fd.append('file', blob, `batch_${batchNum}.json`);
+
+                const response = await fetch('https://vecinos.enmerida.mx/publicar', { method: 'POST', body: fd });
+                if (!response.ok) throw new Error(`HTTP ${response.status}`);
+
+                const result = await response.json();
+                totalStats.negocios_nuevos  += result.negocios_nuevos  || 0;
+                totalStats.empleos_nuevos   += result.empleos_nuevos   || 0;
+                totalStats.noticias_nuevas  += result.noticias_nuevas  || 0;
+                totalStats.alertas_nuevas   += result.alertas_nuevas   || 0;
+                totalStats.mascotas_nuevas  += result.mascotas_nuevas  || 0;
+                totalStats.perdidos_nuevos  += result.perdidos_nuevos  || 0;
+                totalStats.imagenes_ok      += result.imagenes_ok      || 0;
+                totalStats.imagenes_fail    += result.imagenes_fail    || 0;
+                totalStats.batches_completados++;
+
+                addLog(`✅ Batch ${batchNum} completado — ${result.negocios_nuevos || 0} negocios, ${result.imagenes_ok || 0} imágenes`, 'success');
+            } catch (error) {
+                totalStats.batches_fallidos++;
+                addLog(`❌ Batch ${batchNum} falló: ${error.message}`, 'error');
             }
 
-            // Completado
-            progressFill.style.width = '100%';
-            progressFill.textContent = '100%';
-            addLog(`🎉 Procesamiento completado: ${totalStats.batches_completados}/${batches.length} batches exitosos`, 'success');
-
-            mostrarResultados(totalStats);
-            uploadBtn.disabled = false;
-            uploadBtn.textContent = 'Procesar otro JSON';
+            if (i < batches.length - 1) await sleep(500);
         }
 
-        function addLog(message, type = '') {
-            const div = document.createElement('div');
-            div.textContent = message;
-            if (type) div.className = `log-${type}`;
-            batchLog.appendChild(div);
-            batchLog.scrollTop = batchLog.scrollHeight;
-        }
+        progressFill.style.width = '100%';
+        progressFill.textContent = '100%';
+        addLog(`🎉 Completado: ${totalStats.batches_completados}/${batches.length} batches exitosos`, 'success');
+        mostrarResultados(totalStats);
+        uploadBtn.disabled = false;
+        uploadBtn.textContent = 'Procesar otro JSON';
+    }
 
-        function mostrarResultados(stats) {
-            results.style.display = 'block';
-            stats.innerHTML = `
-                <div class="stat">
-                    <div class="stat-label">Batches Exitosos</div>
-                    <div class="stat-value">${stats.batches_completados}</div>
-                </div>
-                <div class="stat">
-                    <div class="stat-label">Empleos Nuevos</div>
-                    <div class="stat-value">${stats.empleos_nuevos}</div>
-                </div>
-                <div class="stat">
-                    <div class="stat-label">Negocios Nuevos</div>
-                    <div class="stat-value">${stats.negocios_nuevos}</div>
-                </div>
-                <div class="stat">
-                    <div class="stat-label">Imágenes Subidas</div>
-                    <div class="stat-value">${stats.imagenes_ok}</div>
-                </div>
-                <div class="stat">
-                    <div class="stat-label">Imágenes Fallidas</div>
-                    <div class="stat-value">${stats.imagenes_fail}</div>
-                </div>
-            `;
-        }
+    function addLog(message, type = '') {
+        const div = document.createElement('div');
+        div.textContent = message;
+        if (type) div.className = 'log-' + type;
+        batchLog.appendChild(div);
+        batchLog.scrollTop = batchLog.scrollHeight;
+    }
 
-        function sleep(ms) {
-            return new Promise(resolve => setTimeout(resolve, ms));
-        }
-    </script>
+    function mostrarResultados(s) {
+        resultsEl.style.display = 'block';
+        document.getElementById('statsContainer').innerHTML = `
+            <div class="stat"><div class="stat-label">Batches OK</div><div class="stat-value">${s.batches_completados}</div></div>
+            <div class="stat"><div class="stat-label">Negocios</div><div class="stat-value">${s.negocios_nuevos}</div></div>
+            <div class="stat"><div class="stat-label">Noticias</div><div class="stat-value">${s.noticias_nuevas}</div></div>
+            <div class="stat"><div class="stat-label">Alertas</div><div class="stat-value">${s.alertas_nuevas}</div></div>
+            <div class="stat"><div class="stat-label">Mascotas</div><div class="stat-value">${s.mascotas_nuevas}</div></div>
+            <div class="stat"><div class="stat-label">Empleos</div><div class="stat-value">${s.empleos_nuevos}</div></div>
+            <div class="stat"><div class="stat-label">Imágenes ✓</div><div class="stat-value">${s.imagenes_ok}</div></div>
+            <div class="stat"><div class="stat-label">Imágenes ✗</div><div class="stat-value">${s.imagenes_fail}</div></div>
+        `;
+    }
+
+    function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
+</script>
 </body>
 </html>
