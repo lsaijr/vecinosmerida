@@ -42,6 +42,16 @@ else:
 def version():
     return {"version": APP_VERSION, "ok": True}
 
+@app.get("/api/test-publicar")
+def test_publicar():
+    """Endpoint de prueba para verificar que /publicar puede responder."""
+    return {
+        "ok": True,
+        "message": "Endpoint /publicar está accesible",
+        "cloudinary_configured": bool(os.environ.get("CLOUDINARY_CLOUD_NAME")),
+        "db_configured": bool(os.environ.get("DB_HOST")),
+    }
+
 
 @app.get("/api/debug-keys")
 def debug_keys():
@@ -343,6 +353,18 @@ async def publicar(file: UploadFile = File(...), debug: bool = False):
     posts = data.get("posts", [])
     if not posts:
         return JSONResponse({"error": "No hay posts en el JSON"}, status_code=400)
+
+    # 🔧 MODO DEBUG: Retornar inmediatamente sin procesar nada
+    if debug:
+        return {
+            "ok": True,
+            "debug_mode": True,
+            "message": "Modo debug activado - no se procesó nada",
+            "total_posts": len(posts),
+            "meta": meta,
+            "cloudinary_skip": "Cloudinary no se ejecutó en modo debug",
+            "db_skip": "INSERT no se ejecutó en modo debug"
+        }
 
     group_id = meta.get("group_id", "")
     group_name = meta.get("group_name", "")
