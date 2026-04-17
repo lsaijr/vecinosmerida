@@ -5,12 +5,13 @@ import json
 import threading
 import os
 import time
+import uuid  # ← AGREGADO para job_id
 
 from pipeline import ejecutar_pipeline
 from utils import match_colonias, detectar_tipo_por_nombre
 from db import buscar_grupo, registrar_grupo, obtener_colonias, obtener_potenciales_clientes
 
-APP_VERSION = "2026-04-16-v4"
+APP_VERSION = "2026-04-16-v5-async-publicar"
 print(f"🚀 VecinosMérida Pipeline arrancando — versión {APP_VERSION}")
 
 app = FastAPI()
@@ -23,7 +24,7 @@ def version():
 
 @app.get("/api/debug-keys")
 def debug_keys():
-    """Temporal — verificar que las keys estén disponibles. BORRAR después."""
+    """Temporal — verificar que las keys están disponibles. BORRAR después."""
     import os
     groq_main = os.environ.get("GROQ_KEY_MAIN", "")
     groq_vm = os.environ.get("GROQ_API_KEY_VM", "")
@@ -49,7 +50,7 @@ def debug_keys():
         "total_env_vars": len(os.environ),
     }
 
-# ── Lock: garantiza un solo pipeline activo a la vez ─────────────────────────
+# ─── Lock: garantiza un solo pipeline activo a la vez ────────────────────────
 _pipeline_lock = threading.Lock()
 
 estado = {
@@ -228,7 +229,7 @@ async def guardar_db():
     conteo = {
         "negocios_nuevos": 0, "negocios_dup": 0,
         "noticias_nuevas": 0, "noticias_dup": 0,
-        "alertas_nuevas":  0, "alertas_dup":  0,
+        "alertas_nuevas":  0, "alertas_dup": 0,
         "mascotas_nuevas": 0, "mascotas_dup": 0,
         "empleos_nuevos":  0, "empleos_dup":  0,
         "perdidos_nuevos": 0, "perdidos_dup": 0,
@@ -289,26 +290,37 @@ async def guardar_db():
     return conteo
 
 
-# ═══════════════════════════════════════════════════════════════
-# ENDPOINT: /publicar — Importar JSON pre-clasificado
+# ═══════════════════════════════════════════════════════════════════════════
+# ENDPOINT: /publicar — Importar JSON pre-clasificado (VERSIÓN ASYNC)
 # Solo hace: Cloudinary + DB (sin limpieza ni clasificación IA)
-# ═══════════════════════════════════════════════════════════════
+# ═══════════════════════════════════════════════════════════════════════════
+
+# ── Variables globales para jobs async ──
+_publicar_jobs: dict = {}
+_publicar_lock = threading.Lock()
+
 
 @app.post("/publicar")
 async def publicar(file: UploadFile = File(...)):
     """
     Recibe un JSON ya clasificado (output de procesamiento manual/Claude).
-    Solo sube imágenes a Cloudinary e inserta en DB.
+    
+    NUEVO FLUJO ASYNC:
+    1. Valida el JSON
+    2. Crea un job_id único
+    3. Lanza worker thread en background
+    4. Retorna inmediatamente con job_id
+    
+    El cliente debe hacer polling a /publicar-status/{job_id}
     """
-    from db import (
-        insertar_negocio, insertar_noticia, insertar_alerta,
-        insertar_empleo, insertar_mascota, insertar_perdido,
-        actualizar_grupo_stats,
-        upsert_autor_completo, registrar_actividad,
-    )
-    from cloudinary_service import subir_imagenes
-    from utils import generar_alt_imagen, construir_public_id
+    # ── Validar que no hay otro job corriendo ──
+    if _publicar_lock.locked():
+        return JSONResponse(
+            {"error": "Ya hay un proceso de publicación en curso. Espera a que termine."},
+            status_code=409
+        )
 
+    # ── Leer y validar JSON ──
     contenido = await file.read()
     try:
         data = json.loads(contenido)
@@ -331,102 +343,178 @@ async def publicar(file: UploadFile = File(...)):
         "colonia_nombres": ["General"],
     }
 
-    # Organizar por tipo
-    buckets = {
-        "negocios": [], "noticias": [], "alertas": [],
-        "mascotas": [], "empleos": [], "perdidos": [], "ignorados": [],
-    }
-    _tipo_to_bucket = {
-        "negocio": "negocios", "noticia": "noticias", "alerta": "alertas",
-        "mascota": "mascotas", "empleo": "empleos", "perdido": "perdidos",
-        "ignorar": "ignorados",
-    }
-
-    for p in posts:
-        tipo = p.get("tipo", "ignorar")
-        bucket = _tipo_to_bucket.get(tipo, "ignorados")
-        p["tipo"] = tipo
-        buckets[bucket].append(p)
-
-    # ── Subir imágenes a Cloudinary ──
-    imgs_ok = imgs_fail = 0
-    publicables = []
-    for bucket_name in ["negocios", "noticias", "alertas", "mascotas", "empleos", "perdidos"]:
-        for p in buckets[bucket_name]:
-            if p.get("imagenes"):
-                res_imgs, ok, fail = subir_imagenes(p, meta=meta, config_grupo=config_grupo)
-                p["imagenes_cloudinary"] = res_imgs
-                imgs_ok += ok
-                imgs_fail += fail
-            else:
-                p["imagenes_cloudinary"] = []
-            publicables.append(p)
-
-    # ── Insertar en DB ──
-    INSERTERS = {
-        "negocios": insertar_negocio,
-        "mascotas": insertar_mascota,
-        "noticias": insertar_noticia,
-        "alertas":  insertar_alerta,
-        "empleos":  insertar_empleo,
-        "perdidos": insertar_perdido,
-    }
-
-    conteo = {
-        "negocios_nuevos": 0, "negocios_dup": 0,
-        "noticias_nuevas": 0, "noticias_dup": 0,
-        "alertas_nuevas": 0, "alertas_dup": 0,
-        "mascotas_nuevas": 0, "mascotas_dup": 0,
-        "empleos_nuevos": 0, "empleos_dup": 0,
-        "perdidos_nuevos": 0, "perdidos_dup": 0,
+    # ── Crear job ──
+    job_id = str(uuid.uuid4())
+    _publicar_jobs[job_id] = {
+        "status": "iniciando",
+        "progreso": 0,
+        "total": len(posts),
+        "procesados": 0,
+        "nuevos": 0,
+        "duplicados": 0,
+        "imgs_ok": 0,
+        "imgs_fail": 0,
         "errores": [],
+        "listo": False,
+        "error_fatal": None,
+        "inicio_ts": time.time(),
     }
 
-    for bucket_name, fn_insertar in INSERTERS.items():
-        key_nuevo = bucket_name.rstrip("s") + ("as_nuevas" if bucket_name.endswith("as") else "os_nuevos")
-        key_dup = bucket_name.rstrip("s") + ("as_dup" if bucket_name.endswith("as") else "os_dup")
-        # Fix keys
-        if bucket_name == "negocios": key_nuevo, key_dup = "negocios_nuevos", "negocios_dup"
-        elif bucket_name == "noticias": key_nuevo, key_dup = "noticias_nuevas", "noticias_dup"
-        elif bucket_name == "alertas": key_nuevo, key_dup = "alertas_nuevas", "alertas_dup"
-        elif bucket_name == "mascotas": key_nuevo, key_dup = "mascotas_nuevas", "mascotas_dup"
-        elif bucket_name == "empleos": key_nuevo, key_dup = "empleos_nuevos", "empleos_dup"
-        elif bucket_name == "perdidos": key_nuevo, key_dup = "perdidos_nuevos", "perdidos_dup"
+    # ── Worker thread ──
+    def worker():
+        from db import (
+            insertar_negocio, insertar_noticia, insertar_alerta,
+            insertar_empleo, insertar_mascota, insertar_perdido,
+            actualizar_grupo_stats,
+            upsert_autor_completo, registrar_actividad,
+        )
+        from cloudinary_service import subir_imagenes
 
-        for p in buckets[bucket_name]:
-            try:
-                # Registrar autor
-                autor_id_fb = p.get("autor_id")
-                if autor_id_fb:
+        _publicar_lock.acquire()
+        try:
+            job = _publicar_jobs[job_id]
+            colonia_id = None
+            total = len(posts)
+
+            # ── Organizar por tipo ──
+            buckets = {
+                "negocios": [], "noticias": [], "alertas": [],
+                "mascotas": [], "empleos": [], "perdidos": [], "ignorados": [],
+            }
+            _tipo_to_bucket = {
+                "negocio": "negocios", "noticia": "noticias", "alerta": "alertas",
+                "mascota": "mascotas", "empleo": "empleos", "perdido": "perdidos",
+                "ignorar": "ignorados",
+            }
+
+            for p in posts:
+                tipo = p.get("tipo", "ignorar")
+                bucket = _tipo_to_bucket.get(tipo, "ignorados")
+                p["tipo"] = tipo
+                buckets[bucket].append(p)
+
+            # ── Subir imágenes a Cloudinary + Insertar en DB ──
+            INSERTERS = {
+                "negocios": insertar_negocio,
+                "mascotas": insertar_mascota,
+                "noticias": insertar_noticia,
+                "alertas":  insertar_alerta,
+                "empleos":  insertar_empleo,
+                "perdidos": insertar_perdido,
+            }
+
+            procesados = 0
+            for bucket_name, fn_insertar in INSERTERS.items():
+                for p in buckets[bucket_name]:
+                    job["status"] = f"Procesando post {procesados+1} de {total}"
+                    job["progreso"] = int((procesados / total) * 90)
+                    job["procesados"] = procesados + 1
+
                     try:
-                        autor_db_id, _ = upsert_autor_completo(autor_id_fb, p.get("autor", ""))
-                        p["_autor_db_id"] = autor_db_id
-                        registrar_actividad(autor_db_id, group_id, group_name,
-                                            bucket_name.rstrip("s") if not bucket_name.endswith("os") else bucket_name[:-1],
-                                            p.get("fbid_post"), fecha)
-                    except Exception:
-                        pass
+                        # 1. Subir imágenes
+                        if p.get("imagenes"):
+                            res_imgs, ok, fail = subir_imagenes(p, meta=meta, config_grupo=config_grupo)
+                            p["imagenes_cloudinary"] = res_imgs
+                            job["imgs_ok"] += ok
+                            job["imgs_fail"] += fail
+                        else:
+                            p["imagenes_cloudinary"] = []
 
-                _, st = fn_insertar(p, None)
-                if st == "nuevo":
-                    conteo[key_nuevo] += 1
-                else:
-                    conteo[key_dup] += 1
-            except Exception as e:
-                conteo["errores"].append({"tipo": bucket_name, "error": str(e)[:120], "fbid": p.get("fbid_post")})
+                        # 2. Campos requeridos
+                        p["fecha_captura"]  = fecha
+                        p["tipo"]           = p.get("tipo", bucket_name.rstrip("s"))
+                        p["categoria_id"]   = p.get("categoria_id", 11)
+                        p["descripcion"]    = p.get("texto", "")
+                        p["nombre"]         = p.get("autor", "")
 
-    try:
-        actualizar_grupo_stats(group_id, len(posts))
-    except Exception:
-        pass
+                        # 3. Upsert autor
+                        autor_id_fb = p.get("autor_id")
+                        if autor_id_fb:
+                            autor_db_id, es_empresa = upsert_autor_completo(autor_id_fb, p.get("autor", ""))
+                            p["_autor_db_id"] = autor_db_id
+                            p["_es_empresa"]  = es_empresa
+                        else:
+                            autor_db_id = None
 
-    conteo["total_nuevos"] = sum(v for k, v in conteo.items() if k.endswith("_nuevos") or k.endswith("_nuevas"))
-    conteo["total_posts"] = len(posts)
-    conteo["ignorados"] = len(buckets["ignorados"])
-    conteo["imagenes_ok"] = imgs_ok
-    conteo["imagenes_fail"] = imgs_fail
+                        # 4. Insertar en DB
+                        _, st = fn_insertar(p, colonia_id)
+                        if st == "nuevo":
+                            job["nuevos"] += 1
+                        else:
+                            job["duplicados"] += 1
 
-    return conteo
+                        # 5. Registrar actividad
+                        if autor_id_fb and autor_db_id:
+                            try:
+                                registrar_actividad(
+                                    autor_db_id, group_id, group_name,
+                                    bucket_name.rstrip("s") if not bucket_name.endswith("os") else bucket_name[:-1],
+                                    p.get("fbid_post"), fecha
+                                )
+                            except Exception:
+                                pass
+
+                    except Exception as e:
+                        job["errores"].append({
+                            "autor": p.get("autor", ""),
+                            "error": str(e)[:150],
+                            "fbid": p.get("fbid_post")
+                        })
+
+                    procesados += 1
+
+            # ── Actualizar stats del grupo ──
+            try:
+                actualizar_grupo_stats(group_id, total)
+            except Exception:
+                pass
+
+            job["status"] = "Completado"
+            job["progreso"] = 100
+            job["listo"] = True
+
+        except Exception as e:
+            _publicar_jobs[job_id]["status"] = "Error"
+            _publicar_jobs[job_id]["error_fatal"] = str(e)
+        finally:
+            _publicar_lock.release()
+
+    threading.Thread(target=worker, daemon=True).start()
+
+    return {
+        "job_id": job_id,
+        "total": len(posts),
+        "status": "procesando"
+    }
+
+
+@app.get("/publicar-status/{job_id}")
+def publicar_status(job_id: str):
+    """
+    Endpoint de polling para el frontend.
+    Retorna el estado actual del job.
+    """
+    job = _publicar_jobs.get(job_id)
+    if not job:
+        return JSONResponse({"error": "Job no encontrado"}, status_code=404)
+
+    inicio_ts = job.get("inicio_ts")
+    elapsed = int(time.time() - inicio_ts) if inicio_ts else 0
+
+    return {
+        "status": job.get("status"),
+        "progreso": job.get("progreso", 0),
+        "total": job.get("total", 0),
+        "procesados": job.get("procesados", 0),
+        "nuevos": job.get("nuevos", 0),
+        "duplicados": job.get("duplicados", 0),
+        "imgs_ok": job.get("imgs_ok", 0),
+        "imgs_fail": job.get("imgs_fail", 0),
+        "errores": job.get("errores", []),
+        "error_fatal": job.get("error_fatal"),
+        "listo": job.get("listo", False),
+        "elapsed": elapsed,
+    }
 
 
 def descargar(nombre: str):
@@ -449,9 +537,9 @@ def descargar(nombre: str):
 # Imports adicionales necesarios (ya deben estar en main.py):
 # from fastapi import UploadFile, File, Request
 # from db import buscar_grupo, registrar_grupo, obtener_colonias, obtener_potenciales_clientes,
-#               insertar_negocio, insertar_alerta, upsert_autor_completo,
-#               registrar_actividad, actualizar_grupo_stats
-# from cloudinary_service import subir_imagen_cloudinary  (o el nombre correcto)
+#              insertar_negocio, insertar_alerta, upsert_autor_completo,
+#              registrar_actividad, actualizar_grupo_stats
+# from cloudinary_service import subir_imagen_cloudinary (o el nombre correcto)
 
 _estado_limpio = {
     "paso": "esperando",
@@ -655,10 +743,8 @@ async def procesar_limpio(request: Request):
                     # 5. Registrar actividad del autor
                     if autor_id_fb and autor_db_id:
                         try:
-                            registrar_actividad(
-                                autor_db_id, group_id, group_name,
-                                tipo, p.get("fbid_post"), fecha
-                            )
+                            registrar_actividad(autor_db_id, group_id, group_name,
+                                                tipo, p.get("fbid_post"), fecha)
                         except Exception:
                             pass
 
@@ -867,7 +953,7 @@ FORMATO DE SALIDA:
 - meta.total_posts actualizado
 - NUNCA uses "..." en arrays de imagenes o videos — copia los arrays completos"""
 
-    # ── BLOQUE 1: limpieza determinista previa ────────────────────
+    # ── BLOQUE 1: limpieza determinista previa ─────────────────────────────
     # Corre el script de reglas fijas antes de mandar a Groq
     # No modifica el prompt ni las instrucciones a Groq
     try:
@@ -894,7 +980,7 @@ FORMATO DE SALIDA:
     except Exception as e:
         # Si falla el bloque 1, continuar con el JSON original
         pass
-    # ─────────────────────────────────────────────────────────────
+    # ──────────────────────────────────────────────────────────────────────────
 
     # Qwen3: agregar /no_think al mensaje para desactivar el modo de razonamiento
     user_prefix = "/no_think\n" if "qwen" in model.lower() else ""
