@@ -1,4 +1,4 @@
-from fastapi import FastAPI, UploadFile, File, Request
+from fastapi import FastAPI, UploadFile, File, Request, Query
 from fastapi.staticfiles import StaticFiles 
 from fastapi.responses import JSONResponse, Response
 import json
@@ -327,7 +327,7 @@ async def guardar_db():
 # ╚════════════════════════════════════════════════════════════════════╝
 
 @app.post("/publicar")
-async def publicar(file: UploadFile = File(...), debug: bool = False):
+async def publicar(file: UploadFile = File(...), debug: bool = Query(False)):
     """
     Recibe un JSON ya clasificado (output de procesamiento manual/Claude).
     Solo sube imágenes a Cloudinary e inserta en DB.
@@ -344,6 +344,7 @@ async def publicar(file: UploadFile = File(...), debug: bool = False):
     from utils import generar_alt_imagen, construir_public_id
 
     contenido = await file.read()
+    print(f"🔍 DEBUG PARAM RECIBIDO: {debug}")
     try:
         data = json.loads(contenido)
     except Exception as e:
