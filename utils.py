@@ -1968,7 +1968,8 @@ def construir_public_id(post, img, meta=None, config_grupo=None, idx=0):
         img_id = img.get('fbid') or img.get('id')
     img_id = img_id or post.get('fbid_post') or f"{idx+1}"
     nombre = slugify(f"{tema} {ciudad} {estado} {zona} {img_id}", max_words=20, max_len=120)
-    return f"{tipo}/{nombre}"
+    fecha = ((meta or {}).get("fecha_captura") or "")[:10] or "sin-fecha"
+    return f"{tipo}/{fecha}/{nombre}"
 
 
 def parse_keywords(value):
