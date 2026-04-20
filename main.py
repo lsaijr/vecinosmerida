@@ -398,19 +398,38 @@ async def publicar(file: UploadFile = File(...), debug: str = Query("false")):
         p["tipo"] = tipo
         buckets[bucket].append(p)
 
-    # ── Subir imágenes a Cloudinary ──
+    # ── Subir imágenes a Cloudinary en paralelo ──
     imgs_ok = imgs_fail = 0
     publicables = []
+
+    from concurrent.futures import ThreadPoolExecutor
+    import asyncio
+
+    def _procesar_post_imagenes(p):
+        if p.get("imagenes"):
+            res_imgs, ok, fail = subir_imagenes(p, meta=meta, config_grupo=config_grupo)
+            p["imagenes_cloudinary"] = res_imgs
+            return p, ok, fail
+        else:
+            p["imagenes_cloudinary"] = []
+            return p, 0, 0
+
+    posts_a_subir = []
     for bucket_name in ["negocios", "noticias", "alertas", "mascotas", "empleos", "perdidos"]:
-        for p in buckets[bucket_name]:
-            if p.get("imagenes"):
-                res_imgs, ok, fail = subir_imagenes(p, meta=meta, config_grupo=config_grupo)
-                p["imagenes_cloudinary"] = res_imgs
-                imgs_ok += ok
-                imgs_fail += fail
-            else:
-                p["imagenes_cloudinary"] = []
-            publicables.append(p)
+        posts_a_subir.extend(buckets[bucket_name])
+
+    loop = asyncio.get_event_loop()
+    with ThreadPoolExecutor(max_workers=6) as executor:
+        futures = [
+            loop.run_in_executor(executor, _procesar_post_imagenes, p)
+            for p in posts_a_subir
+        ]
+        results = await asyncio.gather(*futures)
+
+    for p, ok, fail in results:
+        publicables.append(p)
+        imgs_ok += ok
+        imgs_fail += fail
 
     # ══════════════════════════════════════════════════════════════════════════
     # MODO DEBUG: Retornar DESPUÉS de Cloudinary pero ANTES del INSERT

@@ -216,81 +216,99 @@ def subir_imagen(url_temp, *, public_id=None, tags=None, context=None, metadata=
 
 def subir_imagenes(post, meta=None, config_grupo=None) -> Tuple[List[Dict], int, int]:
     """
-    Sube imágenes a Cloudinary con:
+    Sube imágenes a Cloudinary en paralelo con ThreadPoolExecutor.
     - public_id SEO-friendly y estable
-    - context.alt
-    - tags
-    - structured metadata opcional
-
-    Si Cloudinary no está configurado, devuelve las URLs originales como fallback seguro.
+    - context.alt, tags, structured metadata
+    - Si Cloudinary no está configurado, devuelve URLs originales como fallback.
     """
+    from concurrent.futures import ThreadPoolExecutor, as_completed
+
     imagenes = post.get("imagenes") or []
     if not imagenes:
         return [], 0, 0
 
-    resultados = []
-    ok = fail = 0
-
     if _cloudinary_configured():
         _configure_cloudinary()
 
-    total_imgs = len(imagenes)  # para alt texts numerados
-    for idx, img in enumerate(imagenes):
+    total_imgs = len(imagenes)
+
+    def _subir_una(idx_img):
+        idx, img = idx_img
         origen = img.get("url_temp") if isinstance(img, dict) else img
         if not origen:
-            fail += 1
-            resultados.append({"url": None, "origen": "error", "fbid": (img or {}).get("fbid") if isinstance(img, dict) else None})
-            continue
+            return {"url": None, "origen": "error",
+                    "fbid": (img or {}).get("fbid") if isinstance(img, dict) else None}, False
 
-        public_id = construir_public_id(post, img if isinstance(img, dict) else {}, meta=meta, config_grupo=config_grupo, idx=idx)
-        alt = generar_alt_imagen(post, config_grupo=config_grupo, idx=idx, total=total_imgs)
-        context = _safe_context(post, meta=meta, config_grupo=config_grupo, img=img if isinstance(img, dict) else None)
+        public_id = construir_public_id(post, img if isinstance(img, dict) else {},
+                                        meta=meta, config_grupo=config_grupo, idx=idx)
+        alt      = generar_alt_imagen(post, config_grupo=config_grupo, idx=idx, total=total_imgs)
+        context  = _safe_context(post, meta=meta, config_grupo=config_grupo,
+                                 img=img if isinstance(img, dict) else None)
         context["alt"] = alt
-        tags = _build_tags(post, meta=meta, config_grupo=config_grupo)
-        metadata = _build_structured_metadata(post, meta=meta, config_grupo=config_grupo, img=img if isinstance(img, dict) else None)
+        tags     = _build_tags(post, meta=meta, config_grupo=config_grupo)
+        metadata = _build_structured_metadata(post, meta=meta, config_grupo=config_grupo,
+                                              img=img if isinstance(img, dict) else None)
 
         if not _cloudinary_configured():
-            resultados.append({
-                "url": origen,
-                "origen": "fallback",
+            return {
+                "url": origen, "origen": "fallback",
                 "fbid": img.get("fbid") if isinstance(img, dict) else None,
-                "alt": alt,
-                "public_id": public_id,
-                "tags": tags,
-                "fallback": True,
-            })
-            ok += 1
-            continue
+                "alt": alt, "public_id": public_id, "tags": tags, "fallback": True,
+            }, True
 
         response, origen_res, err = subir_imagen(
-            origen,
-            public_id=public_id,
-            tags=tags,
-            context=context,
-            metadata=metadata,
+            origen, public_id=public_id, tags=tags, context=context, metadata=metadata,
         )
 
         if origen_res in ("cloudinary", "fallback") and response:
-            resultados.append({
+            return {
                 "url": response.get("secure_url") or response.get("url"),
                 "origen": origen_res,
                 "fbid": img.get("fbid") if isinstance(img, dict) else None,
                 "alt": alt,
                 "public_id": response.get("public_id", public_id),
                 "asset_id": response.get("asset_id"),
-                "tags": tags,
-                "error": err,
-            })
+                "tags": tags, "error": err,
+            }, True
+        else:
+            return {
+                "url": None, "origen": "error",
+                "fbid": img.get("fbid") if isinstance(img, dict) else None,
+                "alt": alt, "public_id": public_id, "error": err,
+            }, False
+
+    # Subir todas las imágenes del post en paralelo (máx 8 threads)
+    max_workers = min(8, total_imgs)
+    resultados_map = {}
+
+    with ThreadPoolExecutor(max_workers=max_workers) as executor:
+        futures = {
+            executor.submit(_subir_una, (idx, img)): idx
+            for idx, img in enumerate(imagenes)
+        }
+        for future in as_completed(futures):
+            idx = futures[future]
+            try:
+                resultado, success = future.result()
+            except Exception as e:
+                img = imagenes[idx]
+                resultado = {
+                    "url": None, "origen": "error",
+                    "fbid": img.get("fbid") if isinstance(img, dict) else None,
+                    "error": str(e),
+                }
+                success = False
+            resultados_map[idx] = (resultado, success)
+
+    # Reconstruir en orden original
+    resultados = []
+    ok = fail = 0
+    for idx in range(total_imgs):
+        resultado, success = resultados_map[idx]
+        resultados.append(resultado)
+        if success:
             ok += 1
         else:
-            resultados.append({
-                "url": None,
-                "origen": "error",
-                "fbid": img.get("fbid") if isinstance(img, dict) else None,
-                "alt": alt,
-                "public_id": public_id,
-                "error": err,
-            })
             fail += 1
 
     return resultados, ok, fail
