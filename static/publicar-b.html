@@ -382,10 +382,10 @@
 
     function calcularBatchSize(totalPosts, totalImages) {
         const avg = totalPosts > 0 ? totalImages / totalPosts : 1;
-        if (avg >= 3) return 10;
-        if (avg >= 2) return 15;
-        if (avg >= 1) return 20;
-        return 30;
+        if (avg >= 3) return 8;
+        if (avg >= 2) return 10;
+        if (avg >= 1) return 15;
+        return 20;
     }
 
     // ── Click en "Procesar en Batches" → abrir modal ─────────
