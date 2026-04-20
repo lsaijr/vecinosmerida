@@ -481,9 +481,61 @@
             console.warn('analizar-limpio falló:', err.message);
             document.getElementById('camposNuevo').style.display = 'block';
             document.getElementById('coloniaHint').classList.remove('show');
-            // Cargar colonias hardcoded de fallback
+            // Fallback: lista completa de colonias hardcodeada
+            const COLONIAS_FALLBACK = [
+                {id:1,  nombre:'Altabrisa'},
+                {id:2,  nombre:'Caucel'},
+                {id:3,  nombre:'Centro Histórico'},
+                {id:4,  nombre:'Centro-Poniente'},
+                {id:5,  nombre:'Cholul'},
+                {id:6,  nombre:'Chuburná'},
+                {id:7,  nombre:'Francisco de Montejo'},
+                {id:8,  nombre:'General / Toda Mérida'},
+                {id:9,  nombre:'Gran Santa Fe'},
+                {id:10, nombre:'Kanasín'},
+                {id:11, nombre:'Las Américas'},
+                {id:12, nombre:'Los Héroes'},
+                {id:13, nombre:'Mulsay'},
+                {id:14, nombre:'Villas de Oriente'},
+                {id:15, nombre:'Pacabtún / Vergeles'},
+                {id:16, nombre:'Pensiones'},
+                {id:17, nombre:'Sin clasificar'},
+                {id:18, nombre:'Sur'},
+                {id:19, nombre:'Tixcacal / Opichén'},
+                {id:20, nombre:'Zona Norte'},
+                {id:21, nombre:'Díaz Ordaz'},
+                {id:22, nombre:'San Marcos Sustentable'},
+                {id:23, nombre:'Serapio Rendón'},
+                {id:24, nombre:'Villa Magna Sur'},
+                {id:25, nombre:'Cinco Colonias'},
+                {id:26, nombre:'Los Reyes'},
+                {id:27, nombre:'Unidad Morelos'},
+                {id:28, nombre:'Azcorra'},
+                {id:29, nombre:'Vicente Solís'},
+                {id:30, nombre:'Kukulcán'},
+                {id:31, nombre:'Chenku'},
+                {id:32, nombre:'Linda Vista'},
+                {id:33, nombre:'Tanlum'},
+                {id:34, nombre:'Real Montejo'},
+                {id:35, nombre:'Libeluelas'},
+                {id:36, nombre:'Santa Rosa'},
+                {id:37, nombre:'Dolores Otero'},
+                {id:38, nombre:'Melitón Salazar'},
+                {id:39, nombre:'Castilla Cámara'},
+                {id:40, nombre:'Mercedes Barrera'},
+                {id:41, nombre:'Los Pinos'},
+                {id:42, nombre:'San Pedro Cholul'},
+                {id:43, nombre:'La Florida'},
+            ];
             const sel = document.getElementById('selColonia');
-            sel.innerHTML = '<option value="8" selected>General / Toda Mérida</option>';
+            sel.innerHTML = '';
+            COLONIAS_FALLBACK.forEach(c => {
+                const o = document.createElement('option');
+                o.value = c.id;
+                o.textContent = c.nombre;
+                if (c.id === 8) o.selected = true;
+                sel.appendChild(o);
+            });
             configGrupo = { group_id: meta.group_id, conocido: false };
         }
 
