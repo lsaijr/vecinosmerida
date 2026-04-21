@@ -24,6 +24,27 @@ except Exception as e:
     import traceback
     traceback.print_exc()
 
+def _parsear_miembros(texto):
+    """Extrae número de miembros del texto crudo de Facebook. Ej: '72,6 mil miembros' → 72600."""
+    if not texto:
+        return None
+    import re
+    m = re.search(r'([\d.,]+)\s*mil', texto.lower())
+    if m:
+        num = m.group(1).replace(',', '.').replace(' ', '')
+        try:
+            return int(float(num) * 1000)
+        except ValueError:
+            return None
+    m = re.search(r'([\d.,]+)\s*miembros', texto.lower())
+    if m:
+        try:
+            return int(m.group(1).replace(',', '').replace('.', ''))
+        except ValueError:
+            return None
+    return None
+
+
 APP_VERSION = "2026-04-16-v7-debug"
 print(f"🚀 VecinosMérida Pipeline arrancando — versión {APP_VERSION}")
 
@@ -299,7 +320,7 @@ async def guardar_db():
             if not autor_id_fb:
                 continue
             try:
-                autor_db_id, es_empresa = upsert_autor_completo(autor_id_fb, p.get("autor", ""))
+                autor_db_id, es_empresa = upsert_autor_completo(autor_id_fb, p.get("autor", ""), p.get("autor_url"))
                 p["_autor_db_id"] = autor_db_id
                 p["_es_empresa"]  = es_empresa
                 registrar_actividad(autor_db_id, group_id, group_name,
@@ -308,7 +329,8 @@ async def guardar_db():
                 pass
 
     try:
-        actualizar_grupo_stats(group_id, len(estado.get("_posts_temp", [])))
+        miembros = _parsear_miembros(meta.get("group_members"))
+        actualizar_grupo_stats(group_id, len(estado.get("_posts_temp", [])), miembros)
     except Exception:
         pass
 
@@ -339,7 +361,7 @@ async def publicar(file: UploadFile = File(...), debug: str = Query("false")):
         insertar_empleo, insertar_mascota, insertar_perdido,
         actualizar_grupo_stats,
         upsert_autor_completo, registrar_actividad,
-        obtener_colonias,
+        obtener_colonias, insertar_post_raw,
     )
     from cloudinary_service import subir_imagenes
     from utils import generar_alt_imagen, construir_public_id
@@ -419,6 +441,12 @@ async def publicar(file: UploadFile = File(...), debug: str = Query("false")):
         if _origen and str(_origen) != str(group_id):
             _go.append(str(_origen))
         p["grupos_origen"] = _go if _go else None
+
+        # Archivar en posts_raw (todos los posts, incluyendo ignorados)
+        try:
+            insertar_post_raw(p, group_id, colonia_id_meta, fecha)
+        except Exception:
+            pass
 
         buckets[bucket].append(p)
 
@@ -553,7 +581,7 @@ async def publicar(file: UploadFile = File(...), debug: str = Query("false")):
                 autor_id_fb = p.get("autor_id")
                 if autor_id_fb:
                     try:
-                        autor_db_id, _ = upsert_autor_completo(autor_id_fb, p.get("autor", ""))
+                        autor_db_id, _ = upsert_autor_completo(autor_id_fb, p.get("autor", ""), p.get("autor_url"))
                         p["_autor_db_id"] = autor_db_id
                         registrar_actividad(autor_db_id, group_id, group_name,
                                             bucket_name.rstrip("s") if not bucket_name.endswith("os") else bucket_name[:-1],
@@ -570,7 +598,8 @@ async def publicar(file: UploadFile = File(...), debug: str = Query("false")):
                 conteo["errores"].append({"tipo": bucket_name, "error": str(e)[:120], "fbid": p.get("fbid_post")})
 
     try:
-        actualizar_grupo_stats(group_id, len(posts))
+        miembros = _parsear_miembros(meta.get("group_members"))
+        actualizar_grupo_stats(group_id, len(posts), miembros)
     except Exception:
         pass
 
@@ -756,7 +785,7 @@ async def procesar_limpio(request: Request):
             from db import (
                 insertar_negocio, insertar_alerta,
                 upsert_autor_completo, registrar_actividad,
-                actualizar_grupo_stats,
+                actualizar_grupo_stats, insertar_post_raw,
             )
 
             colonia_id  = (config_grupo["colonia_ids"] or [None])[0]
@@ -786,7 +815,7 @@ async def procesar_limpio(request: Request):
                     # 3. Upsert autor
                     autor_id_fb = p.get("autor_id")
                     if autor_id_fb:
-                        autor_db_id, es_empresa = upsert_autor_completo(autor_id_fb, p.get("autor", ""))
+                        autor_db_id, es_empresa = upsert_autor_completo(autor_id_fb, p.get("autor", ""), p.get("autor_url"))
                         p["_autor_db_id"] = autor_db_id
                         p["_es_empresa"]  = es_empresa
                     else:
@@ -824,7 +853,8 @@ async def procesar_limpio(request: Request):
 
             # Actualizar stats del grupo
             try:
-                actualizar_grupo_stats(group_id, total)
+                miembros = _parsear_miembros(meta.get("group_members"))
+                actualizar_grupo_stats(group_id, total, miembros)
             except Exception:
                 pass
 

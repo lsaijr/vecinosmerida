@@ -151,13 +151,41 @@ def registrar_grupo(group_id, nombre, tipo, colonia_ids, notas=""):
     return nuevo_id
 
 
-def actualizar_grupo_stats(group_id, total_posts):
+def actualizar_grupo_stats(group_id, total_posts, miembros=None):
     conn = get_conn()
     cursor = conn.cursor()
-    cursor.execute(
-        "UPDATE grupos_facebook SET total_posts = total_posts + %s, ultimo_proceso = CURDATE() WHERE group_id = %s",
-        (total_posts, group_id),
-    )
+    if miembros is not None:
+        cursor.execute(
+            "UPDATE grupos_facebook SET total_posts = total_posts + %s, ultimo_proceso = CURDATE(), miembros = %s WHERE group_id = %s",
+            (total_posts, miembros, group_id),
+        )
+    else:
+        cursor.execute(
+            "UPDATE grupos_facebook SET total_posts = total_posts + %s, ultimo_proceso = CURDATE() WHERE group_id = %s",
+            (total_posts, group_id),
+        )
+    conn.commit()
+    cursor.close()
+    conn.close()
+
+
+def actualizar_colonias_grupo(group_id, colonia_ids):
+    """Reemplaza las colonias asociadas a un grupo existente."""
+    conn = get_conn()
+    cursor = conn.cursor()
+    cursor.execute("SELECT id FROM grupos_facebook WHERE group_id = %s LIMIT 1", (group_id,))
+    row = cursor.fetchone()
+    if not row:
+        cursor.close(); conn.close()
+        return
+    grupo_pk = row[0]
+    cursor.execute("DELETE FROM grupos_colonias WHERE grupo_id = %s", (grupo_pk,))
+    for cid in colonia_ids:
+        if cid:
+            cursor.execute(
+                "INSERT INTO grupos_colonias (grupo_id, colonia_id) VALUES (%s, %s)",
+                (grupo_pk, cid),
+            )
     conn.commit()
     cursor.close()
     conn.close()
@@ -597,6 +625,65 @@ def insertar_empleo(p, colonia_id):
     cursor.close()
     conn.close()
     return empleo_id, "nuevo"
+
+
+# ─── POSTS RAW ───────────────────────────────────────────────
+
+def insertar_post_raw(p, group_id, colonia_id, fecha_captura):
+    """Guarda el post crudo en posts_raw. Payload limpio: sin url_temp en imagenes."""
+    fbid_post = p.get("fbid_post")
+    if not fbid_post:
+        return
+
+    # Strip url_temp de imagenes — expiran en 24-48h, guardar solo fbid y alt
+    imagenes_limpias = [
+        {"fbid": img.get("fbid"), "alt": img.get("alt")}
+        for img in (p.get("imagenes") or [])
+        if isinstance(img, dict)
+    ]
+
+    payload = {k: v for k, v in p.items() if k not in ("imagenes_cloudinary",)}
+    payload["imagenes"] = imagenes_limpias
+
+    conn = get_conn()
+    cursor = conn.cursor()
+    # Deduplicar: mismo fbid_post en mismo grupo no se inserta dos veces
+    cursor.execute(
+        "SELECT id FROM posts_raw WHERE fbid_post = %s AND group_id = %s LIMIT 1",
+        (str(fbid_post), str(group_id) if group_id else None),
+    )
+    if cursor.fetchone():
+        cursor.close(); conn.close()
+        return
+
+    try:
+        fecha = fecha_captura
+        if isinstance(fecha, str) and fecha:
+            from datetime import datetime
+            try:
+                fecha = datetime.strptime(fecha, "%d-%m-%Y").date()
+            except ValueError:
+                fecha = None
+
+        cursor.execute(
+            """
+            INSERT INTO posts_raw (fbid_post, group_id, colonia_id, fecha_captura, payload)
+            VALUES (%s, %s, %s, %s, %s)
+            """,
+            (
+                str(fbid_post)[:30],
+                str(group_id)[:30] if group_id else None,
+                colonia_id,
+                fecha,
+                json.dumps(payload, ensure_ascii=False),
+            ),
+        )
+        conn.commit()
+    except Exception:
+        conn.rollback()
+    finally:
+        cursor.close()
+        conn.close()
 
 
 # ─── AUTORES Y ACTIVIDAD ─────────────────────────────────────
