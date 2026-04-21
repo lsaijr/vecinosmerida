@@ -629,53 +629,52 @@ def insertar_empleo(p, colonia_id):
 
 # ─── POSTS RAW ───────────────────────────────────────────────
 
-def insertar_post_raw(p, group_id, colonia_id, fecha_captura):
-    """Guarda el post crudo en posts_raw. Payload limpio: sin url_temp en imagenes."""
-    fbid_post = p.get("fbid_post")
-    if not fbid_post:
-        return
+_ESTADOS_RAW_VALIDOS = {'archivado', 'procesado', 'publicado', 'descartado'}
 
-    # Strip url_temp de imagenes — expiran en 24-48h, guardar solo fbid y alt
+
+def _payload_limpio(p):
+    """Payload sin url_temp (expiran 24-48h) ni datos internos del pipeline."""
     imagenes_limpias = [
         {"fbid": img.get("fbid"), "alt": img.get("alt")}
         for img in (p.get("imagenes") or [])
         if isinstance(img, dict)
     ]
-
-    payload = {k: v for k, v in p.items() if k not in ("imagenes_cloudinary",)}
+    payload = {k: v for k, v in p.items() if k not in ("imagenes_cloudinary", "_autor_db_id", "_es_empresa")}
     payload["imagenes"] = imagenes_limpias
+    return payload
 
+
+def _parsear_fecha_captura(fecha_captura):
+    if not fecha_captura or not isinstance(fecha_captura, str):
+        return fecha_captura
+    from datetime import datetime
+    try:
+        return datetime.strptime(fecha_captura, "%d-%m-%Y").date()
+    except ValueError:
+        return None
+
+
+def insertar_post_raw(fbid_post, group_id, colonia_id, autor_id, fecha_captura, payload_dict):
+    """INSERT con estado='archivado'. ON DUPLICATE KEY actualiza payload."""
+    if not fbid_post:
+        return
     conn = get_conn()
     cursor = conn.cursor()
-    # Deduplicar: mismo fbid_post en mismo grupo no se inserta dos veces
-    cursor.execute(
-        "SELECT id FROM posts_raw WHERE fbid_post = %s AND group_id = %s LIMIT 1",
-        (str(fbid_post), str(group_id) if group_id else None),
-    )
-    if cursor.fetchone():
-        cursor.close(); conn.close()
-        return
-
     try:
-        fecha = fecha_captura
-        if isinstance(fecha, str) and fecha:
-            from datetime import datetime
-            try:
-                fecha = datetime.strptime(fecha, "%d-%m-%Y").date()
-            except ValueError:
-                fecha = None
-
         cursor.execute(
             """
-            INSERT INTO posts_raw (fbid_post, group_id, colonia_id, fecha_captura, payload)
-            VALUES (%s, %s, %s, %s, %s)
+            INSERT INTO posts_raw
+              (fbid_post, group_id, colonia_id, autor_id, fecha_captura, payload, estado)
+            VALUES (%s, %s, %s, %s, %s, %s, 'archivado')
+            ON DUPLICATE KEY UPDATE payload = VALUES(payload)
             """,
             (
                 str(fbid_post)[:30],
                 str(group_id)[:30] if group_id else None,
                 colonia_id,
-                fecha,
-                json.dumps(payload, ensure_ascii=False),
+                str(autor_id)[:40] if autor_id else None,
+                _parsear_fecha_captura(fecha_captura),
+                json.dumps(payload_dict, ensure_ascii=False),
             ),
         )
         conn.commit()
@@ -684,6 +683,119 @@ def insertar_post_raw(p, group_id, colonia_id, fecha_captura):
     finally:
         cursor.close()
         conn.close()
+
+
+def marcar_post_raw(fbid_post, group_id, estado, razon_descarte=None):
+    """UPDATE de estado en un registro. Valida ENUM. Retorna filas afectadas (0 = desync)."""
+    if estado not in _ESTADOS_RAW_VALIDOS:
+        raise ValueError(f"Estado inválido: {estado!r}. Válidos: {_ESTADOS_RAW_VALIDOS}")
+    if estado != "descartado":
+        razon_descarte = None
+
+    conn = get_conn()
+    cursor = conn.cursor()
+    rows = 0
+    try:
+        cursor.execute(
+            "UPDATE posts_raw SET estado = %s, razon_descarte = %s "
+            "WHERE fbid_post = %s AND group_id = %s",
+            (estado, razon_descarte, str(fbid_post)[:30], str(group_id)[:30] if group_id else None),
+        )
+        rows = cursor.rowcount
+        conn.commit()
+    except Exception:
+        conn.rollback()
+    finally:
+        cursor.close()
+        conn.close()
+    return rows
+
+
+def bulk_marcar_posts_raw(updates):
+    """
+    Updates masivos en una transacción.
+    updates: [{fbid_post, group_id, estado, razon_descarte?}]
+    """
+    if not updates:
+        return 0
+    conn = get_conn()
+    cursor = conn.cursor()
+    updated = 0
+    try:
+        for u in updates:
+            estado = u.get("estado")
+            if estado not in _ESTADOS_RAW_VALIDOS:
+                continue
+            razon = u.get("razon_descarte") if estado == "descartado" else None
+            fbid  = u.get("fbid_post")
+            gid   = u.get("group_id")
+            if not fbid:
+                continue
+            cursor.execute(
+                "UPDATE posts_raw SET estado = %s, razon_descarte = %s "
+                "WHERE fbid_post = %s AND group_id = %s",
+                (estado, razon, str(fbid)[:30], str(gid)[:30] if gid else None),
+            )
+            updated += cursor.rowcount
+        conn.commit()
+    except Exception:
+        conn.rollback()
+        raise
+    finally:
+        cursor.close()
+        conn.close()
+    return updated
+
+
+def insertar_posts_raw_bulk(posts, meta):
+    """
+    INSERT masivo en transacción. Ignora errores individuales.
+    meta: {group_id, colonia_id, fecha_captura}
+    Retorna {inserted: N, errors: [...]}
+    """
+    group_id      = meta.get("group_id")
+    colonia_id    = meta.get("colonia_id")
+    fecha_captura = _parsear_fecha_captura(meta.get("fecha_captura"))
+
+    conn = get_conn()
+    cursor = conn.cursor()
+    inserted = 0
+    errors = []
+
+    try:
+        for p in posts:
+            fbid_post = p.get("fbid_post")
+            if not fbid_post:
+                continue
+            try:
+                cursor.execute(
+                    """
+                    INSERT INTO posts_raw
+                      (fbid_post, group_id, colonia_id, autor_id, fecha_captura, payload, estado)
+                    VALUES (%s, %s, %s, %s, %s, %s, 'archivado')
+                    ON DUPLICATE KEY UPDATE payload = VALUES(payload)
+                    """,
+                    (
+                        str(fbid_post)[:30],
+                        str(group_id)[:30] if group_id else None,
+                        colonia_id,
+                        str(p.get("autor_id") or "")[:40] or None,
+                        fecha_captura,
+                        json.dumps(_payload_limpio(p), ensure_ascii=False),
+                    ),
+                )
+                inserted += 1
+            except Exception as e:
+                errors.append({"fbid_post": str(fbid_post), "error": str(e)[:120]})
+        conn.commit()
+    except Exception as e:
+        conn.rollback()
+        raise
+    finally:
+        cursor.close()
+        conn.close()
+
+    return {"inserted": inserted, "errors": errors}
 
 
 # ─── AUTORES Y ACTIVIDAD ─────────────────────────────────────

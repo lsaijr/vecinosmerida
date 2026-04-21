@@ -361,7 +361,8 @@ async def publicar(file: UploadFile = File(...), debug: str = Query("false")):
         insertar_empleo, insertar_mascota, insertar_perdido,
         actualizar_grupo_stats,
         upsert_autor_completo, registrar_actividad,
-        obtener_colonias, insertar_post_raw,
+        obtener_colonias,
+        insertar_post_raw, marcar_post_raw, bulk_marcar_posts_raw,
     )
     from cloudinary_service import subir_imagenes
     from utils import generar_alt_imagen, construir_public_id
@@ -442,13 +443,19 @@ async def publicar(file: UploadFile = File(...), debug: str = Query("false")):
             _go.append(str(_origen))
         p["grupos_origen"] = _go if _go else None
 
-        # Archivar en posts_raw (todos los posts, incluyendo ignorados)
-        try:
-            insertar_post_raw(p, group_id, colonia_id_meta, fecha)
-        except Exception:
-            pass
-
         buckets[bucket].append(p)
+
+    # ── MOMENTO 4 — Marcar todos como 'procesado' al recibir el JSON ──
+    _m4_updates = []
+    for _bname in ("negocios", "noticias", "alertas", "mascotas", "empleos", "perdidos", "ignorados"):
+        for _p in buckets[_bname]:
+            _fbid = _p.get("fbid_post")
+            if _fbid:
+                _m4_updates.append({"fbid_post": _fbid, "group_id": group_id, "estado": "procesado"})
+    try:
+        bulk_marcar_posts_raw(_m4_updates)
+    except Exception as _e:
+        print(f"[posts_raw] Momento 4 bulk_marcar falló (no bloquea): {_e}")
 
     # Validar categoria_id en negocios (antes de Cloudinary/DB)
     _categorias_validas = set(range(1, 12)) | {13}
@@ -594,8 +601,40 @@ async def publicar(file: UploadFile = File(...), debug: str = Query("false")):
                     conteo[key_nuevo] += 1
                 else:
                     conteo[key_dup] += 1
+                # MOMENTO 5 — publicado
+                _fbid5 = p.get("fbid_post")
+                if _fbid5:
+                    try:
+                        _rows = marcar_post_raw(_fbid5, group_id, "publicado")
+                        if _rows == 0:  # desync: post no pasó por bulk_insert
+                            print(f"[posts_raw] desync fbid={_fbid5} — insertando al vuelo")
+                            insertar_post_raw(_fbid5, group_id, colonia_id_meta,
+                                              p.get("autor_id"), fecha, p)
+                            marcar_post_raw(_fbid5, group_id, "publicado")
+                    except Exception:
+                        pass
             except Exception as e:
                 conteo["errores"].append({"tipo": bucket_name, "error": str(e)[:120], "fbid": p.get("fbid_post")})
+                # MOMENTO 5 — error_insert
+                _fbid5 = p.get("fbid_post")
+                if _fbid5:
+                    try:
+                        marcar_post_raw(_fbid5, group_id, "descartado", "error_insert")
+                    except Exception:
+                        pass
+
+    # MOMENTO 5 — ignorados → clasif_ignorar
+    for _p in buckets["ignorados"]:
+        _fbid5 = _p.get("fbid_post")
+        if _fbid5:
+            try:
+                _rows = marcar_post_raw(_fbid5, group_id, "descartado", "clasif_ignorar")
+                if _rows == 0:  # desync
+                    insertar_post_raw(_fbid5, group_id, colonia_id_meta,
+                                      _p.get("autor_id"), fecha, _p)
+                    marcar_post_raw(_fbid5, group_id, "descartado", "clasif_ignorar")
+            except Exception:
+                pass
 
     try:
         miembros = _parsear_miembros(meta.get("group_members"))
@@ -1182,6 +1221,83 @@ FORMATO DE SALIDA:
 
     except Exception as e:
         return JSONResponse({"error": str(e)}, status_code=500)
+
+
+# ╔════════════════════════════════════════════════════════════════════╗
+# ║ ENDPOINTS posts_raw — lifecycle tracking                          ║
+# ╚════════════════════════════════════════════════════════════════════╝
+
+@app.post("/posts_raw/bulk_insert")
+async def posts_raw_bulk_insert(request: Request):
+    """
+    Momento 1: el scraper/limpiador registra todos los posts crudos antes de cualquier decisión.
+    Body: {meta: {group_id, colonia_id, fecha_captura}, posts: [...]}
+    """
+    from db import insertar_posts_raw_bulk
+    try:
+        data = await request.json()
+    except Exception:
+        return JSONResponse({"error": "JSON inválido"}, status_code=400)
+
+    meta  = data.get("meta", {})
+    posts = data.get("posts", [])
+    if not isinstance(posts, list):
+        return JSONResponse({"error": "posts debe ser una lista"}, status_code=400)
+
+    result = insertar_posts_raw_bulk(posts, meta)
+    return {"ok": True, **result}
+
+
+@app.post("/posts_raw/marcar")
+async def posts_raw_marcar(request: Request):
+    """
+    Update individual de estado en posts_raw.
+    Body: {fbid_post, group_id, estado, razon_descarte?}
+    """
+    from db import marcar_post_raw
+    try:
+        data = await request.json()
+    except Exception:
+        return JSONResponse({"error": "JSON inválido"}, status_code=400)
+
+    fbid_post     = data.get("fbid_post")
+    group_id_req  = data.get("group_id")
+    estado        = data.get("estado")
+    razon         = data.get("razon_descarte")
+
+    if not fbid_post or not estado:
+        return JSONResponse({"ok": False, "error": "fbid_post y estado son requeridos"}, status_code=400)
+
+    try:
+        rows = marcar_post_raw(fbid_post, group_id_req, estado, razon)
+        return {"ok": True, "updated": rows}
+    except ValueError as e:
+        return JSONResponse({"ok": False, "error": str(e)}, status_code=400)
+    except Exception as e:
+        return JSONResponse({"ok": False, "error": str(e)}, status_code=500)
+
+
+@app.post("/posts_raw/bulk_marcar")
+async def posts_raw_bulk_marcar(request: Request):
+    """
+    Updates masivos de estado en posts_raw.
+    Body: {updates: [{fbid_post, group_id, estado, razon_descarte?}, ...]}
+    """
+    from db import bulk_marcar_posts_raw
+    try:
+        data = await request.json()
+    except Exception:
+        return JSONResponse({"error": "JSON inválido"}, status_code=400)
+
+    updates = data.get("updates", [])
+    if not isinstance(updates, list):
+        return JSONResponse({"error": "updates debe ser una lista"}, status_code=400)
+
+    try:
+        updated = bulk_marcar_posts_raw(updates)
+        return {"ok": True, "updated": updated}
+    except Exception as e:
+        return JSONResponse({"ok": False, "error": str(e)}, status_code=500)
 
 
 # ── Static files — debe ir AL FINAL para no interceptar endpoints ──
