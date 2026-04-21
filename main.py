@@ -339,6 +339,7 @@ async def publicar(file: UploadFile = File(...), debug: str = Query("false")):
         insertar_empleo, insertar_mascota, insertar_perdido,
         actualizar_grupo_stats,
         upsert_autor_completo, registrar_actividad,
+        obtener_colonias,
     )
     from cloudinary_service import subir_imagenes
     from utils import generar_alt_imagen, construir_public_id
@@ -352,6 +353,13 @@ async def publicar(file: UploadFile = File(...), debug: str = Query("false")):
         data = json.loads(contenido)
     except Exception as e:
         return JSONResponse({"error": f"JSON inválido: {str(e)}"}, status_code=400)
+
+    # Validar estructura top-level {meta, posts}
+    if not isinstance(data, dict) or "meta" not in data or "posts" not in data:
+        return JSONResponse(
+            {"error": "JSON inválido: se esperaba {meta, posts}. ¿Subiste una lista suelta?"},
+            status_code=400,
+        )
 
     meta = data.get("meta", {})
     posts = data.get("posts", [])
@@ -375,10 +383,18 @@ async def publicar(file: UploadFile = File(...), debug: str = Query("false")):
     grupo_tipo = meta.get("grupo_tipo", "vecinos")
     fecha = meta.get("fecha_captura", "")
 
+    colonia_id_meta = meta.get("colonia_id")
+    colonia_nombre = "General"
+    if colonia_id_meta:
+        colonias = obtener_colonias()
+        match = next((c for c in colonias if c["id"] == colonia_id_meta), None)
+        if match:
+            colonia_nombre = match["nombre"]
+
     config_grupo = {
         "tipo": grupo_tipo,
-        "colonia_ids": [None],
-        "colonia_nombres": ["General"],
+        "colonia_ids": [colonia_id_meta] if colonia_id_meta else [None],
+        "colonia_nombres": [colonia_nombre],
     }
 
     # Organizar por tipo
@@ -397,6 +413,32 @@ async def publicar(file: UploadFile = File(...), debug: str = Query("false")):
         bucket = _tipo_to_bucket.get(tipo, "ignorados")
         p["tipo"] = tipo
         buckets[bucket].append(p)
+
+    # Validar categoria_id en negocios (antes de Cloudinary/DB)
+    _categorias_validas = set(range(1, 12)) | {13}
+    negocios_sin_cat = [
+        p.get("fbid_post", "?")
+        for p in buckets["negocios"]
+        if p.get("categoria_id") not in _categorias_validas
+    ]
+    if negocios_sin_cat:
+        return JSONResponse(
+            {"error": f"Negocios con categoria_id inválido o ausente: {negocios_sin_cat}. "
+                      "Válidos: 1-11 y 13 (no 12). Corrige el JSON antes de publicar."},
+            status_code=400,
+        )
+
+    # Validar titulo en noticias
+    noticias_sin_titulo = [
+        p.get("fbid_post", "?")
+        for p in buckets["noticias"]
+        if not p.get("titulo", "").strip()
+    ]
+    if noticias_sin_titulo:
+        return JSONResponse(
+            {"error": f"Noticias sin titulo (campo obligatorio): {noticias_sin_titulo}"},
+            status_code=400,
+        )
 
     # ── Subir imágenes a Cloudinary en paralelo ──
     imgs_ok = imgs_fail = 0
