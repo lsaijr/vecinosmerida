@@ -412,6 +412,14 @@ async def publicar(file: UploadFile = File(...), debug: str = Query("false")):
         tipo = p.get("tipo", "ignorar")
         bucket = _tipo_to_bucket.get(tipo, "ignorados")
         p["tipo"] = tipo
+
+        # Construir grupos_origen: [group_id_actual] + grupo de origen si fue cross-post
+        _go = [group_id] if group_id else []
+        _origen = p.get("grupo_origen")
+        if _origen and str(_origen) != str(group_id):
+            _go.append(str(_origen))
+        p["grupos_origen"] = _go if _go else None
+
         buckets[bucket].append(p)
 
     # Validar categoria_id en negocios (antes de Cloudinary/DB)

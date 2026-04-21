@@ -1,3 +1,4 @@
+import json
 import os
 import re
 from datetime import date, timedelta
@@ -283,6 +284,16 @@ def _img_public_id(asset):
     return None
 
 
+def _grupos_origen_json(p):
+    """Construye el JSON de grupos_origen a partir del post. Devuelve str o None."""
+    val = p.get("grupos_origen")
+    if val is None:
+        return None
+    if isinstance(val, str):
+        return val  # ya serializado
+    return json.dumps(val, ensure_ascii=False)
+
+
 # ─── INSERCIÓN EN DB ─────────────────────────────────────────
 def insertar_negocio(p, colonia_id):
     fbid_post = p.get("fbid_post")
@@ -297,8 +308,9 @@ def insertar_negocio(p, colonia_id):
         INSERT INTO negocios
           (nombre, categoria_id, descripcion, telefono, whatsapp,
            facebook, colonia_id, fuente_autor, autor_id, fecha_captura,
-           activo, fbid_post, fecha_post, fecha_post_dt, repeticiones)
-        VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,1,%s,%s,%s,%s)
+           activo, fbid_post, fecha_post, fecha_post_dt, repeticiones,
+           grupos_origen)
+        VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,1,%s,%s,%s,%s,%s)
         """,
         (
             p.get("titulo") or p.get("nombre", "")[:100],
@@ -315,6 +327,7 @@ def insertar_negocio(p, colonia_id):
             (p.get("fecha_post") or "")[:60] or None,
             parsear_fecha_fb(p.get("fecha_post"), p.get("fecha_captura", "")),
             int(p.get("repeticiones") or 1),
+            _grupos_origen_json(p),
         ),
     )
     negocio_id = cursor.lastrowid
@@ -382,8 +395,8 @@ def insertar_noticia(p, colonia_id):
         INSERT INTO noticias
           (titulo, texto, categoria_id, colonia_id, autor, autor_id,
            imagen_url, url_post, fbid_post, fecha_publicacion,
-           fecha_post, fecha_post_dt)
-        VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
+           fecha_post, fecha_post_dt, grupos_origen)
+        VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
         """,
         (
             (p.get("titulo") or "")[:200],
@@ -398,6 +411,7 @@ def insertar_noticia(p, colonia_id):
             parsear_fecha_fb(p.get("fecha_post"), p.get("fecha_captura", "")),
             (p.get("fecha_post") or "")[:60] or None,
             parsear_fecha_fb(p.get("fecha_post"), p.get("fecha_captura", "")),
+            _grupos_origen_json(p),
         ),
     )
     nid = cursor.lastrowid
@@ -425,8 +439,8 @@ def insertar_alerta(p, colonia_id):
         INSERT INTO alertas
           (texto, categoria_id, colonia_id, direccion_aprox,
            autor, autor_id, imagen_url, url_post, fbid_post, fecha,
-           fecha_post, fecha_post_dt)
-        VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
+           fecha_post, fecha_post_dt, grupos_origen)
+        VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
         """,
         (
             p.get("texto", ""),
@@ -441,6 +455,7 @@ def insertar_alerta(p, colonia_id):
             parsear_fecha_fb(p.get("fecha_post"), p.get("fecha_captura", "")),
             (p.get("fecha_post") or "")[:60] or None,
             parsear_fecha_fb(p.get("fecha_post"), p.get("fecha_captura", "")),
+            _grupos_origen_json(p),
         ),
     )
     aid = cursor.lastrowid
@@ -554,8 +569,8 @@ def insertar_empleo(p, colonia_id):
           (tipo, area_id, puesto, empresa, descripcion,
            horario, zona, telefono, imagen_url,
            autor, autor_id, colonia_id, fbid_post, fecha_captura,
-           fecha_post, fecha_post_dt)
-        VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
+           fecha_post, fecha_post_dt, grupos_origen)
+        VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
         """,
         (
             p.get("tipo_empleo", "oferta"),
@@ -574,6 +589,7 @@ def insertar_empleo(p, colonia_id):
             p.get("fecha_captura"),
             (p.get("fecha_post") or "")[:60] or None,
             parsear_fecha_fb(p.get("fecha_post"), p.get("fecha_captura", "")),
+            _grupos_origen_json(p),
         ),
     )
     empleo_id = cursor.lastrowid
@@ -948,8 +964,9 @@ def insertar_mascota(p, colonia_id):
         INSERT INTO mascotas
           (tipo, nombre_mascota, especie, descripcion, colonia_id,
            telefono, imagen_url, url_post, fbid_post,
-           autor, autor_id, fecha, fecha_post, fecha_post_dt)
-        VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
+           autor, autor_id, fecha, fecha_post, fecha_post_dt,
+           grupos_origen)
+        VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
         """,
         (
             p.get("tipo_mascota", "perdida"),
@@ -966,6 +983,7 @@ def insertar_mascota(p, colonia_id):
             parsear_fecha_fb(p.get("fecha_post"), p.get("fecha_captura", "")),
             (p.get("fecha_post") or "")[:60] or None,
             parsear_fecha_fb(p.get("fecha_post"), p.get("fecha_captura", "")),
+            _grupos_origen_json(p),
         ),
     )
     mascota_id = cursor.lastrowid
@@ -1006,8 +1024,8 @@ def insertar_perdido(p, colonia_id):
           (estado, categoria_id, objeto, descripcion, ubicacion,
            fecha_evento, recompensa, telefono, imagen_cloudinary,
            url_post, fbid_post, autor, autor_id, colonia_id,
-           fecha_captura, fecha_post, fecha_post_dt)
-        VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
+           fecha_captura, fecha_post, fecha_post_dt, grupos_origen)
+        VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
         """,
         (
             p.get("perdido_estado", "perdido"),
@@ -1027,6 +1045,7 @@ def insertar_perdido(p, colonia_id):
             parsear_fecha_fb(p.get("fecha_post"), p.get("fecha_captura", "")),
             (p.get("fecha_post") or "")[:60] or None,
             parsear_fecha_fb(p.get("fecha_post"), p.get("fecha_captura", "")),
+            _grupos_origen_json(p),
         ),
     )
     perdido_id = cursor.lastrowid
