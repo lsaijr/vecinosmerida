@@ -405,6 +405,183 @@ def test_flujo_completo_ciclo_5_momentos():
     print("  ✓ flujo completo 5 momentos")
 
 
+# ─── TESTS DE ENDPOINTS HTTP ─────────────────────────────────────────
+# Requieren el servidor corriendo: uvicorn main:app --reload
+# BASE_URL se puede sobreescribir con variable de entorno API_URL.
+# Ej: API_URL=https://tu-app.railway.app python3 tests/test_posts_raw.py
+
+BASE_URL = os.getenv("API_URL", "http://localhost:8000").rstrip("/")
+
+FBID_EP = "test_ep_001"   # fbid exclusivo para tests de endpoints
+GID_EP  = "test_ep_grp"
+
+
+def _server_disponible():
+    import urllib.request
+    try:
+        urllib.request.urlopen(f"{BASE_URL}/api/version", timeout=3)
+        return True
+    except Exception:
+        return False
+
+
+def test_endpoint_bulk_insert():
+    """
+    POST /posts_raw/bulk_insert
+    - Estructura válida → 200, {ok: true, inserted: N}
+    - JSON inválido → 400
+    - posts vacía → 200, inserted: 0
+    - posts no es lista → 400
+    """
+    import requests
+
+    url = f"{BASE_URL}/posts_raw/bulk_insert"
+
+    # JSON malformado
+    r = requests.post(url, data="no es json", headers={"Content-Type": "application/json"})
+    assert r.status_code == 400, f"JSON inválido debe ser 400, got {r.status_code}"
+
+    # posts no es lista
+    r = requests.post(url, json={"meta": {}, "posts": "no-lista"})
+    assert r.status_code == 400, f"posts no-lista debe ser 400, got {r.status_code}"
+
+    # posts vacía — válido, inserted=0
+    r = requests.post(url, json={"meta": {"group_id": GID_EP, "colonia_id": 15,
+                                          "fecha_captura": "20-04-2026"}, "posts": []})
+    assert r.status_code == 200, f"posts=[] debe ser 200, got {r.status_code}"
+    body = r.json()
+    assert body.get("ok") is True
+    assert body.get("inserted") == 0
+
+    # happy path: 1 post válido
+    r = requests.post(url, json={
+        "meta": {"group_id": GID_EP, "colonia_id": 15, "fecha_captura": "20-04-2026"},
+        "posts": [{"fbid_post": FBID_EP, "autor_id": "ep_autor", "texto": "test endpoint",
+                   "imagenes": []}],
+    })
+    assert r.status_code == 200, f"happy path debe ser 200, got {r.status_code}"
+    body = r.json()
+    assert body.get("ok") is True
+    assert body.get("inserted") == 1
+    assert body.get("errors") == []
+
+    # Verificar en DB que quedó 'archivado'
+    row = fetch_row(FBID_EP, GID_EP)
+    assert row is not None, "Post no fue insertado en DB"
+    assert row["estado"] == "archivado"
+
+    print("  ✓ endpoint POST /posts_raw/bulk_insert")
+
+
+def test_endpoint_marcar():
+    """
+    POST /posts_raw/marcar
+    - Faltan campos requeridos → 400
+    - Estado inválido → 400
+    - Happy path → 200, {ok: true, updated: N}
+    - razon_descarte se ignora cuando estado != 'descartado'
+    """
+    import requests
+
+    url = f"{BASE_URL}/posts_raw/marcar"
+
+    # Asegurar que el registro existe
+    _insertar_raw_test(FBID_EP, GID_EP, 15, "ep_autor", "20-04-2026", {"texto": "test"})
+
+    # Faltan campos
+    r = requests.post(url, json={"fbid_post": FBID_EP})
+    assert r.status_code == 400, f"Sin estado debe ser 400, got {r.status_code}"
+    assert r.json().get("ok") is False
+
+    r = requests.post(url, json={"estado": "procesado"})
+    assert r.status_code == 400, f"Sin fbid_post debe ser 400, got {r.status_code}"
+
+    # Estado inválido
+    r = requests.post(url, json={"fbid_post": FBID_EP, "group_id": GID_EP, "estado": "fantasma"})
+    assert r.status_code == 400, f"Estado inválido debe ser 400, got {r.status_code}"
+    assert r.json().get("ok") is False
+
+    # Happy path: marcar como procesado
+    r = requests.post(url, json={"fbid_post": FBID_EP, "group_id": GID_EP, "estado": "procesado"})
+    assert r.status_code == 200, f"Happy path debe ser 200, got {r.status_code}"
+    body = r.json()
+    assert body.get("ok") is True
+    assert "updated" in body
+
+    row = fetch_row(FBID_EP, GID_EP)
+    assert row["estado"] == "procesado"
+
+    # razon_descarte debe ser NULL cuando estado='publicado'
+    r = requests.post(url, json={"fbid_post": FBID_EP, "group_id": GID_EP,
+                                  "estado": "publicado", "razon_descarte": "deberia_ignorarse"})
+    assert r.status_code == 200
+    row2 = fetch_row(FBID_EP, GID_EP)
+    assert row2["estado"] == "publicado"
+    assert row2["razon_descarte"] is None
+
+    # Marcar descartado con razón
+    r = requests.post(url, json={"fbid_post": FBID_EP, "group_id": GID_EP,
+                                  "estado": "descartado", "razon_descarte": "clasif_ignorar"})
+    assert r.status_code == 200
+    row3 = fetch_row(FBID_EP, GID_EP)
+    assert row3["estado"] == "descartado"
+    assert row3["razon_descarte"] == "clasif_ignorar"
+
+    print("  ✓ endpoint POST /posts_raw/marcar")
+
+
+def test_endpoint_bulk_marcar():
+    """
+    POST /posts_raw/bulk_marcar
+    - JSON inválido → 400
+    - updates no es lista → 400
+    - Happy path → 200, {ok: true, updated: N}
+    - Estados inválidos en la lista se ignoran silenciosamente
+    """
+    import requests
+
+    url = f"{BASE_URL}/posts_raw/bulk_marcar"
+
+    # Asegurar que el registro existe
+    _insertar_raw_test(FBID_EP, GID_EP, 15, "ep_autor", "20-04-2026", {"texto": "test"})
+
+    # JSON malformado
+    r = requests.post(url, data="no es json", headers={"Content-Type": "application/json"})
+    assert r.status_code == 400, f"JSON inválido debe ser 400, got {r.status_code}"
+
+    # updates no es lista
+    r = requests.post(url, json={"updates": "string"})
+    assert r.status_code == 400, f"updates no-lista debe ser 400, got {r.status_code}"
+
+    # Lista vacía — válido, updated=0
+    r = requests.post(url, json={"updates": []})
+    assert r.status_code == 200
+    assert r.json().get("updated") == 0
+
+    # Estado inválido en la lista → se ignora, updated=0
+    r = requests.post(url, json={"updates": [
+        {"fbid_post": FBID_EP, "group_id": GID_EP, "estado": "estado_inventado"}
+    ]})
+    assert r.status_code == 200
+    body = r.json()
+    assert body.get("ok") is True
+    assert body.get("updated") == 0  # ignorado silenciosamente
+
+    # Happy path: actualizar 1 registro
+    r = requests.post(url, json={"updates": [
+        {"fbid_post": FBID_EP, "group_id": GID_EP, "estado": "procesado"}
+    ]})
+    assert r.status_code == 200
+    body = r.json()
+    assert body.get("ok") is True
+    assert body.get("updated") == 1
+
+    row = fetch_row(FBID_EP, GID_EP)
+    assert row["estado"] == "procesado"
+
+    print("  ✓ endpoint POST /posts_raw/bulk_marcar")
+
+
 # ─── runner ──────────────────────────────────────────────────────────
 
 if __name__ == "__main__":
@@ -414,7 +591,7 @@ if __name__ == "__main__":
     setup_table()
     print("Tabla de prueba lista.\n")
 
-    tests = [
+    db_tests = [
         test_insertar_post_raw,
         test_marcar_post_raw,
         test_marcar_desync_devuelve_cero,
@@ -423,14 +600,24 @@ if __name__ == "__main__":
         test_flujo_completo_ciclo_5_momentos,
     ]
 
+    endpoint_tests = [
+        test_endpoint_bulk_insert,
+        test_endpoint_marcar,
+        test_endpoint_bulk_marcar,
+    ]
+
+    all_test_fbids_ep = ALL_TEST_FBIDS + [FBID_EP]
+
     def _safe_teardown():
         try:
-            teardown_rows(*ALL_TEST_FBIDS)
+            teardown_rows(*all_test_fbids_ep)
         except Exception as e:
             print(f"  [teardown warning] {e}")
 
+    # ── Tests de DB ───────────────────────────────────────────────────
+    print("── Tests de DB ──")
     passed = failed = 0
-    for t in tests:
+    for t in db_tests:
         _safe_teardown()
         try:
             t()
@@ -438,6 +625,22 @@ if __name__ == "__main__":
         except Exception as e:
             print(f"  ✗ {t.__name__}: {e}")
             failed += 1
+
+    # ── Tests de endpoints HTTP ───────────────────────────────────────
+    print(f"\n── Tests de endpoints HTTP ({BASE_URL}) ──")
+    if not _server_disponible():
+        print(f"  [SKIP] Servidor no disponible en {BASE_URL}")
+        print(f"  Para correr estos tests: uvicorn main:app --reload")
+        print(f"  O exporta API_URL=https://tu-app.railway.app antes de correr el script")
+    else:
+        for t in endpoint_tests:
+            _safe_teardown()
+            try:
+                t()
+                passed += 1
+            except Exception as e:
+                print(f"  ✗ {t.__name__}: {e}")
+                failed += 1
 
     _safe_teardown()
     print(f"\n{'='*50}")
