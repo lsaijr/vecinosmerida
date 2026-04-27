@@ -596,7 +596,7 @@ async def publicar(file: UploadFile = File(...), debug: str = Query("false")):
                     except Exception:
                         pass
 
-                _, st = fn_insertar(p, None)
+                _, st = fn_insertar(p, p.get("colonia_id") or colonia_id_meta)
                 if st == "nuevo":
                     conteo[key_nuevo] += 1
                 else:
