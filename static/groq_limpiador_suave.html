@@ -1,0 +1,1141 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Limpiador Suave · VecinosMérida</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=Syne:wght@400;600;800&display=swap');
+
+  :root {
+    --bg: #0a0a0f;
+    --surface: #111118;
+    --border: #1e1e2e;
+    --accent: #7c3aed;
+    --accent2: #06b6d4;
+    --accent3: #f59e0b;
+    --text: #e2e8f0;
+    --muted: #64748b;
+    --success: #10b981;
+    --error: #ef4444;
+    --warn: #f59e0b;
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'Syne', sans-serif;
+    min-height: 100vh;
+    padding: 2rem 1rem;
+  }
+
+  body::before {
+    content: '';
+    position: fixed;
+    inset: 0;
+    background-image:
+      linear-gradient(rgba(124,58,237,.03) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(124,58,237,.03) 1px, transparent 1px);
+    background-size: 40px 40px;
+    pointer-events: none;
+    z-index: 0;
+  }
+
+  .container { max-width: 900px; margin: 0 auto; position: relative; z-index: 1; }
+
+  .header { text-align: center; margin-bottom: 2.5rem; }
+  .badge {
+    display: inline-flex; align-items: center; gap: .4rem;
+    background: rgba(124,58,237,.15); border: 1px solid rgba(124,58,237,.3);
+    border-radius: 99px; padding: .3rem .9rem;
+    font-size: .75rem; color: #a78bfa; letter-spacing: .08em; text-transform: uppercase;
+    margin-bottom: 1rem;
+  }
+  h1 { font-size: clamp(2rem, 5vw, 3rem); font-weight: 800; line-height: 1; margin-bottom: .5rem; }
+  h1 span { color: var(--accent2); }
+  .subtitle { color: var(--muted); font-size: .85rem; font-family: 'Space Mono', monospace; }
+  .subtitle-detail {
+    color: var(--muted); font-size: .78rem; font-family: 'Space Mono', monospace;
+    margin-top: .4rem; opacity: .7;
+  }
+
+  .card {
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: 16px; padding: 1.5rem; margin-bottom: 1.5rem;
+    transition: border-color .3s;
+  }
+  .card.active { border-color: var(--accent); }
+  .card.done { border-color: var(--success); }
+
+  .card-header { display: flex; align-items: center; gap: .75rem; margin-bottom: 1.25rem; }
+  .step-num {
+    width: 32px; height: 32px; border-radius: 50%; background: var(--accent);
+    display: flex; align-items: center; justify-content: center;
+    font-size: .85rem; font-weight: 700; flex-shrink: 0;
+  }
+  .step-num.done-num { background: var(--success); }
+  .card-title { font-size: 1.1rem; font-weight: 600; }
+
+  .input-group { margin-bottom: 1rem; }
+  label {
+    display: block; font-size: .8rem; color: var(--muted); letter-spacing: .05em;
+    text-transform: uppercase; margin-bottom: .4rem; font-family: 'Space Mono', monospace;
+  }
+
+  .file-drop {
+    border: 2px dashed var(--border); border-radius: 12px; padding: 2rem;
+    text-align: center; cursor: pointer; transition: all .2s; position: relative;
+  }
+  .file-drop:hover, .file-drop.dragover {
+    border-color: var(--accent); background: rgba(124,58,237,.05);
+  }
+  .file-drop input[type="file"] {
+    position: absolute; inset: 0; opacity: 0; cursor: pointer; width: 100%; height: 100%;
+  }
+  .file-icon { font-size: 2rem; margin-bottom: .5rem; }
+  .file-name {
+    font-family: 'Space Mono', monospace; font-size: .8rem; color: var(--accent2); margin-top: .5rem;
+  }
+
+  select {
+    width: 100%; background: var(--bg); border: 1px solid var(--border); border-radius: 8px;
+    padding: .75rem 1rem; color: var(--text); font-family: 'Space Mono', monospace;
+    font-size: .85rem; outline: none; cursor: pointer;
+  }
+  select:focus { border-color: var(--accent); }
+
+  .btn {
+    display: inline-flex; align-items: center; justify-content: center; gap: .5rem;
+    padding: .85rem 1.75rem; border-radius: 10px; font-family: 'Syne', sans-serif;
+    font-size: .95rem; font-weight: 600; cursor: pointer; border: none; transition: all .2s;
+    width: 100%;
+  }
+  .btn-primary { background: var(--accent); color: white; }
+  .btn-primary:hover { background: #6d28d9; transform: translateY(-1px); }
+  .btn-primary:disabled { background: var(--border); color: var(--muted); cursor: not-allowed; transform: none; }
+  .btn-download {
+    background: transparent; border: 1px solid var(--success); color: var(--success);
+    font-size: .85rem; padding: .6rem 1.2rem; width: auto;
+  }
+  .btn-download:hover { background: rgba(16,185,129,.1); }
+
+  .stats-grid {
+    display: grid; grid-template-columns: repeat(auto-fit, minmax(100px, 1fr));
+    gap: .5rem; margin: .75rem 0;
+  }
+  .stat-item { background: var(--bg); border-radius: 8px; padding: .6rem .75rem; text-align: center; }
+  .stat-val { font-size: 1.15rem; font-weight: 700; font-family: 'Space Mono', monospace; }
+  .stat-label { font-size: .62rem; color: var(--muted); text-transform: uppercase; letter-spacing: .05em; }
+
+  .log {
+    background: var(--bg); border: 1px solid var(--border); border-radius: 8px;
+    padding: .75rem 1rem; font-family: 'Space Mono', monospace; font-size: .72rem;
+    color: var(--muted); max-height: 200px; overflow-y: auto; line-height: 1.6;
+  }
+  .log .log-ok  { color: var(--success); }
+  .log .log-err { color: var(--error); }
+  .log .log-info { color: var(--accent2); }
+  .log .log-warn { color: var(--accent3); }
+
+  .hidden { display: none !important; }
+
+  /* Prospect table */
+  .prospect-table {
+    width: 100%; border-collapse: collapse; font-family: 'Space Mono', monospace; font-size: .75rem;
+    margin-top: .5rem;
+  }
+  .prospect-table th {
+    text-align: left; color: var(--muted); padding: .4rem .5rem;
+    border-bottom: 1px solid var(--border); font-size: .65rem;
+    text-transform: uppercase; letter-spacing: .05em;
+  }
+  .prospect-table td { padding: .4rem .5rem; border-bottom: 1px solid rgba(30,30,46,.4); }
+  .prospect-table tr:hover td { background: rgba(124,58,237,.05); }
+
+  .tipo-badge {
+    display: inline-block; padding: .1rem .4rem; border-radius: 4px;
+    font-size: .65rem; font-weight: 700; letter-spacing: .03em;
+  }
+
+  @keyframes spin { to { transform: rotate(360deg); } }
+  .spinner {
+    display: inline-block; width: 14px; height: 14px;
+    border: 2px solid rgba(255,255,255,.2); border-top-color: white;
+    border-radius: 50%; animation: spin .8s linear infinite;
+  }
+
+  .progress-wrap { background: var(--border); border-radius: 4px; height: 4px; overflow: hidden; margin: .75rem 0; }
+  .progress-bar { height: 100%; border-radius: 4px; background: var(--accent); width: 0%; transition: width .3s ease; }
+
+  /* Marcados section */
+  .marcados-grid {
+    display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
+    gap: .5rem; margin: .75rem 0;
+  }
+  .marcado-item {
+    background: rgba(245,158,11,.06); border: 1px solid rgba(245,158,11,.2);
+    border-radius: 8px; padding: .6rem .75rem; text-align: center;
+  }
+  .marcado-val { font-size: 1.15rem; font-weight: 700; font-family: 'Space Mono', monospace; color: var(--accent3); }
+  .marcado-label { font-size: .62rem; color: var(--muted); text-transform: uppercase; letter-spacing: .05em; }
+</style>
+</head>
+<body>
+
+<div class="container">
+
+  <div class="header">
+    <div class="badge">🧹 VecinosMérida · Limpiador Suave</div>
+    <h1>🧹 Limpiador <span>Suave</span></h1>
+    <p class="subtitle">no filtra, solo marca</p>
+    <p class="subtitle-detail">Conserva todos los posts dudosos y los marca con flags. La Etapa 2 decide qué hacer con ellos.</p>
+  </div>
+
+  <!-- CARD 1: Configuración -->
+  <div class="card active" id="cardConfig">
+    <div class="card-header">
+      <div class="step-num" id="num1">1</div>
+      <div class="card-title">Cargar JSON del scraper</div>
+    </div>
+
+    <div class="input-group">
+      <label>JSON crudo de Facebook (scraper v3)</label>
+      <div class="file-drop" id="fileDrop">
+        <input type="file" id="fileInput" accept=".json,.txt" />
+        <div class="file-icon">📂</div>
+        <div style="color:var(--muted);font-size:.85rem">Arrastra el archivo o haz clic</div>
+        <div class="file-name hidden" id="fileName"></div>
+      </div>
+    </div>
+
+    <div class="input-group" style="margin-top:1rem">
+      <label>Tipo de grupo</label>
+      <select id="grupoTipo">
+        <option value="vecinos">🏘 Vecinos / Colonias</option>
+        <option value="noticias">📰 Noticias</option>
+        <option value="mascotas">🐾 Mascotas / Adopciones</option>
+        <option value="empleo">💼 Empleo / Trabajo</option>
+        <option value="ventas">🛍 Ventas / Negocios</option>
+        <option value="perdidos">🔍 Objetos Perdidos / Encontrados</option>
+      </select>
+    </div>
+
+    <button class="btn btn-primary" id="btnStart" disabled onclick="procesar()">
+      🧹 Procesar (modo suave) →
+    </button>
+  </div>
+
+  <!-- CARD 2: Resultados -->
+  <div class="card hidden" id="cardResults">
+    <div class="card-header">
+      <div class="step-num done-num">✓</div>
+      <div class="card-title">Resultado</div>
+    </div>
+
+    <div class="progress-wrap"><div class="progress-bar" id="progressBar"></div></div>
+
+    <!-- Stats grid -->
+    <div class="stats-grid" id="statsGrid"></div>
+
+    <!-- Pre-tipo distribution -->
+    <div id="preTipoSection" class="hidden" style="margin-top:1rem">
+      <label>Pre-clasificación por keywords</label>
+      <div class="stats-grid" id="preTipoGrid"></div>
+    </div>
+
+    <!-- Marcados (no eliminados) -->
+    <div id="marcadosSection" class="hidden" style="margin-top:1rem">
+      <label>🏷 Posts marcados (no eliminados) — pasan a Etapa 2 con flags</label>
+      <div class="marcados-grid" id="marcadosGrid"></div>
+    </div>
+
+    <!-- Prospectos -->
+    <div id="prospectSection" class="hidden" style="margin-top:1.25rem">
+      <label>🎯 Prospectos de publicidad — autores que más publican</label>
+      <div id="prospectTable"></div>
+    </div>
+
+    <!-- Download -->
+    <div style="margin-top:1.25rem;display:flex;gap:.75rem;flex-wrap:wrap" id="downloadSection" class="hidden">
+      <button class="btn btn-download" onclick="descargarJSON()">⬇ Descargar JSON suave</button>
+      <button class="btn btn-download" style="border-color:var(--accent2);color:var(--accent2)" onclick="descargarProspectos()">📊 Descargar prospectos</button>
+    </div>
+
+    <!-- Log -->
+    <div style="margin-top:1.25rem">
+      <label>Log de proceso</label>
+      <div class="log" id="logBox"></div>
+    </div>
+  </div>
+
+</div>
+
+<script>
+// ═══════════════════════════════════════════════════════════════
+// CONFIGURACIÓN
+// ═══════════════════════════════════════════════════════════════
+
+const NEWS_MIN_WORDS = 70;
+
+const CONFIG_GRUPO = {
+  vecinos:  { min_palabras: 3,  noticia_umbral: NEWS_MIN_WORDS, requiere_imagen: true,  tipos_permitidos: ['negocio','alerta','mascota','noticia','empleo','ignorar'] },
+  noticias: { min_palabras: 5,  noticia_umbral: NEWS_MIN_WORDS, requiere_imagen: false, tipos_permitidos: ['noticia','alerta','negocio','ignorar'] },
+  mascotas: { min_palabras: 7,  noticia_umbral: NEWS_MIN_WORDS, requiere_imagen: true,  tipos_permitidos: ['mascota','alerta','negocio','ignorar'] },
+  empleo:   { min_palabras: 5,  noticia_umbral: 9999,           requiere_imagen: false, tipos_permitidos: ['empleo','ignorar'] },
+  ventas:   { min_palabras: 3,  noticia_umbral: 9999,           requiere_imagen: true,  tipos_permitidos: ['negocio','mascota','ignorar'] },
+  perdidos: { min_palabras: 5,  noticia_umbral: 9999,           requiere_imagen: false, tipos_permitidos: ['perdido','mascota','negocio','ignorar'] },
+};
+
+// ── Keywords para pre-clasificación (calibrado con 6,368+ posts) ──
+const _KW = {
+  negocio: {
+    2: ['vendo','venta','precio','oferta','servicio','domicilio','pedido','encargo',
+        'contamos con','disponible','delivery','envio','envío','whatsapp','cotiz',
+        'ubicados en','ubicado en','horario','tenemos','pedidos','ingredientes',
+        'estamos laborando','ven a visitarnos','nos ubicamos','sucursal',
+        'hacemos','realizamos','ofrecemos','apartado','aparta el tuyo',
+        'pesos','mxn','repostería','reposteria','taller','reparaci','instalaci',
+        'plomero','electricista','carpintero','herreria','albañil',
+        'frapp','smoothie','crepa','fresas con','menu','menú'],
+    1: ['comida','tacos','pizza','hamburguesa','torta','sushi','mariscos','pollo','carne',
+        'panadería','panaderia','pastel','café','cafe','ropa','calzado','zapato',
+        'accesorio','joyeria','joyería','belleza','estética','uñas','cabello',
+        'maquillaje','masaje','spa','gym','clases','curso','academia',
+        'seguro','crédito','credito','préstamo','prestamo','inmueble','renta',
+        'birria','burger','hot dog','pierna','pastor','tamales','pozole',
+        'mochila','bolsa','vestido','blusa','pantalon','zapatos',
+        'instalacion','mantenimiento','reparacion','fumigacion',
+        'remato','entrega inmediata','modelos disponibles','keratina',
+        'alaciado','permanente','corte','tinte','tratamiento','limpieza',
+        'lavado','piscina','alberca','brincolines','inflable',
+        'lentes','armazones','graduados','internet','fibra óptica','fibra optica',
+        'megas','totalplay','pisos','azulejo','loseta','cemento',
+        'block','varilla','material','construcción','construccion',
+        'nueva colección','nueva coleccion','temporada','catálogo','catalogo'],
+  },
+  alerta: {
+    2: ['robo','robaron','ladrón','ladron','sospechoso','bache','fuga de agua','accidente',
+        'choque','atropelló','atropello','herido','peligro','cuidado','alerta','auxilio',
+        'emergencia','sin luz','maltrato','estafa','fraude','depósito','deposito',
+        'timo','engaño','invasores','despojo','amenaza','violencia'],
+    1: ['incendio','inundación','inundacion','poste caido','fuga','cables','denuncia'],
+  },
+  mascota: {
+    2: ['perdí mi perro','perdí mi gato','se escapó mi','se me escapó','se perdió mi',
+        'en adopción','en adopcion','busca hogar','busca familia','dar en adopción',
+        'encontré un perro','encontré un gato','perro perdido','gato perdido',
+        'si la ves','responde al nombre','avísame','la entregamos'],
+    1: ['mascota','perro','gato','cachorro','gatito','canino','felino','adopción','adopcion',
+        'perrito','perrita','gatitos','rescate','hogar temporal','esteriliz',
+        'desparasit','collar','correa','veterinari','abandonado','abandonada'],
+  },
+  noticia: {
+    3: ['autoridades','policía','policia','bomberos','protección civil','proteccion civil'],
+    2: ['vecinos reportan','se registra','comunicado','ayuntamiento','movilización','movilizacion',
+        'gobierno','secretaría','secretaria','programa','municipio','detenido',
+        'operativo','volcadura','fallecio','falleció'],
+    1: ['reportan','informan','hechos','seguridad'],
+  },
+  empleo: {
+    2: ['se solicita','se solicitan','solicitamos','estamos contratando','buscamos personal',
+        'vacante','vacantes','contratación inmediata','únete a nuestro equipo',
+        'estamos buscando','envía tu cv','manda tu cv','pago semanal','pago quincenal',
+        'prestaciones','solicito personal','contratando','busco trabajo','busco empleo',
+        'ofrezco mis servicios','busca empleo','en búsqueda de empleo'],
+    1: ['sueldo','requisitos','experiencia','turno','interesados','curriculum',
+        'tiempo completo','medio tiempo','plaza','puesto'],
+  },
+  perdido: {
+    3: ['se me perdió','se me perdio','perdí mi','perdi mi','se me extravió','se me extravio',
+        'encontré un','encontre un','encontré una','encontre una','encontré este','encontre este',
+        'encontré esta','encontre esta'],
+    2: ['se perdió','se perdio','extravié','extravie','se me cayó','se me cayo',
+        'se extraviaron','se extravió','se extravio','perdí','perdi','encontré','encontre',
+        'si alguien encontró','si alguien encontro','alguien perdió','alguien perdio',
+        'se le cayó','se le cayo','recompensa','gratificación','gratificacion'],
+    1: ['perdido','perdida','extraviado','extraviada','encontrado','encontrada',
+        'ine','credencial','identificación','identificacion','cartera','billetera',
+        'llaves','llave','llavero','celular','iphone','samsung','mochila','bolsa',
+        'pasaporte','licencia de conducir','placa','bicicleta'],
+  },
+};
+const UMBRAL_KW = 2;
+
+// ── Subcategorías de objetos perdidos ────────────────────────
+const _PERDIDO_CATEGORIAS = {
+  documento:    ['ine','credencial','identificación','identificacion','pasaporte','licencia',
+                 'acta de nacimiento','curp','visa','tarjeta de circulación','tarjeta de circulacion',
+                 'cartilla','titulo','cédula','cedula','constancia','certificado'],
+  electronico:  ['celular','iphone','samsung','xiaomi','motorola','teléfono','telefono','tablet',
+                 'laptop','computadora','airpods','audífonos','audifonos','cámara','camara',
+                 'reloj','smartwatch','bocina','control remoto'],
+  llaves:       ['llaves','llave','llavero'],
+  cartera_bolsa:['cartera','billetera','bolsa','mochila','maletín','maletin','portafolio',
+                 'riñonera','rinonera','cangurera','monedero'],
+  vehiculo:     ['bicicleta','bici','moto','motocicleta','carro','auto','camioneta','placa',
+                 'placas','patín','patin','scooter'],
+  mascota:      ['perro','perra','gato','gata','perrit','gatit','mascota','cachorro'],
+  lentes:       ['lentes','gafas','anteojos'],
+  ropa:         ['chamarra','sudadera','sombrero','gorra','zapato','tenis','suéter','sueter'],
+  otro:         [],
+};
+
+function detectarCategoriaPerdido(texto) {
+  const t = (texto || '').toLowerCase();
+  for (const [cat, kws] of Object.entries(_PERDIDO_CATEGORIAS)) {
+    if (cat === 'otro') continue;
+    if (kws.some(k => t.includes(k))) return cat;
+  }
+  return 'otro';
+}
+
+function detectarEstadoPerdido(texto) {
+  const t = (texto || '').toLowerCase();
+  if (['encontré','encontre','encontramos','hallé','halle','apareció','aparecio',
+       'encontrado','encontrada'].some(k => t.includes(k))) return 'encontrado';
+  if (['perdí','perdi','se perdió','se perdio','extravié','extravie','se me cayó',
+       'se me cayo','se me perdió','se me perdio','robaron','robó','robo mi',
+       'me robaron','perdido','perdida','extraviado','extraviada'].some(k => t.includes(k))) return 'perdido';
+  return null;
+}
+
+function detectarRecompensa(texto) {
+  return /recompensa|gratificaci[oó]n|reward|\$\s*\d+.*recompensa/i.test(texto || '');
+}
+
+// ── Ortografía (portado de limpiar_json.py) ─────────────────
+const ORTOGRAFIA = [
+  [/\btelefono\b/gi,     'teléfono'],
+  [/\binformacion\b/gi,  'información'],
+  [/\bsituacion\b/gi,    'situación'],
+  [/\batencion\b/gi,     'atención'],
+  [/\bperdio\b/gi,       'perdió'],
+  [/\bextravio\b/gi,     'extravió'],
+  [/\baparecio\b/gi,     'apareció'],
+  [/\benvio\b/gi,        'envío'],
+  [/\benvios\b/gi,       'envíos'],
+  [/\btambien\b/gi,      'también'],
+  [/\bdias\b/gi,         'días'],
+  [/\bnumero\b/gi,       'número'],
+  [/\brapido\b/gi,       'rápido'],
+  [/\bfacil\b/gi,        'fácil'],
+  [/\bcredito\b/gi,      'crédito'],
+  [/\bproximo\b/gi,      'próximo'],
+  [/\bultimo\b/gi,       'último'],
+  [/\bmiercoles\b/gi,    'miércoles'],
+  [/\bsabado\b/gi,       'sábado'],
+  [/\bke\b/gi,           'que'],
+  [/\bkiero\b/gi,        'quiero'],
+  [/\bxfa\b/gi,          'por favor'],
+  [/\bxfavor\b/gi,       'por favor'],
+  [/\btmb\b/gi,          'también'],
+  [/\bgrcias\b/gi,       'gracias'],
+  [/\bwhats\b/gi,        'WhatsApp'],
+  [/\bwsp\b/gi,          'WhatsApp'],
+];
+
+// ── Regex ────────────────────────────────────────────────────
+const _RE_URL        = /https?:\/\/\S+|wa\.me(?:\/c)?\/\S+/gi;
+const _RE_HASHTAG    = /#\w+/g;
+const _RE_EMOJI      = /[\u{1F300}-\u{1F9FF}\u{2700}-\u{27BF}\u{FE00}-\u{FE0F}☀-⛿⭐⭕⌚⌛▪-◾☔☕]+/gu;
+const _RE_DECO_UNI   = /[\u{1D400}-\u{1D7FF}\u{1F100}-\u{1F1FF}]+/gu;
+const _RE_MENCIONES  = /@\[\d+:\d+:[^\]]*\]/g;
+const _RE_SIGNOS_REP = /([!?])\1+|\.{4,}/g;
+const _RE_ESPACIOS   = /\s+/g;
+const _RE_SOLO_TEL   = /^[\d\s\-.()\+]{8,18}$/;
+const _RE_TIKTOK     = /tiktok\.com|vm\.tiktok|tiktok para descubrir|entra a tiktok/i;
+const _RE_LIVE       = /transmisi[oó]n en directo|en vivo ahora|live\s+ahora|unirte a la transmisi[oó]n/i;
+const _UI_FB = new Set(['más relevantes','ver más comentarios','por qué ves esto','compartir','me gusta','comentar']);
+
+const _PATRONES_TEL = [
+  /\b(\d{10})\b/,
+  /\b(\d{3})[\s\-.](\d{3})[\s\-.](\d{4})\b/,
+  /(?:\+52|52)[\s\-]?(\d{10})\b/,
+  /(?:cel|tel|whatsapp|wha|llamar?\s*al?|marca\s*al?)[:\s\-]*(\d[\d\s\-.]{8,12}\d)/i,
+  /wa\.me(?:\/c)?\/(?:52)?(\d{10})/,
+];
+
+const _GEO_YUCATAN = [
+  'mérida','merida','yucatán','yucatan','colonia','fraccionamiento',
+  'comisaría','comisaria','ticul','progreso','valladolid','izamal',
+  'motul','umán','uman','kanasín','kanasin','conkal','seye',
+  'cancún','cancun','quintana roo','campeche',
+];
+const _GEO_EXTERNA = [
+  'california','estados unidos','eeuu','cdmx','ciudad de mexico',
+  'guadalajara','monterrey','nuevo leon','jalisco','puebla',
+  'veracruz','chiapas','oaxaca','tabasco','coahuila','tamaulipas',
+  'sinaloa','sonora','tijuana','acapulco',
+];
+const _SIGNALS_URGENTE = [
+  'difundamos','difunde','urgente','comparte esto','🆘',
+  'necesito su ayuda','ayúdanos a compartir','ayudanos a compartir',
+];
+
+const CONSULTA_HINTS = [
+  'alguien vende','quien vende','quién vende','alguien sabe',
+  'saben donde','saben dónde','recomienden','recomendación','recomendacion',
+  'donde venden','dónde venden','conocen a',
+];
+
+// ── Frases típicas de comentario (detector nuevo) ────────────
+const COMENTARIO_HINTS = [
+  'me interesa','información','informacion','algún número','algun número','algun numero',
+  'cuánto cuesta','cuanto cuesta','cómo aplico','como aplico',
+  'qué requisitos','que requisitos','mande mensaje','inbox','info',
+  'más información','mas informacion','mas información',
+  'me apunto','yo quiero','presente','pregunto',
+];
+
+// ═══════════════════════════════════════════════════════════════
+// FUNCIONES DE NORMALIZACIÓN (portadas de limpiar_json.py)
+// ═══════════════════════════════════════════════════════════════
+
+function _norm(t) { return (t || '').toLowerCase(); }
+
+function limpiarUnicodeFB(txt) {
+  if (!txt) return txt;
+  let r = '';
+  for (const ch of txt) {
+    const cp = ch.codePointAt(0);
+    r += (cp >= 0x1D400 && cp <= 0x1D7FF) ? ' ' : ch;
+  }
+  return r.replace(/ {2,}/g, ' ').trim();
+}
+
+function sentenceCase(seg) {
+  seg = seg.trim();
+  if (!seg || seg.length < 4) return seg;
+  const letras = seg.match(/[a-zA-ZÁÉÍÓÚÑáéíóúñ]/g) || [];
+  if (!letras.length) return seg;
+  const pct = letras.filter(l => l === l.toUpperCase() && l !== l.toLowerCase()).length / letras.length;
+  if (pct <= 0.35) return seg;
+  return seg[0].toUpperCase() + seg.slice(1).toLowerCase();
+}
+
+function normalizarMayusculas(txt) {
+  if (!txt) return txt;
+  return txt.split('\n').map(linea => {
+    return linea.split(/(?<=[.!?¡¿])\s+/).map(sentenceCase).join(' ');
+  }).join('\n');
+}
+
+function corregirOrtografia(txt) {
+  if (!txt) return txt;
+  for (const [pat, corr] of ORTOGRAFIA) txt = txt.replace(pat, corr);
+  return txt;
+}
+
+function limpiarPuntuacion(txt) {
+  if (!txt) return txt;
+  txt = txt.replace(/!{2,}/g, '!');
+  txt = txt.replace(/\?{2,}/g, '?');
+  txt = txt.replace(/\.{4,}/g, '...');
+  txt = txt.replace(/ {2,}/g, ' ');
+  txt = txt.replace(/\t/g, ' ');
+  txt = txt.replace(/\n{3,}/g, '\n\n');
+  return txt.trim();
+}
+
+function normalizarTextoCompleto(txt) {
+  txt = limpiarUnicodeFB(txt);
+  txt = normalizarMayusculas(txt);
+  txt = corregirOrtografia(txt);
+  txt = limpiarPuntuacion(txt);
+  return txt;
+}
+
+// ── texto_limpio: versión sin URLs/hashtags/emojis para IA ──
+function generarTextoLimpio(txt) {
+  if (!txt) return '';
+  txt = txt.replace(_RE_MENCIONES, '');
+  txt = txt.replace(_RE_URL, '');
+  txt = txt.replace(_RE_HASHTAG, '');
+  txt = txt.replace(_RE_EMOJI, '');
+  txt = txt.replace(_RE_DECO_UNI, '');
+  txt = txt.split(/\s+/).filter(w => !(w.length > 25 && /\d/.test(w) && /[a-zA-Z]/.test(w))).join(' ');
+  txt = txt.replace(_RE_SIGNOS_REP, m => /[!?]/.test(m[0]) ? m[0] : '...');
+  txt = txt.replace(_RE_ESPACIOS, ' ').trim();
+  return txt;
+}
+
+// ── Teléfono ────────────────────────────────────────────────
+function extraerTelefono(txt) {
+  if (!txt) return null;
+  for (const pat of _PATRONES_TEL) {
+    const m = txt.match(pat);
+    if (m) {
+      const num = m.slice(1).filter(Boolean).join('').replace(/\D/g, '');
+      if (num.length >= 10) return num.slice(-10);
+    }
+  }
+  return null;
+}
+
+function contarPalabras(txt) {
+  return (txt || '').trim().split(/\s+/).filter(w => w.length > 0).length;
+}
+
+// ── fbid_post: preservar del scraper o generar hash ─────────
+function simpleHash(str) {
+  let h1 = 0, h2 = 0;
+  for (let i = 0; i < str.length; i++) {
+    h1 = ((h1 << 5) - h1) + str.charCodeAt(i);
+    h1 = h1 & h1;
+  }
+  for (let i = str.length - 1; i >= 0; i--) {
+    h2 = ((h2 << 7) - h2) + str.charCodeAt(i);
+    h2 = h2 & h2;
+  }
+  return Math.abs(h1).toString(16).padStart(8,'0') + Math.abs(h2).toString(16).padStart(8,'0');
+}
+
+function asegurarFbidPost(post) {
+  if (post.fbid_post && !post.fbid_post.startsWith('syn_')) return post.fbid_post;
+  if (post.fbid_post) return post.fbid_post;
+  const clave = (post.autor || '') + '|' + (post.texto || '').substring(0, 80);
+  return 'syn_' + simpleHash(clave);
+}
+
+// ═══════════════════════════════════════════════════════════════
+// DESCARTE DETERMINISTA — VERSIÓN SUAVE
+// sin_imagen, texto_corto y consulta ya NO descartan: son flags
+// ═══════════════════════════════════════════════════════════════
+
+function esDescartable(post) {
+  const txt = (post.texto || '').trim();
+
+  // Autor fantasma / vacío — siempre eliminan
+  if ((post.autor || '').includes('Indicador de estado online')) return 'autor_fantasma';
+  if (!(post.autor || '').trim()) return 'autor_vacio';
+
+  // UI residual de Facebook — siempre elimina
+  if (_UI_FB.has(_norm(txt))) return 'ui_facebook';
+
+  // Solo teléfono — siempre elimina
+  if (_RE_SOLO_TEL.test(txt)) return 'solo_telefono';
+
+  // Spam / ruido técnico — siempre eliminan
+  if (_RE_TIKTOK.test(txt)) return 'spam_tiktok';
+  if (_RE_LIVE.test(txt))   return 'live_stream';
+
+  // Token basura (tokens técnicos de FB) — siempre elimina
+  const palabras = txt.split(/\s+/);
+  if (palabras.some(w => w.length > 28 && /\d/.test(w) && /[a-zA-Z]/.test(w))) return 'token_basura';
+
+  // sin_imagen, texto_corto, consulta → ahora son flags, no descartan
+  return null;
+}
+
+// ═══════════════════════════════════════════════════════════════
+// NUEVO DETECTOR — es_comentario_probable
+// ═══════════════════════════════════════════════════════════════
+
+function detectarComentario(texto_limpio) {
+  const t = _norm(texto_limpio || '');
+  const nPalabras = t.trim().split(/\s+/).filter(w => w.length > 0).length;
+  // Texto muy corto (< 4 palabras) → probable comentario
+  if (nPalabras < 4) return true;
+  // < 6 palabras Y empieza con frase de comentario → probable comentario
+  if (nPalabras < 6 && COMENTARIO_HINTS.some(h => t.startsWith(h))) return true;
+  return false;
+}
+
+// ═══════════════════════════════════════════════════════════════
+// DEDUPLICACIÓN
+// ═══════════════════════════════════════════════════════════════
+
+function deduplicar(posts) {
+  const seen = {};
+  const resultado = [];
+  for (const p of posts) {
+    const autor = _norm(p.autor || '').substring(0, 30);
+    const texto = _norm(p.texto || '').substring(0, 120);
+    const clave = autor + '|' + texto;
+    if (seen[clave]) {
+      seen[clave].repeticiones = (seen[clave].repeticiones || 1) + 1;
+    } else {
+      p.repeticiones = p.repeticiones || 1;
+      seen[clave] = p;
+      resultado.push(p);
+    }
+  }
+  return resultado;
+}
+
+// ═══════════════════════════════════════════════════════════════
+// PRE-CLASIFICACIÓN POR KEYWORDS
+// ═══════════════════════════════════════════════════════════════
+
+function preClasificar(texto, autor, grupoTipo) {
+  const haystack = _norm(texto) + ' ' + _norm(autor);
+  const scores = {};
+  for (const [tipo, grupos] of Object.entries(_KW)) {
+    let score = 0;
+    for (const [peso, kws] of Object.entries(grupos)) {
+      for (const kw of kws) { if (haystack.includes(kw)) score += Number(peso); }
+    }
+    scores[tipo] = score;
+  }
+  const mejorTipo  = Object.keys(scores).reduce((a, b) => scores[a] >= scores[b] ? a : b);
+  const mejorScore = scores[mejorTipo];
+
+  if (mejorTipo === 'noticia' && contarPalabras(texto) < NEWS_MIN_WORDS) return ['ambiguo', 0];
+  if (grupoTipo === 'empleo' && scores['empleo'] >= UMBRAL_KW) return ['empleo', scores['empleo']];
+  if (grupoTipo === 'perdidos' && scores['perdido'] >= UMBRAL_KW) return ['perdido', scores['perdido']];
+  if (mejorScore >= UMBRAL_KW) return [mejorTipo, mejorScore];
+  return ['ambiguo', 0];
+}
+
+// ═══════════════════════════════════════════════════════════════
+// FILTRO URGENTE GEOGRÁFICO
+// ═══════════════════════════════════════════════════════════════
+
+function clasificarUrgenteGeo(texto) {
+  const t = _norm(texto);
+  if (!_SIGNALS_URGENTE.some(s => t.includes(s))) return null;
+  const tieneLocal   = _GEO_YUCATAN.some(s => t.includes(s));
+  const tieneExterna = _GEO_EXTERNA.some(s => t.includes(s));
+  if (tieneLocal && !tieneExterna) return 'alerta';
+  if (tieneExterna) return 'ignorar';
+  return 'ambiguo';
+}
+
+// ═══════════════════════════════════════════════════════════════
+// PIPELINE PRINCIPAL
+// ═══════════════════════════════════════════════════════════════
+
+let rawData = null;
+let resultadoFinal = null;
+let prospectos = [];
+
+function procesar() {
+  const grupoTipo = document.getElementById('grupoTipo').value;
+  const cfg = CONFIG_GRUPO[grupoTipo] || CONFIG_GRUPO['vecinos'];
+  const posts = rawData.posts || [];
+
+  document.getElementById('cardConfig').classList.remove('active');
+  document.getElementById('cardConfig').classList.add('done');
+  document.getElementById('num1').textContent = '✓';
+  document.getElementById('num1').classList.add('done-num');
+  document.getElementById('cardResults').classList.remove('hidden');
+  document.getElementById('cardResults').classList.add('active');
+  document.getElementById('btnStart').disabled = true;
+
+  const logBox = document.getElementById('logBox');
+  logBox.innerHTML = '';
+
+  log(`═══ [SUAVE] Procesando ${posts.length} posts — grupo: ${grupoTipo} ═══`, 'info');
+
+  // ── PASO 0: Contar frecuencia por autor_id (ANTES de todo) ──
+  log('📊 Paso 0: Contando frecuencia por autor...', '');
+  const autorFreq = {};
+  const autorNombres = {};
+  const autorTelefonos = {};
+  for (const p of posts) {
+    const aid = p.autor_id || p.autor_url || null;
+    if (!aid) continue;
+    autorFreq[aid] = (autorFreq[aid] || 0) + 1;
+    autorNombres[aid] = p.autor || 'desconocido';
+    const tel = extraerTelefono(p.texto || '');
+    if (tel) autorTelefonos[aid] = tel;
+  }
+  const autoresMultiple = Object.entries(autorFreq).filter(([,c]) => c >= 2).sort((a,b) => b[1] - a[1]);
+  log(`  → ${autoresMultiple.length} autores publican 2+ veces`, 'info');
+  setProgress(10);
+
+  // ── PASO 1: Descarte duro (solo basura indiscutible) ──
+  log('🧹 Paso 1: Descarte duro (sin_imagen/texto_corto/consulta = ahora solo flags)...', '');
+  const stats = {
+    autor_fantasma: 0, token_basura: 0, spam_tiktok: 0,
+    live_stream: 0, ui_facebook: 0, solo_telefono: 0, autor_vacio: 0,
+  };
+  const postsFiltrados = [];
+  for (const p of posts) {
+    const razon = esDescartable(p);
+    if (razon) {
+      stats[razon] = (stats[razon] || 0) + 1;
+    } else {
+      postsFiltrados.push(p);
+    }
+  }
+  const totalDescartados = posts.length - postsFiltrados.length;
+  log(`  → ${totalDescartados} descartados (basura dura), ${postsFiltrados.length} pasan`, 'ok');
+  for (const [k,v] of Object.entries(stats)) { if (v > 0) log(`    ${k}: ${v}`, ''); }
+  setProgress(30);
+
+  // ── PASO 2: Normalización de texto ──
+  log('✏️ Paso 2: Normalizando texto...', '');
+  for (const p of postsFiltrados) {
+    p.texto = normalizarTextoCompleto(p.texto || '');
+  }
+  setProgress(45);
+
+  // ── PASO 3: Deduplicación ──
+  log('🔁 Paso 3: Deduplicación...', '');
+  const antesDedup = postsFiltrados.length;
+  let postsUnicos = deduplicar(postsFiltrados);
+
+  const fbidSeenDedup = {};
+  const antesDedup2 = postsUnicos.length;
+  postsUnicos = postsUnicos.filter(p => {
+    const fbid = p.fbid_post;
+    if (!fbid) return true;
+    if (fbidSeenDedup[fbid]) {
+      fbidSeenDedup[fbid].repeticiones = (fbidSeenDedup[fbid].repeticiones || 1) + 1;
+      return false;
+    }
+    fbidSeenDedup[fbid] = p;
+    return true;
+  });
+
+  const duplicados = antesDedup - postsUnicos.length;
+  const dupTexto = antesDedup - antesDedup2;
+  const dupFbid = antesDedup2 - postsUnicos.length;
+  log(`  → ${duplicados} duplicados eliminados (${dupTexto} por texto, ${dupFbid} por fbid), ${postsUnicos.length} únicos`, 'ok');
+  setProgress(55);
+
+  // ── PASO 4: Enriquecimiento + flags + pre-clasificación ──
+  log('🏷 Paso 4: Enriquecimiento, flags y pre-clasificación...', '');
+  const postsFinales = [];
+  let descartadosPostLimpio = 0;
+  let fbidColisiones = 0;
+  const tipoCounts = {};
+  const fbidVisto = {};
+
+  // Contadores de flags
+  let marcados_sin_imagen = 0;
+  let marcados_texto_corto = 0;
+  let marcados_consulta = 0;
+  let marcados_comentario = 0;
+
+  for (const p of postsUnicos) {
+    // fbid_post con detección de colisión
+    let fbid = asegurarFbidPost(p);
+    const textoCorto80 = (p.texto || '').substring(0, 80);
+    if (fbidVisto[fbid] && fbidVisto[fbid] !== textoCorto80) {
+      fbid = 'col_' + simpleHash((p.autor || '') + '|' + textoCorto80);
+      fbidColisiones++;
+    }
+    fbidVisto[fbid] = textoCorto80;
+    p.fbid_post = fbid;
+
+    // texto_limpio
+    const textoLimpio = generarTextoLimpio(p.texto || '');
+    const numPalabras = contarPalabras(p.texto || '');
+
+    // Filtro geográfico urgente sigue eliminando (es básico)
+    const geoUrgente = clasificarUrgenteGeo(p.texto || '');
+    if (geoUrgente === 'ignorar') { descartadosPostLimpio++; continue; }
+
+    let preOverride = null;
+    if (geoUrgente === 'alerta') preOverride = ['alerta', 3];
+
+    // Pre-clasificación
+    const [pre_tipo, pre_score] = preOverride || preClasificar(textoLimpio || p.texto || '', p.autor || '', grupoTipo);
+
+    // Frecuencia del autor
+    const aid = p.autor_id || p.autor_url || null;
+    const autor_frecuencia = aid ? (autorFreq[aid] || 1) : 1;
+
+    tipoCounts[pre_tipo] = (tipoCounts[pre_tipo] || 0) + 1;
+
+    // ── Computar flags ────────────────────────────────────
+    const flag_sin_imagen    = (p.num_imgs || 0) === 0;
+    const flag_texto_corto   = numPalabras < 4;
+    const flag_consulta      = CONSULTA_HINTS.some(h => _norm(p.texto || '').includes(h));
+    const flag_comentario    = detectarComentario(textoLimpio || p.texto || '');
+    const flag_tl_vacio      = textoLimpio.length < 3 && numPalabras > 0;
+    const flag_tiene_tel     = extraerTelefono(p.texto || '') !== null || extraerTelefono(p.autor || '') !== null;
+    const flag_tiene_url     = !!(p.url_post || '').trim();
+
+    if (flag_sin_imagen)  marcados_sin_imagen++;
+    if (flag_texto_corto) marcados_texto_corto++;
+    if (flag_consulta)    marcados_consulta++;
+    if (flag_comentario)  marcados_comentario++;
+
+    // Teléfono extraído
+    const telefono = extraerTelefono(p.texto || '') || extraerTelefono(p.autor || '');
+
+    // Campos extra para objetos perdidos/encontrados
+    const esPerdido = pre_tipo === 'perdido' || grupoTipo === 'perdidos';
+    const textoCompleto = p.texto || '';
+
+    const postFinal = {
+      ...p,
+      texto_limpio:      textoLimpio,
+      telefono:          telefono || null,
+      pre_tipo,
+      pre_score,
+      noticia_permitida: cfg.noticia_umbral < 9999 ? contarPalabras(textoCompleto) >= cfg.noticia_umbral : false,
+      autor_frecuencia,
+      // ── Flags nuevos ──
+      sin_imagen:             flag_sin_imagen,
+      texto_es_corto:         flag_texto_corto,
+      parece_consulta:        flag_consulta,
+      es_comentario_probable: flag_comentario,
+      texto_limpio_vacio:     flag_tl_vacio,
+      tiene_telefono:         flag_tiene_tel,
+      tiene_url_post:         flag_tiene_url,
+    };
+
+    if (esPerdido) {
+      postFinal.perdido_estado     = detectarEstadoPerdido(textoCompleto);
+      postFinal.perdido_categoria  = detectarCategoriaPerdido(textoCompleto);
+      postFinal.perdido_recompensa = detectarRecompensa(textoCompleto);
+      if (pre_tipo === 'ambiguo' && postFinal.perdido_estado) {
+        postFinal.pre_tipo = 'perdido';
+        tipoCounts['perdido'] = (tipoCounts['perdido'] || 0) + 1;
+        tipoCounts['ambiguo'] = (tipoCounts['ambiguo'] || 0) - 1;
+      }
+    }
+
+    postsFinales.push(postFinal);
+  }
+
+  if (descartadosPostLimpio > 0) {
+    log(`  ⚠ ${descartadosPostLimpio} post(s) descartados: geo externa`, 'warn');
+  }
+  if (fbidColisiones > 0) {
+    log(`  🔀 ${fbidColisiones} colisión(es) de fbid_post resueltas`, 'warn');
+  }
+
+  const tipoStr = Object.entries(tipoCounts).sort((a,b)=>b[1]-a[1]).map(([t,c])=>`${t}:${c}`).join(' · ');
+  log(`  → Pre-tipos: ${tipoStr}`, 'info');
+  log(`  → Flags: sin_imagen:${marcados_sin_imagen} texto_corto:${marcados_texto_corto} consulta:${marcados_consulta} comentario:${marcados_comentario}`, 'warn');
+  setProgress(80);
+
+  // ── PASO 5: Construir prospectos ──
+  log('🎯 Paso 5: Identificando prospectos...', '');
+  prospectos = [];
+  for (const [aid, count] of autoresMultiple) {
+    const nombre = autorNombres[aid] || '?';
+    const tel = autorTelefonos[aid] || null;
+    const postsDeAutor = postsFinales.filter(p => (p.autor_id || p.autor_url) === aid);
+    const tiposPublicados = [...new Set(postsDeAutor.map(p => p.pre_tipo))];
+    const tieneRepeticiones = postsDeAutor.some(p => (p.repeticiones || 1) > 1);
+
+    prospectos.push({
+      autor_id: aid,
+      nombre,
+      posts_total: count,
+      posts_aprobados: postsDeAutor.length,
+      telefono: tel,
+      tipos: tiposPublicados,
+      repite_contenido: tieneRepeticiones,
+    });
+  }
+  log(`  → ${prospectos.length} prospectos identificados`, 'ok');
+  setProgress(90);
+
+  // ── Resultado final ──
+  resultadoFinal = {
+    meta: {
+      ...rawData.meta,
+      total_posts:             postsFinales.length,
+      grupo_tipo:              grupoTipo,
+      procesado_etapa1:        true,
+      modo_limpieza:           'suave',
+      descartados_total:       totalDescartados + duplicados + descartadosPostLimpio,
+      descartados_filtro:      totalDescartados,
+      duplicados,
+      descartados_post_limpio: descartadosPostLimpio,
+      fbid_colisiones:         fbidColisiones,
+      prospectos_count:        prospectos.length,
+      marcados_sin_imagen,
+      marcados_texto_corto,
+      marcados_comentario,
+      marcados_consulta,
+      fecha_proceso:           new Date().toISOString(),
+    },
+    posts: postsFinales,
+  };
+
+  log(`═══ ✅ Completado [SUAVE]: ${posts.length} → ${postsFinales.length} posts (${posts.length - postsFinales.length} eliminados) ═══`, 'ok');
+  setProgress(100);
+
+  renderStats(
+    posts.length, postsFinales.length, totalDescartados, duplicados,
+    descartadosPostLimpio, fbidColisiones, tipoCounts, postsFinales,
+    { sin_imagen: marcados_sin_imagen, texto_corto: marcados_texto_corto,
+      comentario: marcados_comentario, consulta: marcados_consulta }
+  );
+  renderProspectos();
+  document.getElementById('downloadSection').classList.remove('hidden');
+}
+
+// ═══════════════════════════════════════════════════════════════
+// UI
+// ═══════════════════════════════════════════════════════════════
+
+function setProgress(pct) {
+  document.getElementById('progressBar').style.width = pct + '%';
+}
+
+function log(msg, type = '') {
+  const box = document.getElementById('logBox');
+  const line = document.createElement('div');
+  line.className = type ? `log-${type}` : '';
+  const time = new Date().toLocaleTimeString('es-MX', {hour:'2-digit', minute:'2-digit', second:'2-digit'});
+  line.textContent = `[${time}] ${msg}`;
+  box.appendChild(line);
+  box.scrollTop = box.scrollHeight;
+}
+
+function renderStats(total, final, descartados, duplicados, postLimpio, fbidColisiones, tipoCounts, posts, marcados) {
+  const conTel = posts.filter(p => p.telefono).length;
+  const conRepeticiones = posts.filter(p => (p.repeticiones || 1) > 1).length;
+  const fbidReal = posts.filter(p => p.fbid_post && !p.fbid_post.startsWith('syn_') && !p.fbid_post.startsWith('col_')).length;
+  const fbidUnicos = new Set(posts.map(p => p.fbid_post)).size;
+
+  const items = [
+    { label: 'Entrada',     val: total,         color: 'var(--text)' },
+    { label: 'Descartados', val: descartados,    color: 'var(--error)' },
+    { label: 'Duplicados',  val: duplicados,     color: 'var(--warn)' },
+    { label: 'Geo externa', val: postLimpio,     color: 'var(--error)' },
+    { label: 'Salida',      val: final,          color: 'var(--success)' },
+    { label: 'Con teléfono',val: conTel,         color: 'var(--accent2)' },
+    { label: 'Repiten',     val: conRepeticiones,color: 'var(--accent3)' },
+    { label: 'fbid real',   val: fbidReal,       color: 'var(--accent)' },
+    { label: 'fbid únicos', val: fbidUnicos + '/' + final, color: fbidUnicos === final ? 'var(--success)' : 'var(--error)' },
+  ];
+
+  document.getElementById('statsGrid').innerHTML = items.map(i => `
+    <div class="stat-item">
+      <div class="stat-val" style="color:${i.color}">${i.val}</div>
+      <div class="stat-label">${i.label}</div>
+    </div>`).join('');
+
+  // Pre-tipo distribution
+  const colors = { negocio:'#7c3aed', alerta:'#ef4444', mascota:'#06b6d4', noticia:'#f59e0b', empleo:'#10b981', perdido:'#f472b6', ambiguo:'#64748b', ignorar:'#374151' };
+  const tipoItems = Object.entries(tipoCounts).sort((a,b) => b[1]-a[1]);
+  if (tipoItems.length > 0) {
+    document.getElementById('preTipoSection').classList.remove('hidden');
+    document.getElementById('preTipoGrid').innerHTML = tipoItems.map(([t,c]) => `
+      <div class="stat-item">
+        <div class="stat-val" style="color:${colors[t] || 'var(--text)'}">${c}</div>
+        <div class="stat-label">${t}</div>
+      </div>`).join('');
+  }
+
+  // Marcados (no eliminados)
+  const marcadoItems = [
+    { label: 'Sin imagen',       val: marcados.sin_imagen  },
+    { label: 'Texto corto',      val: marcados.texto_corto },
+    { label: 'Parece consulta',  val: marcados.consulta    },
+    { label: 'Parece comentario',val: marcados.comentario  },
+  ];
+  const totalMarcados = marcadoItems.reduce((s, m) => s + m.val, 0);
+  if (totalMarcados > 0) {
+    document.getElementById('marcadosSection').classList.remove('hidden');
+    document.getElementById('marcadosGrid').innerHTML = marcadoItems.map(m => `
+      <div class="marcado-item">
+        <div class="marcado-val">${m.val}</div>
+        <div class="marcado-label">${m.label}</div>
+      </div>`).join('');
+  }
+}
+
+function renderProspectos() {
+  if (prospectos.length === 0) return;
+  document.getElementById('prospectSection').classList.remove('hidden');
+
+  const colors = { negocio:'#7c3aed', alerta:'#ef4444', mascota:'#06b6d4', noticia:'#f59e0b', empleo:'#10b981', perdido:'#f472b6', ambiguo:'#64748b' };
+  const top = prospectos.slice(0, 15);
+
+  let html = `<table class="prospect-table">
+    <thead><tr><th>Autor</th><th>Posts</th><th>Tel</th><th>Tipos</th><th>Repite</th></tr></thead><tbody>`;
+
+  for (const p of top) {
+    const tiposBadges = p.tipos.map(t =>
+      `<span class="tipo-badge" style="background:${colors[t]||'#333'}22;color:${colors[t]||'#999'}">${t}</span>`
+    ).join(' ');
+    html += `<tr>
+      <td style="max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${p.nombre}</td>
+      <td style="text-align:center;color:var(--accent3);font-weight:700">${p.posts_total}</td>
+      <td>${p.telefono ? '📞' : '—'}</td>
+      <td>${tiposBadges}</td>
+      <td>${p.repite_contenido ? '🔁' : ''}</td>
+    </tr>`;
+  }
+  html += '</tbody></table>';
+  document.getElementById('prospectTable').innerHTML = html;
+}
+
+function descargarJSON() {
+  if (!resultadoFinal) return;
+  const blob = new Blob([JSON.stringify(resultadoFinal, null, 2)], { type: 'application/json' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  const gid  = rawData.meta?.group_id || 'grupo';
+  const tipo = document.getElementById('grupoTipo').value;
+  a.download = `etapa1_suave_${tipo}_${gid}_${Date.now()}.json`;
+  a.click();
+  URL.revokeObjectURL(a.href);
+}
+
+function descargarProspectos() {
+  if (!prospectos.length) return;
+  const blob = new Blob([JSON.stringify(prospectos, null, 2)], { type: 'application/json' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = `prospectos_${rawData.meta?.group_id || 'grupo'}_${Date.now()}.json`;
+  a.click();
+  URL.revokeObjectURL(a.href);
+}
+
+// ── File input ──────────────────────────────────────────────
+document.getElementById('fileInput').addEventListener('change', function(e) {
+  const file = e.target.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = (ev) => {
+    try {
+      rawData = JSON.parse(ev.target.result);
+      const n = rawData.posts?.length || 0;
+      document.getElementById('fileName').textContent = `✓ ${file.name} — ${n} posts`;
+      document.getElementById('fileName').classList.remove('hidden');
+      document.getElementById('btnStart').disabled = false;
+
+      // Auto-detectar tipo de grupo por nombre
+      const name = _norm(rawData.meta?.group_name || '');
+      if (['empleo','trabajo','vacante','contratando','bolsa de trabajo'].some(k => name.includes(k)))
+        document.getElementById('grupoTipo').value = 'empleo';
+      else if (['objetos perdidos','cosas perdidas','perdidos y encontrados','lost and found',
+                'extraviados','objetos encontrados'].some(k => name.includes(k)))
+        document.getElementById('grupoTipo').value = 'perdidos';
+      else if (['mascota','adopci','perros perdidos','gatos perdidos','rescate animal','adopciones'].some(k => name.includes(k)))
+        document.getElementById('grupoTipo').value = 'mascotas';
+      else if (['noticias','policía','policia','seguridad','informativo','se entere',
+                'noticiero','prensa','alerta','denuncias','urgente','viral','reportero',
+                'periodismo','sucesos','acontecer','informa','entérate','enterate'].some(k => name.includes(k)))
+        document.getElementById('grupoTipo').value = 'noticias';
+      else if (['compra','venta','marketplace','negocios','servicios','bazar',
+                'tianguis','comercio','ofertas'].some(k => name.includes(k)))
+        document.getElementById('grupoTipo').value = 'ventas';
+      else
+        document.getElementById('grupoTipo').value = 'vecinos';
+
+    } catch(err) {
+      alert('JSON inválido: ' + err.message);
+    }
+  };
+  reader.readAsText(file);
+});
+
+const fd = document.getElementById('fileDrop');
+fd.addEventListener('dragover', e => { e.preventDefault(); fd.classList.add('dragover'); });
+fd.addEventListener('dragleave', () => fd.classList.remove('dragover'));
+fd.addEventListener('drop', e => {
+  e.preventDefault(); fd.classList.remove('dragover');
+  if (e.dataTransfer.files[0]) {
+    document.getElementById('fileInput').files = e.dataTransfer.files;
+    document.getElementById('fileInput').dispatchEvent(new Event('change'));
+  }
+});
+</script>
+
+</body>
+</html>
