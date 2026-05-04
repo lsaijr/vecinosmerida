@@ -724,15 +724,24 @@ async def analizar_limpio(file: UploadFile = File(...)):
         try:
             from db import obtener_colonias_de_grupo
             colonias_grupo = obtener_colonias_de_grupo(group_id)
-            colonia_ids = [c["id"] for c in colonias_grupo]
+            colonia_ids    = [c["id"]     for c in colonias_grupo]
+            colonia_nombres = [c["nombre"] for c in colonias_grupo]
         except Exception:
-            colonia_ids = []
+            colonia_ids    = []
+            colonia_nombres = []
+        try:
+            todas_colonias = obtener_colonias()
+        except Exception:
+            todas_colonias = []
         return {
             "conocido": True,
             "group_id": group_id,
             "group_name": group_name,
             "tipo": grupo_registrado.get("tipo", "vecinos"),
-            "colonia_ids": colonia_ids,
+            "colonia_ids":    colonia_ids,
+            "colonia_nombres": colonia_nombres,
+            "candidatas":    [],
+            "todas_colonias": [{"id": c["id"], "nombre": c["nombre"]} for c in (todas_colonias or [])],
             "total_posts": len(posts),
         }
 
