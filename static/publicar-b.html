@@ -182,6 +182,27 @@
         }
         .colonia-hint.show { display: flex; align-items: center; gap: 8px; }
         .check-row { display: flex; align-items: center; gap: 8px; font-size: 14px; color: #4a5568; cursor: pointer; }
+        .badge-warn {
+            display: inline-block;
+            background: #fff7ed; color: #9a3412; border: 1px solid #fed7aa;
+            font-size: 11px; font-weight: 700; letter-spacing: .08em;
+            text-transform: uppercase; padding: 3px 10px; border-radius: 20px; margin-bottom: 8px;
+        }
+        .badge-c {
+            display: inline-block;
+            background: #eff6ff; color: #1e40af; border: 1px solid #bfdbfe;
+            font-size: 11px; font-weight: 700; letter-spacing: .08em;
+            text-transform: uppercase; padding: 3px 10px; border-radius: 20px; margin-bottom: 8px;
+        }
+        .sugerencia-box {
+            background: #eff6ff; border: 1px solid #bfdbfe; border-radius: 8px;
+            padding: 10px 14px; font-size: 13px; color: #1e40af;
+            margin-bottom: 14px; display: flex; align-items: center; gap: 8px;
+        }
+        .tipo-display {
+            background: #f7fafc; border: 1.5px solid #e2e8f0; border-radius: 8px;
+            padding: 10px 12px; font-size: 14px; color: #4a5568; margin-bottom: 16px;
+        }
         .check-row input { width: 16px; height: 16px; accent-color: #667eea; cursor: pointer; }
         .modal-footer {
             padding: 16px 24px 20px;
@@ -317,6 +338,25 @@
                     </label>
                 </div>
             </div>
+
+            <!-- Campos para grupo CONOCIDO (CASO B: sin colonia / CASO C: con colonia) -->
+            <div id="camposConocido" style="display:none">
+                <div class="field">
+                    <label>Tipo de contenido (registrado)</label>
+                    <div class="tipo-display" id="tipoDisplay">—</div>
+                </div>
+                <!-- Solo CASO C: sugerencia de colonia previa -->
+                <div class="sugerencia-box" id="sugerenciaBox" style="display:none">
+                    <span>📍</span>
+                    <span id="sugerenciaTxt">Última colonia usada: —</span>
+                </div>
+                <div class="field">
+                    <label id="labelColoniaConfirm">Colonia / Zona</label>
+                    <select id="selColoniaConfirm">
+                        <option value="" disabled selected>— Selecciona una colonia —</option>
+                    </select>
+                </div>
+            </div>
         </div>
         <div class="modal-footer">
             <button class="btn-cancel" id="btnCancelarModal" onclick="cancelarModal()">Cancelar</button>
@@ -410,62 +450,56 @@
 
             if (d.error) throw new Error(d.error);
 
-            if (d.conocido) {
-                // Grupo ya registrado → mostrar colonia automática
-                document.getElementById('modalBadge').className = 'badge-ok';
-                document.getElementById('modalBadge').textContent = '✓ Grupo registrado';
-                document.getElementById('modalTitulo').textContent = 'Grupo conocido';
-                document.getElementById('modalSubtitulo').textContent = 'Colonia y tipo ya configurados. Puedes proceder.';
-                document.getElementById('camposNuevo').style.display = 'none';
+            // ── Determinar caso ──────────────────────────────────
+            // CASO A: grupo nuevo
+            // CASO B: grupo conocido pero colonia_id = 1 (General) o NULL/vacío
+            // CASO C: grupo conocido con colonia específica (≠ 1, ≠ vacío)
+            const ids = d.colonia_ids || [];
+            const esGeneral = ids.length === 0 || ids[0] === null || ids[0] === 1;
+            const caso = !d.conocido ? 'A' : (esGeneral ? 'B' : 'C');
 
-                const hint = document.getElementById('coloniaHint');
-                const colonias = d.colonia_nombres || ['General'];
-                document.getElementById('coloniaHintTxt').textContent =
-                    '📍 Colonia detectada automáticamente: ' + colonias.join(', ');
-                hint.classList.add('show');
+            // Ocultar todo y limpiar estado previo
+            document.getElementById('camposNuevo').style.display    = 'none';
+            document.getElementById('camposConocido').style.display  = 'none';
+            document.getElementById('coloniaHint').classList.remove('show');
+            document.getElementById('sugerenciaBox').style.display   = 'none';
+            document.getElementById('btnConfirmarModal').disabled    = false;
 
-                configGrupo = {
-                    colonia_ids: d.colonia_ids || [],
-                    tipo: d.tipo || 'vecinos',
-                    group_id: meta.group_id,
-                    conocido: true
-                };
-            } else {
-                // Grupo nuevo → mostrar campos de configuración
-                document.getElementById('modalBadge').className = 'badge-new';
+            const todasColonias = d.todas_colonias || [];
+            const candidatas    = d.candidatas     || [];
+
+            if (caso === 'A') {
+                // ── CASO A: Grupo nuevo ───────────────────────────
+                document.getElementById('modalBadge').className   = 'badge-new';
                 document.getElementById('modalBadge').textContent = '🆕 Grupo nuevo detectado';
-                document.getElementById('modalTitulo').textContent = 'Configurar grupo antes de publicar';
+                document.getElementById('modalTitulo').textContent    = 'Configurar grupo antes de publicar';
                 document.getElementById('modalSubtitulo').textContent = 'Selecciona el tipo y la colonia para este grupo';
-                document.getElementById('camposNuevo').style.display = 'block';
-                document.getElementById('coloniaHint').classList.remove('show');
+                document.getElementById('camposNuevo').style.display  = 'block';
+                document.getElementById('btnConfirmarModal').textContent = 'Procesar →';
 
                 // Pre-seleccionar tipo sugerido
                 const selTipo = document.getElementById('selTipo');
                 for (let i = 0; i < selTipo.options.length; i++) {
-                    if (selTipo.options[i].value === d.tipo_sugerido) {
-                        selTipo.selectedIndex = i; break;
-                    }
+                    if (selTipo.options[i].value === d.tipo_sugerido) { selTipo.selectedIndex = i; break; }
                 }
 
-                // Cargar colonias
+                // Cargar colonias (sugeridas pre-seleccionadas)
                 const sel = document.getElementById('selColonia');
                 sel.innerHTML = '';
-                const candidatasIds = (d.candidatas || []).map(c => c.id);
-
-                if (d.candidatas && d.candidatas.length > 0) {
+                const candidatasIds = candidatas.map(c => c.id);
+                if (candidatas.length > 0) {
                     const og = document.createElement('optgroup');
                     og.label = '⭐ Sugeridas';
-                    d.candidatas.forEach(c => {
+                    candidatas.forEach(c => {
                         const o = document.createElement('option');
                         o.value = c.id; o.textContent = c.nombre; o.selected = true;
                         og.appendChild(o);
                     });
                     sel.appendChild(og);
                 }
-
                 const og2 = document.createElement('optgroup');
                 og2.label = 'Todas las colonias';
-                (d.todas_colonias || []).forEach(c => {
+                todasColonias.forEach(c => {
                     if (!candidatasIds.includes(c.id)) {
                         const o = document.createElement('option');
                         o.value = c.id; o.textContent = c.nombre;
@@ -474,13 +508,64 @@
                 });
                 sel.appendChild(og2);
 
-                configGrupo = { group_id: meta.group_id, conocido: false };
+                configGrupo = { group_id: meta.group_id, caso: 'A', conocido: false };
+
+            } else if (caso === 'B') {
+                // ── CASO B: Grupo sin colonia específica ──────────
+                document.getElementById('modalBadge').className   = 'badge-warn';
+                document.getElementById('modalBadge').textContent = '⚠️ Grupo sin colonia específica';
+                document.getElementById('modalTitulo').textContent    = 'Asignar colonia al grupo';
+                document.getElementById('modalSubtitulo').textContent = 'Este grupo está registrado como General. Selecciona su colonia.';
+                document.getElementById('camposConocido').style.display = 'block';
+                document.getElementById('tipoDisplay').textContent = _tipoLabel(d.tipo || 'vecinos');
+                document.getElementById('labelColoniaConfirm').textContent = 'Colonia / Zona (requerida)';
+                document.getElementById('btnConfirmarModal').textContent = 'Procesar →';
+                document.getElementById('btnConfirmarModal').disabled = true; // habilitar solo al seleccionar
+
+                _poblarSelectConfirm(todasColonias, candidatas, null);
+
+                configGrupo = {
+                    group_id: meta.group_id, caso: 'B',
+                    tipo: d.tipo || 'vecinos',
+                    colonia_id_guardada: ids[0] || null
+                };
+
+            } else {
+                // ── CASO C: Grupo con colonia específica ──────────
+                const nombreGuardado = (d.colonia_nombres || [])[0] || 'desconocida';
+                document.getElementById('modalBadge').className   = 'badge-c';
+                document.getElementById('modalBadge').textContent = '✏️ Grupo conocido — confirma colonia';
+                document.getElementById('modalTitulo').textContent    = 'Confirmar o cambiar colonia';
+                document.getElementById('modalSubtitulo').textContent = 'Debes hacer clic en una colonia para continuar.';
+                document.getElementById('camposConocido').style.display = 'block';
+                document.getElementById('tipoDisplay').textContent = _tipoLabel(d.tipo || 'vecinos');
+                document.getElementById('sugerenciaBox').style.display = 'flex';
+                document.getElementById('sugerenciaTxt').textContent   = 'Última colonia usada: ' + nombreGuardado;
+                document.getElementById('labelColoniaConfirm').textContent = 'Selecciona o confirma colonia';
+                document.getElementById('btnConfirmarModal').textContent = 'Confirmar y procesar →';
+                document.getElementById('btnConfirmarModal').disabled = true; // habilitar solo al seleccionar
+
+                _poblarSelectConfirm(todasColonias, candidatas, ids[0]);
+
+                configGrupo = {
+                    group_id: meta.group_id, caso: 'C',
+                    tipo: d.tipo || 'vecinos',
+                    colonia_id_guardada: ids[0],
+                    colonia_nombre_guardada: nombreGuardado
+                };
             }
         } catch (err) {
-            // Si /analizar-limpio falla (Railway down, etc.), mostrar modal mínimo igual
+            // Si /analizar-limpio falla (Railway down, etc.) → mostrar CASO A con fallback
             console.warn('analizar-limpio falló:', err.message);
-            document.getElementById('camposNuevo').style.display = 'block';
+            document.getElementById('modalBadge').className   = 'badge-new';
+            document.getElementById('modalBadge').textContent = '🆕 Grupo nuevo detectado';
+            document.getElementById('modalTitulo').textContent    = 'Configurar grupo antes de publicar';
+            document.getElementById('modalSubtitulo').textContent = 'Selecciona el tipo y la colonia para este grupo';
+            document.getElementById('camposNuevo').style.display    = 'block';
+            document.getElementById('camposConocido').style.display = 'none';
             document.getElementById('coloniaHint').classList.remove('show');
+            document.getElementById('btnConfirmarModal').textContent = 'Procesar →';
+            document.getElementById('btnConfirmarModal').disabled    = false;
             // Fallback: lista completa de colonias hardcodeada
             const COLONIAS_FALLBACK = [
                 {id:1,  nombre:'Altabrisa'},
@@ -531,15 +616,59 @@
             sel.innerHTML = '';
             COLONIAS_FALLBACK.forEach(c => {
                 const o = document.createElement('option');
-                o.value = c.id;
-                o.textContent = c.nombre;
-                if (c.id === 8) o.selected = true;
-                sel.appendChild(o);
+                o.value = c.id; o.textContent = c.nombre;
+                sel.appendChild(o);  // sin pre-selección en fallback
             });
-            configGrupo = { group_id: meta.group_id, conocido: false };
+            configGrupo = { group_id: meta.group_id, caso: 'A', conocido: false };
         }
 
         document.getElementById('modalOverlay').classList.add('open');
+    }
+
+    // ── Helpers del modal ────────────────────────────────────────
+    function _tipoLabel(tipo) {
+        const m = { vecinos:'🏘️ Vecinos / Negocios', noticias:'📰 Noticias',
+                    mascotas:'🐾 Mascotas / Adopciones', empleo:'💼 Empleo / Trabajo',
+                    ventas:'🛍️ Ventas / Negocios', mixto:'🔀 Mixto' };
+        return m[tipo] || tipo;
+    }
+
+    function _poblarSelectConfirm(todas, candidatas, coloniaIdSeleccionada) {
+        const sel = document.getElementById('selColoniaConfirm');
+        sel.innerHTML = '<option value="" disabled selected>— Selecciona o confirma colonia —</option>';
+        const candidatasIds = candidatas.map(c => c.id);
+        if (candidatas.length > 0) {
+            const og = document.createElement('optgroup');
+            og.label = '⭐ Sugeridas';
+            candidatas.forEach(c => {
+                const o = document.createElement('option');
+                o.value = c.id; o.textContent = c.nombre;
+                og.appendChild(o);
+            });
+            sel.appendChild(og);
+        }
+        const og2 = document.createElement('optgroup');
+        og2.label = 'Todas las colonias';
+        todas.forEach(c => {
+            if (!candidatasIds.includes(c.id)) {
+                const o = document.createElement('option');
+                o.value = c.id; o.textContent = c.nombre;
+                og2.appendChild(o);
+            }
+        });
+        sel.appendChild(og2);
+
+        // Habilitar botón solo cuando el usuario hace clic explícito
+        sel.addEventListener('change', () => {
+            const val = parseInt(sel.value);
+            const btn = document.getElementById('btnConfirmarModal');
+            btn.disabled = false;
+            if (configGrupo.caso === 'C') {
+                btn.textContent = val === configGrupo.colonia_id_guardada
+                    ? 'Confirmar y procesar →'
+                    : 'Actualizar grupo y procesar →';
+            }
+        });
     }
 
     function cancelarModal() {
@@ -548,21 +677,20 @@
     }
 
     async function confirmarModal() {
-        const meta = jsonData.meta || {};
+        const caso = configGrupo.caso;
 
-        if (!configGrupo.conocido) {
-            // Leer selecciones del usuario
+        if (caso === 'A') {
+            // ── CASO A: grupo nuevo ───────────────────────────────
             const selCol  = document.getElementById('selColonia');
             const selTipo = document.getElementById('selTipo');
             const seleccionadas = Array.from(selCol.selectedOptions);
             if (seleccionadas.length === 0) { alert('Selecciona al menos una colonia.'); return; }
 
-            configGrupo.colonia_ids    = seleccionadas.map(o => parseInt(o.value));
+            configGrupo.colonia_ids     = seleccionadas.map(o => parseInt(o.value));
             configGrupo.colonia_nombres = seleccionadas.map(o => o.textContent.trim());
-            configGrupo.tipo           = selTipo.value;
-            configGrupo.guardar_grupo  = document.getElementById('chkGuardar').checked;
+            configGrupo.tipo            = selTipo.value;
+            configGrupo.guardar_grupo   = document.getElementById('chkGuardar').checked;
 
-            // Si hay que guardar el grupo, registrarlo vía /procesar-limpio
             if (configGrupo.guardar_grupo) {
                 try {
                     await fetch('https://vecinos.enmerida.mx/procesar-limpio', {
@@ -572,6 +700,50 @@
                             tipo: configGrupo.tipo,
                             colonia_ids: configGrupo.colonia_ids,
                             colonia_nombres: configGrupo.colonia_nombres,
+                            guardar_grupo: true
+                        })
+                    });
+                } catch (e) { /* no bloquear si falla */ }
+            }
+
+        } else {
+            // ── CASO B o C: grupo conocido, usuario eligió colonia ─
+            const sel = document.getElementById('selColoniaConfirm');
+            if (!sel.value) { alert('Selecciona una colonia para continuar.'); return; }
+
+            const coloniaId   = parseInt(sel.value);
+            const coloniaNombre = sel.options[sel.selectedIndex].textContent.trim();
+
+            configGrupo.colonia_ids     = [coloniaId];
+            configGrupo.colonia_nombres = [coloniaNombre];
+
+            // CASO C: si el usuario cambió la colonia → actualizar grupo en DB
+            if (caso === 'C' && coloniaId !== configGrupo.colonia_id_guardada) {
+                try {
+                    await fetch('https://vecinos.enmerida.mx/procesar-limpio', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            group_id: configGrupo.group_id,
+                            tipo: configGrupo.tipo,
+                            colonia_ids: [coloniaId],
+                            colonia_nombres: [coloniaNombre],
+                            guardar_grupo: true
+                        })
+                    });
+                } catch (e) { /* no bloquear si falla */ }
+            }
+            // CASO B: siempre guardar la colonia elegida
+            if (caso === 'B') {
+                try {
+                    await fetch('https://vecinos.enmerida.mx/procesar-limpio', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            group_id: configGrupo.group_id,
+                            tipo: configGrupo.tipo,
+                            colonia_ids: [coloniaId],
+                            colonia_nombres: [coloniaNombre],
                             guardar_grupo: true
                         })
                     });
