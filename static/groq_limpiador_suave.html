@@ -625,6 +625,32 @@ function esDescartable(post) {
   const palabras = txt.split(/\s+/);
   if (palabras.some(w => w.length > 28 && /\d/.test(w) && /[a-zA-Z]/.test(w))) return 'token_basura';
 
+  // Errores FB — post eliminado o privado
+  const FB_ELIMINADO = /^Por lo general,? esto sucede porque el propietario/i;
+  if (FB_ELIMINADO.test(txt)) return 'fb_post_eliminado';
+
+  // Solo hashtags (>60% palabras son hashtags/menciones, máx 15 palabras totales)
+  const palabrasAll = txt.split(/\s+/).filter(w => w.length > 0);
+  const nHashtags = palabrasAll.filter(w => w.startsWith('#') || w.startsWith('@')).length;
+  if (palabrasAll.length > 0 && palabrasAll.length <= 15 && nHashtags / palabrasAll.length > 0.6) {
+    return 'solo_hashtags';
+  }
+
+  // Gamificación FB
+  const FB_GAMIF = /(Fan Destacado|lista de participación semanal|reconocido como uno de sus fans destacados|^Publicaciones nuevas$|^Compartido\.?$)/i;
+  if (FB_GAMIF.test(txt)) return 'fb_gamificacion';
+
+  // Reshares de plataformas externas
+  const RESHARE_META = /^(\d+(\.\d+)?[KkMm]?\s*(likes?|me gusta|comments?|comentarios))/i;
+  const RESHARE_PLAT = /^(TikTok\s*[·•·]|youtube\.com|Threads\s*[·•·])/i;
+  if (RESHARE_META.test(txt) || RESHARE_PLAT.test(txt)) return 'reshare_externo';
+
+  // Texto <3 palabras útiles sin imagen
+  const palabrasUtil = txt.replace(/#\w+/g,'').replace(/@[\w[\]:]+/g,'').trim().split(/\s+/).filter(w => w.length > 1);
+  if (palabrasUtil.length < 3 && (post.num_imgs === 0 || post.num_imgs === undefined)) {
+    return 'texto_muy_corto_sin_imagen';
+  }
+
   // sin_imagen, texto_corto, consulta → ahora son flags, no descartan
   return null;
 }
@@ -938,10 +964,15 @@ function procesar() {
       grupo_tipo:              grupoTipo,
       procesado_etapa1:        true,
       modo_limpieza:           'suave',
-      descartados_total:       totalDescartados + duplicados + descartadosPostLimpio,
-      descartados_filtro:      totalDescartados,
+      descartados_total:              totalDescartados + duplicados + descartadosPostLimpio,
+      descartados_filtro:             totalDescartados,
       duplicados,
-      descartados_post_limpio: descartadosPostLimpio,
+      descartados_post_limpio:        descartadosPostLimpio,
+      descartados_fb_eliminado:       stats.fb_post_eliminado          || 0,
+      descartados_solo_hashtags:      stats.solo_hashtags               || 0,
+      descartados_fb_gamificacion:    stats.fb_gamificacion             || 0,
+      descartados_reshare_externo:    stats.reshare_externo             || 0,
+      descartados_texto_muy_corto:    stats.texto_muy_corto_sin_imagen  || 0,
       fbid_colisiones:         fbidColisiones,
       prospectos_count:        prospectos.length,
       marcados_sin_imagen,
