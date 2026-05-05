@@ -831,7 +831,8 @@ async def procesar_limpio(request: Request):
         try:
             from cloudinary_service import subir_imagenes
             from db import (
-                insertar_negocio, insertar_alerta,
+                insertar_negocio, insertar_noticia, insertar_alerta,
+                insertar_empleo, insertar_mascota, insertar_perdido,
                 upsert_autor_completo, registrar_actividad,
                 actualizar_grupo_stats, insertar_post_raw,
             )
@@ -871,12 +872,20 @@ async def procesar_limpio(request: Request):
 
                     # 4. Insertar en DB según tipo
                     tipo = p.get("tipo", "mascota")
-                    if tipo in ("mascota", "negocio"):
+                    if tipo == "negocio":
                         _, st = insertar_negocio(p, colonia_id)
+                    elif tipo == "noticia":
+                        _, st = insertar_noticia(p, colonia_id)
                     elif tipo == "alerta":
                         _, st = insertar_alerta(p, colonia_id)
+                    elif tipo == "empleo":
+                        _, st = insertar_empleo(p, colonia_id)
+                    elif tipo == "mascota":
+                        _, st = insertar_mascota(p, colonia_id)
+                    elif tipo == "perdido":
+                        _, st = insertar_perdido(p, colonia_id)
                     else:
-                        _, st = insertar_negocio(p, colonia_id)  # fallback
+                        continue  # tipo desconocido — no insertar en ninguna tabla
 
                     if st == "nuevo":
                         _estado_limpio["nuevos"] += 1
