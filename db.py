@@ -1,6 +1,9 @@
+from __future__ import annotations
+
 import json
 import os
 import re
+import unicodedata
 from datetime import date, timedelta
 from functools import lru_cache
 
@@ -406,6 +409,15 @@ def insertar_negocio(p, colonia_id):
 
 
 
+def _slugify(texto: str, max_len: int = 60) -> str:
+    s = unicodedata.normalize("NFKD", texto)
+    s = s.encode("ascii", "ignore").decode("ascii")
+    s = s.lower()
+    s = re.sub(r"[^a-z0-9]+", "-", s)
+    s = s.strip("-")
+    return s[:max_len].rstrip("-")
+
+
 def insertar_noticia(p, colonia_id):
     fbid_post = p.get("fbid_post")
     conn = get_conn()
@@ -423,8 +435,8 @@ def insertar_noticia(p, colonia_id):
         INSERT INTO noticias
           (titulo, texto, categoria_id, colonia_id, autor, autor_id,
            imagen_url, url_post, fbid_post, fecha_publicacion,
-           fecha_post, fecha_post_dt, grupos_origen)
-        VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
+           fecha_post, fecha_post_dt, grupos_origen, status)
+        VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,'publicado')
         """,
         (
             (p.get("titulo") or "")[:200],
@@ -443,6 +455,11 @@ def insertar_noticia(p, colonia_id):
         ),
     )
     nid = cursor.lastrowid
+
+    slug_base = _slugify(p.get("titulo") or "noticia")
+    slug = f"{slug_base}-{nid}" if slug_base else f"noticia-{nid}"
+    cursor.execute("UPDATE noticias SET slug = %s WHERE id = %s", (slug, nid))
+
     conn.commit()
     cursor.close()
     conn.close()
@@ -552,8 +569,22 @@ def empleo_ya_existe(fbid_post):
     return row[0] if row else None
 
 
-def _get_area_id(area_nombre):
-    """Retorna el id de empleo_areas por nombre, o None."""
+def _get_area_id(area_val):
+    """Retorna el id de empleo_areas (1-12).
+    Acepta:
+      - int/str numérico en rango 1-12 → devuelve directamente (area_id)
+      - str de nombre de área           → busca en SLUG_MAP
+    Fallback: None (el caller decide el default).
+    """
+    # Caso: valor numérico (entero o string numérico) — ya es el area_id
+    try:
+        v = int(area_val)
+        if 1 <= v <= 12:
+            return v
+    except (TypeError, ValueError):
+        pass
+
+    # Caso: nombre de área en español
     SLUG_MAP = {
         'Cocina':          'cocina',
         'Ventas':          'ventas',
@@ -568,7 +599,7 @@ def _get_area_id(area_nombre):
         'Almacén':         'almacen',
         'General':         'general',
     }
-    slug = SLUG_MAP.get(area_nombre or 'General', 'general')
+    slug = SLUG_MAP.get(str(area_val) if area_val else 'General', 'general')
     conn = get_conn()
     cursor = conn.cursor()
     cursor.execute("SELECT id FROM empleo_areas WHERE slug = %s LIMIT 1", (slug,))
@@ -584,7 +615,7 @@ def insertar_empleo(p, colonia_id):
     if existing:
         return existing, "duplicado"
 
-    area_id   = _get_area_id(p.get("area"))
+    area_id   = _get_area_id(p.get("area_id") or p.get("area") or None) or 12
     imgs      = p.get("imagenes_cloudinary") or []
     img_url   = _img_url(imgs[0]) if imgs else None
     telefono  = p.get("telefono") or None
