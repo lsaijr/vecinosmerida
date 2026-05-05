@@ -264,6 +264,7 @@
     <div id="jsonInfo">
         <div style="color: #2d3748; font-weight: 600; margin-bottom: 5px;">📊 Análisis del JSON</div>
         <div style="color: #4a5568; font-size: 14px;">
+            <div id="archivoNombre" style="margin-bottom: 4px; font-weight: 600;"></div>
             <div>Total de posts: <strong id="totalPosts">0</strong></div>
             <div>Total de imágenes: <strong id="totalImages">0</strong></div>
             <div>Batches calculados: <strong id="calculatedBatches">0</strong> batches de ~<strong id="batchSize">0</strong> posts cada uno</div>
@@ -378,6 +379,7 @@
     let jsonData = null;
     let calculatedBatchSize = 20;
     let configGrupo = null; // { colonia_ids, tipo, group_id }
+    let fileName = '';
 
     // ── Drag & drop ──────────────────────────────────────────
     uploadArea.addEventListener('click', () => fileInput.click());
@@ -393,6 +395,7 @@
     function handleFileSelect() {
         const file = fileInput.files[0];
         if (!file) return;
+        fileName = file.name;
         const reader = new FileReader();
         reader.onload = (e) => {
             try {
@@ -402,6 +405,7 @@
                 calculatedBatchSize = calcularBatchSize(totalPosts, totalImages);
                 const numBatches = Math.ceil(totalPosts / calculatedBatchSize);
 
+                document.getElementById('archivoNombre').textContent = '📄 Archivo: ' + fileName;
                 document.getElementById('totalPosts').textContent = totalPosts;
                 document.getElementById('totalImages').textContent = totalImages;
                 document.getElementById('calculatedBatches').textContent = numBatches;
@@ -826,7 +830,7 @@
 
         progressFill.style.width = '100%';
         progressFill.textContent = '100%';
-        addLog(`🎉 Completado: ${totalStats.batches_completados}/${batches.length} batches exitosos`, 'success');
+        addLog(`🎉 Completado: ${totalStats.batches_completados}/${batches.length} batches exitosos — ${fileName}`, 'success');
         mostrarResultados(totalStats);
         uploadBtn.disabled = false;
         uploadBtn.textContent = 'Procesar otro JSON';
