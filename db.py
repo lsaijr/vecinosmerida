@@ -267,6 +267,26 @@ def registrar_pipeline_log(archivo_json, colonia, total_posts, negocios_nuevos,
 
 
 # ─── DEDUPLICACIÓN POR FBID ───────────────────────────────────
+
+ALLOWED_TOUCH_TABLES = {"negocios", "noticias", "alertas", "mascotas", "empleos", "perdidos"}
+
+def _touch(tabla, row_id):
+    if tabla not in ALLOWED_TOUCH_TABLES:
+        return
+    try:
+        conn = get_conn()
+        cursor = conn.cursor()
+        cursor.execute(
+            f"UPDATE {tabla} SET ultima_vez_visto = NOW(), veces_visto = veces_visto + 1 WHERE id = %s",
+            (row_id,)
+        )
+        conn.commit()
+        cursor.close()
+        conn.close()
+    except Exception as e:
+        print(f"[_touch] error en {tabla} id={row_id}: {e}")
+
+
 def fbid_ya_existe(fbid):
     if not fbid:
         return False
@@ -330,6 +350,7 @@ def insertar_negocio(p, colonia_id):
     fbid_post = p.get("fbid_post")
     existing = negocio_ya_existe(fbid_post)
     if existing:
+        _touch("negocios", existing)
         return existing, "duplicado"
 
     conn = get_conn()
@@ -426,8 +447,14 @@ def insertar_noticia(p, colonia_id):
         cursor.execute("SELECT id FROM noticias WHERE fbid_post = %s LIMIT 1", (str(fbid_post),))
         row = cursor.fetchone()
         if row:
+            nid = row[0]
+            cursor.execute(
+                "UPDATE noticias SET ultima_vez_visto = NOW(), veces_visto = veces_visto + 1 WHERE id = %s",
+                (nid,)
+            )
+            conn.commit()
             cursor.close(); conn.close()
-            return row[0], "duplicado"
+            return nid, "duplicado"
 
     imagen_principal = _img_url(p.get("imagenes_cloudinary", [None])[0]) if p.get("imagenes_cloudinary") else None
     cursor.execute(
@@ -475,8 +502,14 @@ def insertar_alerta(p, colonia_id):
         cursor.execute("SELECT id FROM alertas WHERE fbid_post = %s LIMIT 1", (str(fbid_post),))
         row = cursor.fetchone()
         if row:
+            aid = row[0]
+            cursor.execute(
+                "UPDATE alertas SET ultima_vez_visto = NOW(), veces_visto = veces_visto + 1 WHERE id = %s",
+                (aid,)
+            )
+            conn.commit()
             cursor.close(); conn.close()
-            return row[0], "duplicado"
+            return aid, "duplicado"
 
     imagen_principal = _img_url(p.get("imagenes_cloudinary", [None])[0]) if p.get("imagenes_cloudinary") else None
     cursor.execute(
@@ -613,6 +646,7 @@ def insertar_empleo(p, colonia_id):
     fbid_post = p.get("fbid_post")
     existing  = empleo_ya_existe(fbid_post)
     if existing:
+        _touch("empleos", existing)
         return existing, "duplicado"
 
     area_id   = _get_area_id(p.get("area_id") or p.get("area") or None) or 12
@@ -1182,6 +1216,7 @@ def insertar_mascota(p, colonia_id):
     fbid_post = p.get("fbid_post")
     existing  = mascota_ya_existe(fbid_post)
     if existing:
+        _touch("mascotas", existing)
         return existing, "duplicado"
 
     imgs    = p.get("imagenes_cloudinary") or []
@@ -1241,6 +1276,7 @@ def insertar_perdido(p, colonia_id):
     fbid_post = p.get("fbid_post")
     existing  = perdido_ya_existe(fbid_post)
     if existing:
+        _touch("perdidos", existing)
         return existing, "duplicado"
 
     imgs    = p.get("imagenes_cloudinary") or []
