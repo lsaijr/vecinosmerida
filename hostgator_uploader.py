@@ -84,7 +84,73 @@ def _ftp_store(ftp: ftplib.FTP, data: bytes, remote_path: str) -> None:
     ftp.storbinary(f"STOR {remote_path}", io.BytesIO(data))
 
 
+MAX_WORKERS = int(os.getenv("IMG_UPLOAD_WORKERS", "4"))
+
+
+def _procesar_imagen(idx, img, tipo, fbid_post, total, post, config_grupo):
+    """Descarga, optimiza y sube una imagen. Devuelve (resultado_dict, success)."""
+    try:
+        from utils import generar_alt_imagen as _gen_alt
+    except ImportError:
+        _gen_alt = None
+
+    url_origen = img.get("url_temp") if isinstance(img, dict) else (img if isinstance(img, str) else None)
+    fbid_img   = img.get("fbid") if isinstance(img, dict) else None
+    alt        = _gen_alt(post, config_grupo=config_grupo, idx=idx, total=total) if _gen_alt else ""
+
+    if not url_origen:
+        return {"url": None, "origen": "error", "fbid": fbid_img, "alt": alt, "error": "sin_url"}, False
+
+    slug       = _slugify(f"{tipo}-{fbid_post}-{fbid_img or idx}")
+    filename   = f"{slug}.jpg"
+    remote     = f"{FTP_REMOTE_BASE}/img/{tipo}/{filename}"
+    public_url = f"{SITE_URL}/img/{tipo}/{filename}"
+
+    # Download
+    try:
+        resp = requests.get(url_origen, timeout=20)
+        resp.raise_for_status()
+        raw = resp.content
+    except Exception as e:
+        logger.warning("Download FAIL %s: %s", url_origen, e)
+        return {"url": None, "origen": "error", "fbid": fbid_img, "alt": alt, "error": f"dl:{e}"}, False
+
+    # Optimize
+    try:
+        opt, w, h, fmt, dom = _optimize(raw)
+    except Exception as e:
+        logger.warning("Optimize FAIL: %s", e)
+        return {"url": None, "origen": "error", "fbid": fbid_img, "alt": alt, "error": f"opt:{e}"}, False
+
+    # Upload — cada thread abre su propia conexión FTP
+    try:
+        ftp = _ftp_connect()
+        _ftp_store(ftp, opt, remote)
+        try:
+            ftp.quit()
+        except Exception:
+            pass
+    except Exception as e:
+        logger.warning("FTP FAIL %s: %s", remote, e)
+        return {"url": None, "origen": "error", "fbid": fbid_img, "alt": alt, "error": f"ftp:{e}"}, False
+
+    return {
+        "url":            public_url,
+        "origen":         "hostgator",
+        "fbid":           fbid_img,
+        "alt":            alt,
+        "slug":           slug,
+        "width":          w,
+        "height":         h,
+        "file_size":      len(opt),
+        "format":         fmt,
+        "dominant_color": dom,
+    }, True
+
+
 def subir_imagenes(post, meta=None, config_grupo=None) -> Tuple[List[Dict], int, int]:
+    from concurrent.futures import ThreadPoolExecutor, as_completed
+
     imagenes = post.get("imagenes") or []
     if not imagenes:
         return [], 0, 0
@@ -92,105 +158,36 @@ def subir_imagenes(post, meta=None, config_grupo=None) -> Tuple[List[Dict], int,
     tipo      = (post.get("tipo") or post.get("_tipo_final") or "general").lower()
     fbid_post = post.get("fbid_post") or "x"
     total     = len(imagenes)
+    workers   = min(MAX_WORKERS, total)
 
-    try:
-        from utils import generar_alt_imagen as _gen_alt
-    except ImportError:
-        _gen_alt = None
+    resultados_map: dict = {}
 
-    # Open one FTP connection for the whole post
-    ftp = None
-    ftp_err = None
-    try:
-        ftp = _ftp_connect()
-    except Exception as e:
-        ftp_err = str(e)
-        logger.error("FTP connect FAIL: %s", e)
+    with ThreadPoolExecutor(max_workers=workers) as executor:
+        futures = {
+            executor.submit(_procesar_imagen, idx, img, tipo, fbid_post, total, post, config_grupo): idx
+            for idx, img in enumerate(imagenes)
+        }
+        for future in as_completed(futures):
+            idx = futures[future]
+            try:
+                resultado, success = future.result()
+            except Exception as e:
+                img = imagenes[idx]
+                fbid_img = img.get("fbid") if isinstance(img, dict) else None
+                resultado = {"url": None, "origen": "error", "fbid": fbid_img, "error": str(e)}
+                success = False
+            resultados_map[idx] = (resultado, success)
 
     resultados: List[Dict] = []
     ok = fail = 0
-
-    for idx, img in enumerate(imagenes):
-        url_origen = img.get("url_temp") if isinstance(img, dict) else (img if isinstance(img, str) else None)
-        fbid_img   = img.get("fbid") if isinstance(img, dict) else None
-        alt        = _gen_alt(post, config_grupo=config_grupo, idx=idx, total=total) if _gen_alt else ""
-
-        if not url_origen:
-            resultados.append({"url": None, "origen": "error", "fbid": fbid_img,
-                                "alt": alt, "error": "sin_url"})
+    for idx in range(total):
+        resultado, success = resultados_map[idx]
+        resultados.append(resultado)
+        if success:
+            ok += 1
+        else:
             fail += 1
-            continue
-
-        slug       = _slugify(f"{tipo}-{fbid_post}-{fbid_img or idx}")
-        filename   = f"{slug}.jpg"
-        remote     = f"{FTP_REMOTE_BASE}/img/{tipo}/{filename}"
-        public_url = f"{SITE_URL}/img/{tipo}/{filename}"
-
-        # Download
-        try:
-            resp = requests.get(url_origen, timeout=20)
-            resp.raise_for_status()
-            raw = resp.content
-        except Exception as e:
-            logger.warning("Download FAIL %s: %s", url_origen, e)
-            resultados.append({"url": None, "origen": "error", "fbid": fbid_img,
-                                "alt": alt, "error": f"dl:{e}"})
-            fail += 1
-            continue
-
-        # Optimize
-        try:
-            opt, w, h, fmt, dom = _optimize(raw)
-        except Exception as e:
-            logger.warning("Optimize FAIL: %s", e)
-            resultados.append({"url": None, "origen": "error", "fbid": fbid_img,
-                                "alt": alt, "error": f"opt:{e}"})
-            fail += 1
-            continue
-
-        # Upload via FTP
-        if ftp is None:
-            resultados.append({"url": None, "origen": "error", "fbid": fbid_img,
-                                "alt": alt, "error": f"ftp_connect:{ftp_err}"})
-            fail += 1
-            continue
-
-        try:
-            _ftp_store(ftp, opt, remote)
-        except Exception as e:
-            logger.warning("FTP STOR FAIL %s: %s — reconnecting", remote, e)
-            try:
-                ftp.quit()
-            except Exception:
-                pass
-            try:
-                ftp = _ftp_connect()
-                _ftp_store(ftp, opt, remote)
-            except Exception as e2:
-                logger.error("FTP retry FAIL: %s", e2)
-                resultados.append({"url": None, "origen": "error", "fbid": fbid_img,
-                                    "alt": alt, "error": f"ftp:{e2}"})
-                fail += 1
-                continue
-
-        resultados.append({
-            "url":           public_url,
-            "origen":        "hostgator",
-            "fbid":          fbid_img,
-            "alt":           alt,
-            "slug":          slug,
-            "width":         w,
-            "height":        h,
-            "file_size":     len(opt),
-            "format":        fmt,
-            "dominant_color": dom,
-        })
-        ok += 1
-
-    try:
-        if ftp:
-            ftp.quit()
-    except Exception:
-        pass
 
     return resultados, ok, fail
+
+
