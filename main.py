@@ -364,7 +364,7 @@ async def publicar(file: UploadFile = File(...), debug: str = Query("false")):
         obtener_colonias,
         insertar_post_raw, marcar_post_raw, bulk_marcar_posts_raw,
     )
-    from cloudinary_service import subir_imagenes
+    from hostgator_uploader import subir_imagenes
     from utils import generar_alt_imagen, construir_public_id
 
     # Convertir debug string a boolean
@@ -493,10 +493,10 @@ async def publicar(file: UploadFile = File(...), debug: str = Query("false")):
     def _procesar_post_imagenes(p):
         if p.get("imagenes"):
             res_imgs, ok, fail = subir_imagenes(p, meta=meta, config_grupo=config_grupo)
-            p["imagenes_cloudinary"] = res_imgs
+            p["imagenes_subidas"] = res_imgs
             return p, ok, fail
         else:
-            p["imagenes_cloudinary"] = []
+            p["imagenes_subidas"] = []
             return p, 0, 0
 
     posts_a_subir = []
@@ -526,8 +526,8 @@ async def publicar(file: UploadFile = File(...), debug: str = Query("false")):
                 "fbid_post": p.get('fbid_post'),
                 "tipo": p.get('tipo'),
                 "autor": p.get('autor'),
-                "imagenes_cloudinary": p.get('imagenes_cloudinary', []),
-                "tiene_cloudinary": len(p.get('imagenes_cloudinary', [])) > 0
+                "imagenes_subidas": p.get('imagenes_subidas', []),
+                "tiene_imagen": len(p.get('imagenes_subidas', [])) > 0
             })
         
         return {
@@ -829,7 +829,7 @@ async def procesar_limpio(request: Request):
         global _estado_limpio
         _lock_limpio.acquire()
         try:
-            from cloudinary_service import subir_imagenes
+            from hostgator_uploader import subir_imagenes
             from db import (
                 insertar_negocio, insertar_noticia, insertar_alerta,
                 insertar_empleo, insertar_mascota, insertar_perdido,
@@ -849,10 +849,10 @@ async def procesar_limpio(request: Request):
                 _estado_limpio["procesados"] = i + 1
 
                 try:
-                    # 1. Subir imágenes a Cloudinary
+                    # 1. Subir imágenes a HostGator
                     res_imgs, ok, fail = subir_imagenes(p, meta=meta, config_grupo=config_grupo)
                     if res_imgs:
-                        p["imagenes_cloudinary"] = res_imgs
+                        p["imagenes_subidas"] = res_imgs
 
                     # 2. Campos requeridos para inserción
                     p["fecha_captura"]  = fecha
