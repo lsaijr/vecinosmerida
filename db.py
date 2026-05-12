@@ -335,6 +335,41 @@ def _img_public_id(asset):
     return None
 
 
+def _insertar_imagenes_tabla(cursor, entidad_tipo, entidad_id, imagenes_list, source_post_url=None):
+    for i, asset in enumerate(imagenes_list or []):
+        url = _img_url(asset)
+        if not url:
+            continue
+        fbid      = _img_fbid(asset)
+        alt       = _img_alt(asset)
+        slug      = asset.get("slug")          if isinstance(asset, dict) else None
+        width     = asset.get("width")         if isinstance(asset, dict) else None
+        height    = asset.get("height")        if isinstance(asset, dict) else None
+        file_size = asset.get("file_size")     if isinstance(asset, dict) else None
+        fmt       = asset.get("format")        if isinstance(asset, dict) else None
+        dom_color = asset.get("dominant_color") if isinstance(asset, dict) else None
+        proveedor = asset.get("origen")        if isinstance(asset, dict) else "hostgator"
+        if proveedor not in ("cloudinary", "hostgator"):
+            proveedor = "hostgator"
+        cursor.execute(
+            """
+            INSERT INTO imagenes
+              (entidad_tipo, entidad_id, orden, proveedor, imagen_url,
+               slug, alt_text, width, height, file_size, format,
+               dominant_color, fbid, source_post_url)
+            VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
+            ON DUPLICATE KEY UPDATE imagen_url = VALUES(imagen_url),
+              proveedor = VALUES(proveedor), slug = VALUES(slug),
+              alt_text = VALUES(alt_text), width = VALUES(width),
+              height = VALUES(height), file_size = VALUES(file_size),
+              format = VALUES(format), dominant_color = VALUES(dominant_color)
+            """,
+            (entidad_tipo, entidad_id, i, proveedor, url,
+             slug, alt, width, height, file_size, fmt,
+             dom_color, str(fbid) if fbid else None, source_post_url),
+        )
+
+
 def _grupos_origen_json(p):
     """Construye el JSON de grupos_origen a partir del post. Devuelve str o None."""
     val = p.get("grupos_origen")
@@ -384,44 +419,16 @@ def insertar_negocio(p, colonia_id):
     )
     negocio_id = cursor.lastrowid
 
-    for i, asset in enumerate(p.get("imagenes_cloudinary", [])):
-        url = _img_url(asset)
-        if not url:
-            continue
-        fbid = _img_fbid(asset, fallback=(p.get("imagenes", [{}] * 0)[i].get("fbid") if i < len(p.get("imagenes", [])) and isinstance(p.get("imagenes", [])[i], dict) else None))
-        alt = _img_alt(asset)
-        public_id = _img_public_id(asset)
+    _insertar_imagenes_tabla(cursor, "negocio", negocio_id,
+                              p.get("imagenes_subidas", []),
+                              source_post_url=p.get("url_post"))
 
-        cols = ["negocio_id", "imagen_url", "fbid", "orden", "creado_en"]
-        vals = [negocio_id, url, str(fbid) if fbid else None, i, "NOW()"]
-        params = [negocio_id, url, str(fbid) if fbid else None, i]
-        if _column_exists("negocios_imagenes", "alt_text"):
-            cols.insert(3, "alt_text")
-            vals.insert(3, "%s")
-            params.insert(3, alt)
-        if _column_exists("negocios_imagenes", "public_id"):
-            insert_at = 4 if _column_exists("negocios_imagenes", "alt_text") else 3
-            cols.insert(insert_at, "public_id")
-            vals.insert(insert_at, "%s")
-            params.insert(insert_at, public_id)
-
-        sql_vals = []
-        param_iter = iter(params)
-        for v in vals:
-            if v == "NOW()":
-                sql_vals.append("NOW()")
-            else:
-                sql_vals.append("%s")
+    primera_url = _img_url((p.get("imagenes_subidas") or [None])[0])
+    if primera_url:
         cursor.execute(
-            f"INSERT INTO negocios_imagenes ({', '.join(cols)}) VALUES ({', '.join(sql_vals)})",
-            tuple(params),
+            "UPDATE negocios SET imagen_cloudinary = %s WHERE id = %s",
+            (primera_url, negocio_id),
         )
-
-        if i == 0:
-            cursor.execute(
-                "UPDATE negocios SET imagen_cloudinary = %s WHERE id = %s",
-                (url, negocio_id),
-            )
 
     conn.commit()
     cursor.close()
@@ -456,7 +463,7 @@ def insertar_noticia(p, colonia_id):
             cursor.close(); conn.close()
             return nid, "duplicado"
 
-    imagen_principal = _img_url(p.get("imagenes_cloudinary", [None])[0]) if p.get("imagenes_cloudinary") else None
+    imagen_principal = _img_url((p.get("imagenes_subidas") or [None])[0]) if p.get("imagenes_subidas") else None
     cursor.execute(
         """
         INSERT INTO noticias
@@ -487,6 +494,10 @@ def insertar_noticia(p, colonia_id):
     slug = f"{slug_base}-{nid}" if slug_base else f"noticia-{nid}"
     cursor.execute("UPDATE noticias SET slug = %s WHERE id = %s", (slug, nid))
 
+    _insertar_imagenes_tabla(cursor, "noticia", nid,
+                              p.get("imagenes_subidas", []),
+                              source_post_url=p.get("url_post"))
+
     conn.commit()
     cursor.close()
     conn.close()
@@ -511,7 +522,7 @@ def insertar_alerta(p, colonia_id):
             cursor.close(); conn.close()
             return aid, "duplicado"
 
-    imagen_principal = _img_url(p.get("imagenes_cloudinary", [None])[0]) if p.get("imagenes_cloudinary") else None
+    imagen_principal = _img_url((p.get("imagenes_subidas") or [None])[0]) if p.get("imagenes_subidas") else None
     cursor.execute(
         """
         INSERT INTO alertas
@@ -537,6 +548,11 @@ def insertar_alerta(p, colonia_id):
         ),
     )
     aid = cursor.lastrowid
+
+    _insertar_imagenes_tabla(cursor, "alerta", aid,
+                              p.get("imagenes_subidas", []),
+                              source_post_url=p.get("url_post"))
+
     conn.commit()
     cursor.close()
     conn.close()
@@ -650,7 +666,7 @@ def insertar_empleo(p, colonia_id):
         return existing, "duplicado"
 
     area_id   = _get_area_id(p.get("area_id") or p.get("area") or None) or 12
-    imgs      = p.get("imagenes_cloudinary") or []
+    imgs      = p.get("imagenes_subidas") or []
     img_url   = _img_url(imgs[0]) if imgs else None
     telefono  = p.get("telefono") or None
 
@@ -686,6 +702,11 @@ def insertar_empleo(p, colonia_id):
         ),
     )
     empleo_id = cursor.lastrowid
+
+    _insertar_imagenes_tabla(cursor, "empleo", empleo_id,
+                              p.get("imagenes_subidas", []),
+                              source_post_url=p.get("url_post"))
+
     conn.commit()
     cursor.close()
     conn.close()
@@ -704,7 +725,7 @@ def _payload_limpio(p):
         for img in (p.get("imagenes") or [])
         if isinstance(img, dict)
     ]
-    payload = {k: v for k, v in p.items() if k not in ("imagenes_cloudinary", "_autor_db_id", "_es_empresa")}
+    payload = {k: v for k, v in p.items() if k not in ("imagenes_subidas", "_autor_db_id", "_es_empresa")}
     payload["imagenes"] = imagenes_limpias
     return payload
 
@@ -1219,7 +1240,7 @@ def insertar_mascota(p, colonia_id):
         _touch("mascotas", existing)
         return existing, "duplicado"
 
-    imgs    = p.get("imagenes_cloudinary") or []
+    imgs    = p.get("imagenes_subidas") or []
     img_url = _img_url(imgs[0]) if imgs else None
 
     conn   = get_conn()
@@ -1252,6 +1273,11 @@ def insertar_mascota(p, colonia_id):
         ),
     )
     mascota_id = cursor.lastrowid
+
+    _insertar_imagenes_tabla(cursor, "mascota", mascota_id,
+                              p.get("imagenes_subidas", []),
+                              source_post_url=p.get("url_post"))
+
     conn.commit()
     cursor.close()
     conn.close()
@@ -1279,7 +1305,7 @@ def insertar_perdido(p, colonia_id):
         _touch("perdidos", existing)
         return existing, "duplicado"
 
-    imgs    = p.get("imagenes_cloudinary") or []
+    imgs    = p.get("imagenes_subidas") or []
     img_url = _img_url(imgs[0]) if imgs else None
 
     conn   = get_conn()
@@ -1315,6 +1341,11 @@ def insertar_perdido(p, colonia_id):
         ),
     )
     perdido_id = cursor.lastrowid
+
+    _insertar_imagenes_tabla(cursor, "perdido", perdido_id,
+                              p.get("imagenes_subidas", []),
+                              source_post_url=p.get("url_post"))
+
     conn.commit()
     cursor.close()
     conn.close()

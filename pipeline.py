@@ -37,7 +37,7 @@ from utils import (
     OFERTA_KW,
     BUSQUEDA_KW,
 )
-from cloudinary_service import subir_imagenes
+from hostgator_uploader import subir_imagenes
 from collections import defaultdict
 
 
@@ -313,10 +313,10 @@ def ejecutar_pipeline(posts, meta, config_grupo, estado):
 
     for p in aprobados:
         if not (p.get("imagenes") or []):
-            p["imagenes_cloudinary"] = []
+            p["imagenes_subidas"] = []
 
-    # ── PASO 5: Subir imágenes aprobadas a Cloudinary ──────────────
-    _set_estado(estado, paso="Subiendo imágenes", progreso=82, actividad="Preparando subida de imágenes a Cloudinary", add_history=True)
+    # ── PASO 5: Subir imágenes aprobadas a HostGator ──────────────
+    _set_estado(estado, paso="Subiendo imágenes", progreso=82, actividad="Preparando subida de imágenes a HostGator", add_history=True)
     imgs_ok = imgs_fail = 0
 
     posts_con_imagen = [x for x in aprobados if (x.get("imagenes") or [])]
@@ -325,9 +325,8 @@ def ejecutar_pipeline(posts, meta, config_grupo, estado):
         autor = (p.get("autor") or "sin autor")[:40]
         num_imgs_post = len(p.get("imagenes", []) or [])
         _set_estado(estado, actividad=f"Subiendo imágenes de {autor} · post {idx_img}/{total_con_imagen} · {num_imgs_post} imagen(es)")
-        imagenes = p.get("imagenes", []) or []
         res_imgs, ok, fail = subir_imagenes(p, meta=meta, config_grupo=config_grupo)
-        p["imagenes_cloudinary"] = res_imgs
+        p["imagenes_subidas"] = res_imgs
         imgs_ok += ok
         imgs_fail += fail
 
@@ -335,7 +334,7 @@ def ejecutar_pipeline(posts, meta, config_grupo, estado):
     for bucket in ['negocios', 'alertas', 'mascotas', 'empleos']:
         conservados = []
         for p in resultados[bucket]:
-            if p.get('imagenes_cloudinary'):
+            if p.get('imagenes_subidas'):
                 conservados.append(p)
             else:
                 p['_descartado'] = 'sin_imagen_final'
