@@ -106,9 +106,9 @@ def _procesar_imagen(idx, img, tipo, fbid_post, total, post, config_grupo):
     remote     = f"{FTP_REMOTE_BASE}/img/{tipo}/{filename}"
     public_url = f"{SITE_URL}/img/{tipo}/{filename}"
 
-    # Download
+    # Download — timeout corto para fallar rápido en URLs expiradas
     try:
-        resp = requests.get(url_origen, timeout=20)
+        resp = requests.get(url_origen, timeout=8)
         resp.raise_for_status()
         raw = resp.content
     except Exception as e:
