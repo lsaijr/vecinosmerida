@@ -22,7 +22,7 @@ FTP_HOST        = os.getenv("FTP_HOST",        "50.116.94.0")
 FTP_PORT        = int(os.getenv("FTP_PORT",    "21"))
 FTP_USER        = os.getenv("FTP_USER",        "claude@padmabymary.com")
 FTP_PASS        = os.getenv("FTP_PASSWORD",    "")
-FTP_REMOTE_BASE = os.getenv("FTP_REMOTE_PATH", "/public_html/vecinosmerida")
+FTP_REMOTE_BASE = os.getenv("FTP_REMOTE_PATH", "/vecinosmerida")
 SITE_URL        = os.getenv("SITE_URL",        "https://vecinosmerida.com")
 IMG_MAX_SIZE    = 1200
 IMG_QUALITY     = 82
@@ -64,6 +64,7 @@ def _ftp_connect() -> ftplib.FTP:
     ftp = ftplib.FTP()
     ftp.connect(FTP_HOST, FTP_PORT, timeout=30)
     ftp.login(FTP_USER, FTP_PASS)
+    ftp.set_pasv(True)
     return ftp
 
 
