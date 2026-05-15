@@ -102,6 +102,17 @@ def _procesar_imagen(idx, img, tipo, fbid_post, total, post, config_grupo):
     if not url_origen:
         return {"url": None, "origen": "error", "fbid": fbid_img, "alt": alt, "error": "sin_url"}, False
 
+    # Si la URL ya apunta a nuestro propio CDN, registrar tal cual sin re-descargar/subir.
+    # Esto cubre el caso de re-subidas con imágenes ya optimizadas y servidas desde HostGator.
+    if url_origen.startswith(SITE_URL + "/img/") or url_origen.startswith(SITE_URL.replace("https://", "http://") + "/img/"):
+        return {
+            "url":    url_origen,
+            "origen": "hostgator",
+            "fbid":   fbid_img,
+            "alt":    alt,
+            "slug":   url_origen.rsplit("/", 1)[-1].rsplit(".", 1)[0],
+        }, True
+
     slug       = _slugify(f"{tipo}-{fbid_post}-{fbid_img or idx}")
     filename   = f"{slug}.jpg"
     remote     = f"{FTP_REMOTE_BASE}/img/{tipo}/{filename}"
